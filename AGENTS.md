@@ -28,3 +28,9 @@ Read PROJECT.md before coding.
 ## Out of scope
 
 If the issue does not mention it, do not build it. Suggest it in the PR instead.
+
+## Next.js 16
+
+This project runs Next.js 16, which has breaking changes compared to what most models
+were trained on. Before writing Next-specific code, check the docs shipped with the
+installed version in `node_modules/next/dist/docs/`.

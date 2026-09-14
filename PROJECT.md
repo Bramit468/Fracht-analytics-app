@@ -68,15 +68,25 @@ Kai šitas veikia — turim pirmą produkto versiją.
 
 ## Skaičiavimai
 
+Pilnas modelis — [docs/skaiciavimo-modelis.md](docs/skaiciavimo-modelis.md).
+Jis paremtas realiu įmonės skaičiavimu (Omniva) ir yra specifikacija #3, #5–#9.
+**Prieš rašant skaičiavimus, skaityti tą failą.**
+
+Trumpai:
+
 ```
-fuel_cost     = fuel_used_l * fuel_price_per_l
-total_cost    = fuel_cost + tolls + driver_cost + other_costs
-profit        = revenue - total_cost
-margin        = profit / revenue * 100      (tik kai revenue > 0)
-profit_per_km = profit / distance_km        (tik kai distance_km > 0)
+reiso_kaštai = keliai + kuras + adblue + (furos_paros_kaina × dienos)
+pelnas       = pajamos - reiso_kaštai
+marža        = pelnas / pajamos * 100        (tik kai pajamos > 0)
+savikaina    = reiso_kaštai / apmokami_km    (tik kai apmokami_km > 0)
+pelnas_km    = pelnas / apmokami_km          (tik kai apmokami_km > 0)
 ```
 
-Pinigai laikomi centais (integer), kad nebūtų float klaidų. Rodomi eurais.
+Esmė: fura kainuoja pinigus kiekvieną parą, net stovėdama. Todėl kaštai
+skaičiuojami nuo paros savikainos, o ne nuo atskirų išlaidų sąrašo.
+
+Pinigų sumos laikomos centais (integer), kad nebūtų float klaidų. Įkainiai —
+dešimtainiai, 4 skaitmenys po kablelio. Rodoma eurais.
 
 ## Stack
 

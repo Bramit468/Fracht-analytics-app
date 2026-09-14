@@ -28,6 +28,10 @@ npm run dev
 
 App runs at http://localhost:3000
 
+Get `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the
+Supabase project's API settings. The application creates the Supabase client
+only when it is first needed, so builds do not require production credentials.
+
 ## Workflow
 
 Nobody commits straight to `main`.

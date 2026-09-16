@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { formatCents } from "../../../lib/money";
 import { TripForm, type TripDraft } from "./trip-form";
 
 export default function NewTripPage() {
@@ -41,6 +42,9 @@ export default function NewTripPage() {
             <p className="font-semibold">Trip data is ready for calculation.</p>
             <p className="mt-1 text-sm text-emerald-800">
               {trip.tripNumber}: {trip.origin} → {trip.destination}
+            </p>
+            <p className="mt-1 text-sm text-emerald-800">
+              Revenue: {formatCents(trip.revenueCents)} · Truck: {trip.truckPlate}
             </p>
           </div>
         )}

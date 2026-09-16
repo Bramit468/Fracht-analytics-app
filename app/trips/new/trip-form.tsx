@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { formatCents, parseEuroToCents } from "../../../lib/money";
 
 export type TripDraft = {
   tripNumber: string;
+  truckPlate: string;
   origin: string;
   destination: string;
   date: string;
@@ -22,6 +24,7 @@ type TripFormProps = {
 
 type FormValues = {
   tripNumber: string;
+  truckPlate: string;
   origin: string;
   destination: string;
   date: string;
@@ -39,6 +42,7 @@ type FormErrors = Partial<Record<FieldName, string>>;
 
 const initialValues: FormValues = {
   tripNumber: "",
+  truckPlate: "",
   origin: "",
   destination: "",
   date: "",
@@ -74,19 +78,20 @@ const numberFields: Array<{
   suffix: string;
   placeholder: string;
   step: string;
+  money?: boolean;
 }> = [
-  { name: "revenue", label: "Revenue", suffix: "€", placeholder: "2400", step: "0.01" },
+  { name: "revenue", label: "Revenue", suffix: "€", placeholder: "2400", step: "0.01", money: true },
   { name: "distanceKm", label: "Distance", suffix: "km", placeholder: "1750", step: "0.1" },
   { name: "fuelUsedLiters", label: "Fuel used", suffix: "L", placeholder: "510", step: "0.1" },
-  { name: "fuelPrice", label: "Fuel price", suffix: "€/L", placeholder: "1.42", step: "0.001" },
-  { name: "tolls", label: "Tolls", suffix: "€", placeholder: "280", step: "0.01" },
-  { name: "driverCost", label: "Driver cost", suffix: "€", placeholder: "450", step: "0.01" },
-  { name: "otherCosts", label: "Other costs", suffix: "€", placeholder: "75", step: "0.01" },
+  { name: "fuelPrice", label: "Fuel price", suffix: "€/L", placeholder: "1.42", step: "0.001", money: true },
+  { name: "tolls", label: "Tolls", suffix: "€", placeholder: "280", step: "0.01", money: true },
+  { name: "driverCost", label: "Driver cost", suffix: "€", placeholder: "450", step: "0.01", money: true },
+  { name: "otherCosts", label: "Other costs", suffix: "€", placeholder: "75", step: "0.01", money: true },
 ];
 
-function eurosToCents(value: string) {
-  return Math.round(Number(value) * 100);
-}
+const truckOptions = ["NNN 888"] as const;
+
+const moneyFields = new Set(["revenue", "fuelPrice", "tolls", "driverCost", "otherCosts"]);
 
 function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {};
@@ -95,6 +100,10 @@ function validate(values: FormValues): FormErrors {
     if (!values[field.name].trim()) {
       errors[field.name] = "This field is required.";
     }
+  }
+
+  if (!values.truckPlate) {
+    errors.truckPlate = "Select a truck.";
   }
 
   if (!values.date) {
@@ -106,7 +115,7 @@ function validate(values: FormValues): FormErrors {
 
     if (value === "") {
       errors[field.name] = "This field is required.";
-    } else if (!Number.isFinite(Number(value)) || Number(value) < 0) {
+    } else if (moneyFields.has(field.name) ? parseEuroToCents(value) === null : !Number.isFinite(Number(value)) || Number(value) < 0) {
       errors[field.name] = "Enter zero or a positive number.";
     }
   }
@@ -137,16 +146,17 @@ export function TripForm({ onValid }: TripFormProps) {
 
     onValid({
       tripNumber: values.tripNumber.trim(),
+      truckPlate: values.truckPlate,
       origin: values.origin.trim(),
       destination: values.destination.trim(),
       date: values.date,
-      revenueCents: eurosToCents(values.revenue),
+      revenueCents: parseEuroToCents(values.revenue)!,
       distanceKm: Number(values.distanceKm),
       fuelUsedLiters: Number(values.fuelUsedLiters),
-      fuelPriceCentsPerLiter: eurosToCents(values.fuelPrice),
-      tollsCents: eurosToCents(values.tolls),
-      driverCostCents: eurosToCents(values.driverCost),
-      otherCostsCents: eurosToCents(values.otherCosts),
+      fuelPriceCentsPerLiter: parseEuroToCents(values.fuelPrice)!,
+      tollsCents: parseEuroToCents(values.tolls)!,
+      driverCostCents: parseEuroToCents(values.driverCost)!,
+      otherCostsCents: parseEuroToCents(values.otherCosts)!,
     });
   }
 
@@ -164,6 +174,27 @@ export function TripForm({ onValid }: TripFormProps) {
           Route details
         </h2>
         <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Truck</span>
+            <select
+              aria-describedby={errors.truckPlate ? "truckPlate-error" : undefined}
+              aria-invalid={Boolean(errors.truckPlate)}
+              className={inputClass("truckPlate")}
+              name="truckPlate"
+              onChange={(event) => updateField("truckPlate", event.target.value)}
+              value={values.truckPlate}
+            >
+              <option value="">Select a truck</option>
+              {truckOptions.map((plate) => (
+                <option key={plate} value={plate}>{plate}</option>
+              ))}
+            </select>
+            {errors.truckPlate && (
+              <span className="mt-1.5 block text-sm text-red-600" id="truckPlate-error">
+                {errors.truckPlate}
+              </span>
+            )}
+          </label>
           {textFields.map((field) => (
             <label className="block" key={field.name}>
               <span className="mb-2 block text-sm font-medium text-slate-700">
@@ -228,7 +259,7 @@ export function TripForm({ onValid }: TripFormProps) {
                   onChange={(event) => updateField(field.name, event.target.value)}
                   placeholder={field.placeholder}
                   step={field.step}
-                  type="number"
+                  type={field.money ? "text" : "number"}
                   value={values[field.name]}
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-slate-500">

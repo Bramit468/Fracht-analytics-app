@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { formatCents, parseEuroToCents } from "../../../lib/money";
+import { parseEuroToCents } from "../../../lib/money";
 
 export type TripDraft = {
   tripNumber: string;
@@ -161,11 +161,10 @@ export function TripForm({ onValid }: TripFormProps) {
   }
 
   const inputClass = (name: FieldName) =>
-    `w-full rounded-xl border bg-white px-4 py-3 text-slate-950 outline-none transition placeholder:text-slate-400 focus:ring-4 ${
-      errors[name]
-        ? "border-red-400 focus:border-red-500 focus:ring-red-100"
-        : "border-slate-200 focus:border-blue-500 focus:ring-blue-100"
-    }`;
+    "w-full rounded-xl border bg-white px-4 py-3 text-slate-950 outline-none transition placeholder:text-slate-400 focus:ring-4 " +
+    (errors[name]
+      ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+      : "border-slate-200 focus:border-blue-500 focus:ring-blue-100");
 
   return (
     <form className="space-y-8" noValidate onSubmit={handleSubmit}>
@@ -201,7 +200,7 @@ export function TripForm({ onValid }: TripFormProps) {
                 {field.label}
               </span>
               <input
-                aria-describedby={errors[field.name] ? `${field.name}-error` : undefined}
+                aria-describedby={errors[field.name] ? field.name + "-error" : undefined}
                 aria-invalid={Boolean(errors[field.name])}
                 className={inputClass(field.name)}
                 name={field.name}
@@ -211,7 +210,7 @@ export function TripForm({ onValid }: TripFormProps) {
                 value={values[field.name]}
               />
               {errors[field.name] && (
-                <span className="mt-1.5 block text-sm text-red-600" id={`${field.name}-error`}>
+                <span className="mt-1.5 block text-sm text-red-600" id={field.name + "-error"}>
                   {errors[field.name]}
                 </span>
               )}
@@ -250,9 +249,9 @@ export function TripForm({ onValid }: TripFormProps) {
               </span>
               <span className="relative block">
                 <input
-                  aria-describedby={errors[field.name] ? `${field.name}-error` : undefined}
+                  aria-describedby={errors[field.name] ? field.name + "-error" : undefined}
                   aria-invalid={Boolean(errors[field.name])}
-                  className={`${inputClass(field.name)} pr-16`}
+                  className={inputClass(field.name) + " pr-16"}
                   inputMode="decimal"
                   min="0"
                   name={field.name}
@@ -267,7 +266,7 @@ export function TripForm({ onValid }: TripFormProps) {
                 </span>
               </span>
               {errors[field.name] && (
-                <span className="mt-1.5 block text-sm text-red-600" id={`${field.name}-error`}>
+                <span className="mt-1.5 block text-sm text-red-600" id={field.name + "-error"}>
                   {errors[field.name]}
                 </span>
               )}

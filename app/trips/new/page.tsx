@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { formatCents } from "../../../lib/money";
+import { calculateTripProfit } from "../../../lib/trip-profit";
 import { TripForm, type TripDraft } from "./trip-form";
 
 export default function NewTripPage() {
@@ -35,6 +36,9 @@ export default function NewTripPage() {
         </div>
 
         {trip && (
+          (() => {
+            const result = calculateTripProfit(trip);
+            return (
           <div
             className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950"
             role="status"
@@ -46,7 +50,17 @@ export default function NewTripPage() {
             <p className="mt-1 text-sm text-emerald-800">
               Revenue: {formatCents(trip.revenueCents)} · Truck: {trip.truckPlate}
             </p>
+            <div className="mt-4 grid gap-2 text-sm sm:grid-cols-4">
+              <span>Total cost: {formatCents(result.totalCostCents)}</span>
+              <span className={result.profitCents < 0 ? "font-semibold text-red-700" : "font-semibold"}>
+                Profit: {formatCents(result.profitCents)}
+              </span>
+              <span>Margin: {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}</span>
+              <span>Profit/km: {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €`}</span>
+            </div>
           </div>
+            );
+          })()
         )}
       </div>
     </main>

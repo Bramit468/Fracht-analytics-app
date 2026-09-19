@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
@@ -125,7 +126,7 @@ export function TripForm() {
       <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Calculate</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saving…" : "Save Trip"}</button></div>
     </fieldset>
     {error && <p role="alert" className="text-red-700">{error}</p>}
-    {saved && <p role="status" className="text-green-800">{saved}</p>}
+    {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">View trips</Link></p>}
     {result && <section aria-label="Trip results" className="rounded-xl bg-slate-50 p-4"><h2 className="font-semibold">Trip results</h2><dl className="mt-3 grid gap-3 sm:grid-cols-2">{[["Fuel", result.fuelCents], ["AdBlue", result.adblueCents], ["Roads", result.roadCents], ["Truck", result.truckCents], ["Revenue", result.revenueCents], ["Total cost", result.totalCostCents], ["Profit", result.profitCents]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatCents(Number(value))}</dd></div>)}<div><dt>Margin</dt><dd>{result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}</dd></div><div><dt>Profit / paid km</dt><dd>{result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}</dd></div></dl></section>}
   </form>;
 }

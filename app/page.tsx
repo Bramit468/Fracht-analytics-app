@@ -12,6 +12,7 @@ export default function Home() {
             <p className="mt-2 text-slate-600">An overview of every saved trip.</p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold transition hover:bg-slate-100" href="/trips/import">Import Excel</Link>
             <Link className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold transition hover:bg-slate-100" href="/trips">View trips</Link>
             <Link className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700" href="/trips/new">New trip</Link>
           </div>

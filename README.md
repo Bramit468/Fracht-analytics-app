@@ -32,6 +32,21 @@ Get `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the
 Supabase project's API settings. The application creates the Supabase client
 only when it is first needed, so builds do not require production credentials.
 
+## Authentication
+
+The application uses Supabase email/password authentication. A signed-out
+visitor is redirected to `/login`, where they can sign in or create an account.
+If email confirmation is enabled in Supabase, add this URL to the allowed Auth
+redirect URLs:
+
+```text
+https://your-app-domain.example/auth/callback
+```
+
+Authentication protects the application screens. Company-level data isolation
+is a separate database change and must be completed before onboarding multiple
+companies.
+
 ## Workflow
 
 Nobody commits straight to `main`.

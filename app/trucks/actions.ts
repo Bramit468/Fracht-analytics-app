@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 
-import { getSupabaseClient } from "@/lib/supabase";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 import {
   parseTruckForm,
   readTruckFormValues,
@@ -21,9 +21,6 @@ export interface CreateTruckState {
 /** Postgres klaidos kodas, kai pažeidžiamas `unique` apribojimas. */
 const UNIQUE_VIOLATION = "23505";
 
-// Prisijungimo dar nėra (Auth bus atskira užduotis). Kai atsiras, čia reikės
-// patikrinti vartotoją ir jo įmonę — Server Action pasiekiamas tiesiogiai POST
-// užklausa, ne tik per formą.
 export async function createTruck(
   _previous: CreateTruckState,
   formData: FormData,
@@ -40,7 +37,18 @@ export async function createTruck(
     };
   }
 
-  const { error } = await getSupabaseClient().from("trucks").insert(parsed.value);
+  const supabase = await createServerSupabaseClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  if (!claimsData?.claims) {
+    return {
+      status: "error",
+      message: "Prisijungimo sesija baigėsi. Prisijunkite dar kartą.",
+      values,
+    };
+  }
+
+  const { error } = await supabase.from("trucks").insert(parsed.value);
 
   if (error?.code === UNIQUE_VIOLATION) {
     return {

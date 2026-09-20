@@ -35,17 +35,19 @@ only when it is first needed, so builds do not require production credentials.
 ## Authentication
 
 The application uses Supabase email/password authentication. A signed-out
-visitor is redirected to `/login`, where they can sign in or create an account.
-If email confirmation is enabled in Supabase, add this URL to the allowed Auth
-redirect URLs:
+visitor is redirected to `/login`. Accounts are created or invited by the
+administrator in Supabase; public self-registration is not shown in the app.
+If email invitations or confirmation are enabled, add this URL to the allowed
+Auth redirect URLs:
 
 ```text
 https://your-app-domain.example/auth/callback
 ```
 
-Authentication protects the application screens. Company-level data isolation
-is a separate database change and must be completed before onboarding multiple
-companies.
+Migration `0005_company_workspaces.sql` assigns every authenticated user to one
+company and applies Row Level Security to trucks, trips and trip legs. Existing
+data and users are assigned to the initial workspace; each later Auth user gets
+a separate workspace automatically.
 
 ## Workflow
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCents, parseEuroToCents } from "./money";
+import { centsToInput, formatCents, parseEuroToCents } from "./money";
 
 describe("parseEuroToCents", () => {
   it("sveiki eurai", () => {
@@ -36,5 +36,15 @@ describe("formatCents", () => {
     // lt-LT formatas naudoja nepertraukiamus tarpus, todėl juos suvienodinam
     expect(formatCents(26900).replace(/\s/g, " ")).toBe("269,00 €");
     expect(formatCents(123456).replace(/\s/g, " ")).toBe("1 234,56 €");
+  });
+});
+
+describe("centsToInput", () => {
+  it("grąžina reikšmę, kurią formos laukas perskaito atgal į tuos pačius centus", () => {
+    // Redaguojant reisą suma keliauja centai -> laukas -> centai. Jei čia
+    // pasimestų centas, pataisius nesusijusį lauką pasikeistų ir pelnas.
+    for (const cents of [0, 1, 29, 999, 36000, 1204450, 2147483647]) {
+      expect(parseEuroToCents(centsToInput(cents))).toBe(cents);
+    }
   });
 });

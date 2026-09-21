@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase";
-import { formatCents, parseEuroToCents } from "../../../lib/money";
+import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { truckRowToCalc } from "../../../lib/truck";
-import { saveTrip } from "../../../lib/trips";
+import { getTripWithLegs, saveTrip } from "../../../lib/trips";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
-import type { TripInsert } from "../../../types/trip";
+import type { TripInsert, TripWithLegs } from "../../../types/trip";
 
 const fields = [
   ["days", "Reiso trukmė (paros)", "1"],
@@ -23,13 +23,30 @@ const fields = [
 const extras = [["bridges_cents", "Tiltai / vinjetės (€)"], ["ferries_cents", "Keltai (€)"], ["tunnels_cents", "Tuneliai (€)"], ["parking_cents", "Parkingas (€)"]] as const;
 const inputClass = "mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3";
 
-export function TripForm() {
+/** Išsaugotas reisas -> formos laukų reikšmės. Sumos verčiamos atgal į eurus. */
+function tripDefaults(trip: TripWithLegs): Record<string, string> {
+  return {
+    truck_id: trip.truck_id, trip_number: trip.trip_number, origin: trip.origin,
+    destination: trip.destination, trip_date: trip.trip_date,
+    days: String(trip.days), paid_km: String(trip.paid_km), empty_km: String(trip.empty_km),
+    fuel_l_per_100km: String(trip.fuel_l_per_100km), fuel_price: String(trip.fuel_price),
+    adblue_l_per_100km: String(trip.adblue_l_per_100km), adblue_price: String(trip.adblue_price),
+    bridges_cents: centsToInput(trip.bridges_cents), ferries_cents: centsToInput(trip.ferries_cents),
+    tunnels_cents: centsToInput(trip.tunnels_cents), parking_cents: centsToInput(trip.parking_cents),
+    revenue: trip.revenue_mode === "freight"
+      ? centsToInput(trip.freight_price_cents ?? 0)
+      : String(trip.rate_per_km ?? 0),
+  };
+}
+
+export function TripForm({ tripId }: { tripId?: string }) {
   const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [defaults, setDefaults] = useState<Record<string, string>>({});
   const [tariffs, setTariffs] = useState<CountryTariff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mode, setMode] = useState("freight");
-  const [legIds, setLegIds] = useState([0]);
+  const [legs, setLegs] = useState([{ id: 0, country: "", km: "" }]);
   const nextId = useRef(1);
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
@@ -42,20 +59,34 @@ export function TripForm() {
     async function load() {
       try {
         const client = getSupabaseClient();
-        const [t, c] = await Promise.all([client.from("trucks").select("*").order("plate"), client.from("country_tariffs").select("country,rate,rate_type").order("country")]);
+        const [t, c, existing] = await Promise.all([
+          client.from("trucks").select("*").order("plate"),
+          client.from("country_tariffs").select("country,rate,rate_type").order("country"),
+          tripId ? getTripWithLegs(tripId) : null,
+        ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
         if (!cancelled) {
           setTrucks(t.data as Truck[]);
           setTariffs(c.data.map(row => ({ country: row.country, rate: Number(row.rate), rateType: row.rate_type })));
+          if (existing) {
+            setDefaults(tripDefaults(existing));
+            setMode(existing.revenue_mode);
+            if (existing.legs.length) {
+              setLegs(existing.legs.map((leg, index) => ({ id: index, country: leg.country, km: String(leg.km) })));
+              nextId.current = existing.legs.length;
+            }
+          }
         }
       } catch {
-        if (!cancelled) setError("Nepavyko užkrauti furų ir kelių įkainių. Patikrinkite ryšį ir bandykite dar kartą.");
+        if (!cancelled) setError(tripId
+          ? "Nepavyko užkrauti reiso. Patikrinkite ryšį ir bandykite dar kartą."
+          : "Nepavyko užkrauti furų ir kelių įkainių. Patikrinkite ryšį ir bandykite dar kartą.");
       } finally { if (!cancelled) setLoading(false); }
     }
     void load();
     return () => { cancelled = true; };
-  }, [attempt]);
+  }, [attempt, tripId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,40 +122,42 @@ export function TripForm() {
         rate_per_km: mode === "per_km" ? number("revenue") : null,
       };
       if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
-      const legs = legIds.map(id => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
-      if (Math.abs(legs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
-      const calculation = calculateSavedTrip(trip, legs, truckRowToCalc(truck), tariffs);
+      const tripLegs = legs.map(({ id }) => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
+      if (Math.abs(tripLegs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
+      const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
       const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
       if (action !== "save") return;
       busy.current = true;
       setSaving(true);
-      const persisted = await saveTrip(trip, legs);
-      setSaved(`Reisas ${persisted.trip_number} išsaugotas.`);
+      const persisted = await saveTrip({ ...trip, id: tripId }, tripLegs);
+      setSaved(tripId
+        ? `Reiso ${persisted.trip_number} pakeitimai išsaugoti.`
+        : `Reisas ${persisted.trip_number} išsaugotas.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti reiso. Patikrinkite ryšį su duomenų baze ir ar pritaikyta migracija 0004.");
     } finally { busy.current = false; setSaving(false); }
   }
 
-  if (loading) return <p role="status">Kraunamos furos ir kelių įkainiai…</p>;
+  if (loading) return <p role="status">{tripId ? "Kraunamas reisas…" : "Kraunamos furos ir kelių įkainiai…"}</p>;
   if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
   return <form onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
       <div className="grid gap-4 sm:grid-cols-2">
-        <label>Fura<select name="truck_id" required className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required className={inputClass} /></label>)}
-        {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={name.startsWith("adblue") || name === "empty_km" ? "0" : undefined} /></label>)}
+        <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
+        {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") || name === "empty_km" ? "0" : undefined)} /></label>)}
         <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
-        <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" className={inputClass} /></label>
+        <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>
       </div>
       <section className="space-y-3"><h2 className="font-semibold">Atkarpos pagal šalis</h2><p className="text-sm text-slate-600">Surašykite visus kilometrus. Neapmokestintiems keliams pasirinkite „Nemokami“.</p>
-        {legIds.map(id => <div key={id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${id}`} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${id}`} type="number" min="0" step="0.01" required className={inputClass} /></label><button type="button" disabled={legIds.length === 1} onClick={() => { setLegIds(ids => ids.filter(i => i !== id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
-        <button type="button" className="underline" onClick={() => { setLegIds(ids => [...ids, nextId.current++]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
+        {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
+        <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
       </section>
-      <div className="grid gap-4 sm:grid-cols-2">{extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue="0" className={inputClass} /></label>)}</div>
+      <div className="grid gap-4 sm:grid-cols-2">{extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}</div>
       <p className="text-sm text-slate-600">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš pasirinktos furos paros savikainos.</p>
-      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saugoma…" : "Išsaugoti reisą"}</button></div>
+      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
     </fieldset>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}

@@ -68,14 +68,35 @@ export function buildTripSummaries(
   });
 }
 
+/** Su `id` atnaujina esamą reisą, be jo – įrašo naują (#40). */
+export type TripSave = TripInsert & { id?: string };
+
 /** Uses a database transaction so failed legs cannot leave a partial trip. */
-export async function saveTrip(trip: TripInsert, legs: TripCountryLegInsert[]): Promise<TripWithLegs> {
+export async function saveTrip(trip: TripSave, legs: TripCountryLegInsert[]): Promise<TripWithLegs> {
   const { data, error } = await getSupabaseClient().rpc("save_trip_with_legs", {
     trip_data: trip, legs_data: legs,
   });
   if (error) throw error;
   if (!data?.id || !Array.isArray(data.legs)) throw new Error("Invalid saved trip response.");
   return data as TripWithLegs;
+}
+
+export async function deleteTrip(id: string): Promise<void> {
+  // Atkarpos išsitrina pačios (on delete cascade), svetimo reiso neleis RLS.
+  const { error } = await getSupabaseClient().from("trips").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Vienas reisas su atkarpomis – redagavimo formai. */
+export async function getTripWithLegs(id: string): Promise<TripWithLegs> {
+  const client = getSupabaseClient();
+  const [tripResult, legsResult] = await Promise.all([
+    client.from("trips").select("*").eq("id", id).single(),
+    client.from("trip_country_legs").select("*").eq("trip_id", id),
+  ]);
+  if (tripResult.error) throw tripResult.error;
+  if (legsResult.error) throw legsResult.error;
+  return { ...(tripResult.data as Trip), legs: (legsResult.data ?? []) as TripCountryLeg[] };
 }
 
 export async function listTrips(): Promise<TripSummary[]> {

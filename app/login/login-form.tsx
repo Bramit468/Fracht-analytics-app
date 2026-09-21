@@ -47,24 +47,17 @@ export function LoginForm() {
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div>
         <button
-          name="intent"
-          value="login"
           disabled={pending}
-          className="rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
         >
           {pending ? "Prašome palaukti…" : "Prisijungti"}
         </button>
-        <button
-          name="intent"
-          value="signup"
-          disabled={pending}
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-        >
-          Sukurti paskyrą
-        </button>
       </div>
+      <p className="text-center text-xs leading-5 text-slate-500">
+        Prieigą prie įmonės darbo erdvės suteikia administratorius.
+      </p>
     </form>
   );
 }

@@ -3,7 +3,7 @@ import { connection } from "next/server";
 
 import { calcDailyRate } from "@/lib/calc";
 import { formatCents } from "@/lib/money";
-import { getSupabaseClient } from "@/lib/supabase";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { truckRowToCalc } from "@/lib/truck";
 import type { Truck } from "@/types/truck";
 
@@ -18,7 +18,8 @@ export default async function TrucksPage() {
   // o ne vieną kartą build metu.
   await connection();
 
-  const { data, error } = await getSupabaseClient()
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
     .from("trucks")
     .select("*")
     .order("plate")

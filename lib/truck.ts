@@ -7,7 +7,7 @@
  */
 
 import type { Truck as CalcTruck, TruckDailyCosts } from "./calc";
-import { parseEuroToCents } from "./money";
+import { centsToInput, parseEuroToCents } from "./money";
 import type { TruckInsert } from "../types/truck";
 
 type CentsColumn = Extract<keyof TruckInsert, `${string}_cents`>;
@@ -127,6 +127,27 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
       working_days_per_month: workingDays,
     },
   };
+}
+
+/**
+ * Įrašytą furą paverčia formos reikšmėmis — taisymo formai užpildyti (#39).
+ *
+ * Sumos grąžinamos į eurus tokiu pavidalu, kokį `parseTruckForm` perskaito
+ * atgal į tuos pačius centus. `formatCents` čia netinka: „269,00 €" su valiutos
+ * ženklu nebeperskaitoma.
+ */
+export function truckRowToFormValues(row: TruckInsert): TruckFormValues {
+  const values: TruckFormValues = {};
+  for (const field of TRUCK_FORM_FIELDS) {
+    if (field === "plate") {
+      values[field] = row.plate;
+    } else if (field === "working_days_per_month") {
+      values[field] = String(row.working_days_per_month);
+    } else {
+      values[field] = centsToInput(row[field]);
+    }
+  }
+  return values;
 }
 
 /** Duomenų bazės eilutę paverčia į tai, ką priima lib/calc.ts. */

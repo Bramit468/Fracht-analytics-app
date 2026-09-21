@@ -8,6 +8,7 @@ import {
   parseTruckForm,
   readTruckFormValues,
   truckRowToCalc,
+  truckRowToFormValues,
   type TruckFormValues,
 } from "./truck";
 
@@ -107,6 +108,40 @@ describe("truckRowToCalc", () => {
     keys.forEach((key, i) => {
       expect(truck.dailyCents[key], key).toBe(10 ** i);
     });
+  });
+});
+
+describe("truckRowToFormValues", () => {
+  it("įrašyta fura grįžta į formą ir atgal nepakitusi", () => {
+    // Taisymo kelias: eilutė -> forma -> eilutė. Jei čia kas nors pasimestų,
+    // pataisius vien numerį pasikeistų ir paros savikaina.
+    const parsed = parseTruckForm(OMNIVA_FORM);
+    if (!parsed.ok) throw new Error("forma turėjo būti teisinga");
+
+    expect(parseTruckForm(truckRowToFormValues(parsed.value))).toEqual({
+      ok: true,
+      value: parsed.value,
+    });
+  });
+
+  it("nė vienas centas nepasimeta ties ribomis", () => {
+    const parsed = parseTruckForm(OMNIVA_FORM);
+    if (!parsed.ok) throw new Error("forma turėjo būti teisinga");
+
+    for (const cents of [0, 1, 29, 999, 36000, 1204450, 2147483647]) {
+      const row = { ...parsed.value, depreciation_cents: cents };
+      const back = parseTruckForm(truckRowToFormValues(row));
+      expect(back.ok && back.value.depreciation_cents, String(cents)).toBe(cents);
+    }
+  });
+
+  it("užpildo visus formos laukus", () => {
+    const parsed = parseTruckForm(OMNIVA_FORM);
+    if (!parsed.ok) throw new Error("forma turėjo būti teisinga");
+
+    const values = truckRowToFormValues(parsed.value);
+
+    expect(Object.keys(values).sort()).toEqual([...TRUCK_FORM_FIELDS].sort());
   });
 });
 

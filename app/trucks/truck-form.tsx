@@ -5,23 +5,31 @@ import { useActionState } from "react";
 import {
   DAILY_COSTS,
   DEFAULT_WORKING_DAYS_PER_MONTH,
+  truckRowToFormValues,
   type TruckFormField,
+  type TruckFormValues,
 } from "@/lib/truck";
+import type { Truck } from "@/types/truck";
 
-import { createTruck, type CreateTruckState } from "./actions";
+import { saveTruck, type SaveTruckState } from "./actions";
 
-const INITIAL_STATE: CreateTruckState = { status: "idle" };
+const INITIAL_STATE: SaveTruckState = { status: "idle" };
 
-export function TruckForm() {
-  const [state, formAction, pending] = useActionState(createTruck, INITIAL_STATE);
+/** Be `truck` — naujos furos forma, su juo — tos pačios furos taisymas (#39). */
+export function TruckForm({ truck }: { truck?: Truck }) {
+  const [state, formAction, pending] = useActionState(saveTruck, INITIAL_STATE);
+  const defaults = truck ? truckRowToFormValues(truck) : {};
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
+      <input type="hidden" name="id" value={truck?.id ?? ""} />
+
       <Field
         name="plate"
         label="Valstybinis numeris"
         placeholder="NNN 888"
         state={state}
+        defaults={defaults}
       />
 
       <fieldset className="flex flex-col gap-3">
@@ -35,6 +43,7 @@ export function TruckForm() {
               placeholder="0"
               inputMode="decimal"
               state={state}
+              defaults={defaults}
             />
           ))}
         </div>
@@ -48,6 +57,7 @@ export function TruckForm() {
           placeholder="0"
           inputMode="decimal"
           state={state}
+          defaults={defaults}
         />
         <Field
           name="working_days_per_month"
@@ -56,6 +66,7 @@ export function TruckForm() {
           defaultValue={String(DEFAULT_WORKING_DAYS_PER_MONTH)}
           inputMode="numeric"
           state={state}
+          defaults={defaults}
         />
       </fieldset>
 
@@ -65,7 +76,11 @@ export function TruckForm() {
           disabled={pending}
           className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
         >
-          {pending ? "Įrašoma…" : "Pridėti furą"}
+          {pending
+            ? "Įrašoma…"
+            : truck
+              ? "Išsaugoti pakeitimus"
+              : "Pridėti furą"}
         </button>
         {state.message && (
           <p
@@ -90,6 +105,7 @@ function Field({
   defaultValue = "",
   inputMode,
   state,
+  defaults,
 }: {
   name: TruckFormField;
   label: string;
@@ -97,7 +113,8 @@ function Field({
   placeholder?: string;
   defaultValue?: string;
   inputMode?: "decimal" | "numeric";
-  state: CreateTruckState;
+  state: SaveTruckState;
+  defaults: TruckFormValues;
 }) {
   const error = state.errors?.[name];
   const errorId = `${name}-error`;
@@ -110,7 +127,7 @@ function Field({
         type="text"
         inputMode={inputMode}
         placeholder={placeholder}
-        defaultValue={state.values?.[name] ?? defaultValue}
+        defaultValue={state.values?.[name] ?? defaults[name] ?? defaultValue}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         className="rounded-md border border-neutral-300 bg-transparent px-3 py-2 aria-invalid:border-red-600 dark:border-neutral-700"

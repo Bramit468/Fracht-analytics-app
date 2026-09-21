@@ -58,7 +58,7 @@ export function ExcelImport() {
           })));
         }
       } catch {
-        if (!cancelled) setError("Could not load trucks and road tariffs.");
+        if (!cancelled) setError("Nepavyko užkrauti furų ir kelių įkainių.");
       } finally {
         if (!cancelled) setLoadingReference(false);
       }
@@ -84,13 +84,13 @@ export function ExcelImport() {
     setFileName(file.name);
     try {
       const sheet = await readSheet(file);
-      if (sheet.length < 2) throw new Error("The workbook must contain a header row and at least one trip.");
+      if (sheet.length < 2) throw new Error("Faile turi būti antraščių eilutė ir bent vienas reisas.");
       const nextHeaders = sheet[0].map(headerText);
       setHeaders(nextHeaders);
       setRows(sheet.slice(1) as unknown as ExcelCell[][]);
       setMapping(suggestColumnMapping(nextHeaders));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not read this .xlsx file.");
+      setError(cause instanceof Error ? cause.message : "Nepavyko perskaityti šio .xlsx failo.");
     }
   }
 
@@ -111,7 +111,7 @@ export function ExcelImport() {
         failed.push({
           sourceRow: row.sourceRow,
           tripNumber: row.trip.trip_number,
-          reason: cause instanceof Error ? cause.message : "Database rejected this row.",
+          reason: cause instanceof Error ? cause.message : "Duomenų bazė atmetė šią eilutę.",
         });
       }
       setProgress(imported + failed.length - preview.invalidRows.length);
@@ -122,13 +122,13 @@ export function ExcelImport() {
     busy.current = false;
   }
 
-  if (loadingReference) return <p role="status">Loading trucks and road tariffs…</p>;
-  if (!trucks.length || !tariffs.length) return <p role="alert" className="text-red-700">{error || "Add trucks and road tariffs before importing trips."}</p>;
+  if (loadingReference) return <p role="status">Kraunamos furos ir kelių įkainiai…</p>;
+  if (!trucks.length || !tariffs.length) return <p role="alert" className="text-red-700">{error || "Pirma įveskite furas ir kelių įkainius."}</p>;
 
   return <div className="space-y-8">
     <section>
       <h2 className="text-lg font-semibold">1. Upload Excel</h2>
-      <p className="mt-1 text-sm text-slate-600">The first worksheet and its first row are used. Revenue is imported as the total freight price.</p>
+      <p className="mt-1 text-sm text-slate-600">Naudojamas pirmas lapas ir jo pirma eilutė. Pajamos importuojamos kaip frachto kaina.</p>
       <label className="mt-4 inline-flex cursor-pointer rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700">
         Choose .xlsx file
         <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={selectFile} disabled={importing} />
@@ -139,7 +139,7 @@ export function ExcelImport() {
 
     {mapping && <section>
       <h2 className="text-lg font-semibold">2. Match columns</h2>
-      <p className="mt-1 text-sm text-slate-600">Required fields are marked *. Unmapped optional values use 0, one day, and the “Nemokami” road tariff.</p>
+      <p className="mt-1 text-sm text-slate-600">Privalomi laukai pažymėti *. Nepriskirti neprivalomi laukai bus 0, viena para ir įkainis „Nemokami“.</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {importFields.map((field) => <label key={field.key} className="text-sm font-medium">
           {field.label}{field.required ? " *" : ""}
@@ -147,7 +147,7 @@ export function ExcelImport() {
             const column = event.target.value === "" ? null : Number(event.target.value);
             setMapping((current) => current ? { ...current, [field.key]: column } : current);
           }}>
-            <option value="">Not mapped</option>
+            <option value="">Nepriskirta</option>
             {headers.map((header, index) => <option key={`${header}-${index}`} value={index}>{header}</option>)}
           </select>
         </label>)}
@@ -167,9 +167,9 @@ export function ExcelImport() {
       </div>
       <div className="mt-4 max-h-96 overflow-auto rounded-xl border">
         <table className="w-full min-w-[700px] text-left text-sm">
-          <thead className="sticky top-0 bg-slate-100"><tr><th className="p-3">Excel row</th><th className="p-3">Trip</th><th className="p-3">Route</th><th className="p-3">Status</th></tr></thead>
+          <thead className="sticky top-0 bg-slate-100"><tr><th className="p-3">Excel eilutė</th><th className="p-3">Reisas</th><th className="p-3">Maršrutas</th><th className="p-3">Būsena</th></tr></thead>
           <tbody>
-            {preview.validRows.map((row) => <tr key={`valid-${row.sourceRow}`} className="border-t"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.trip.trip_number}</td><td className="p-3">{row.trip.origin} → {row.trip.destination}</td><td className="p-3 font-medium text-emerald-700">Ready</td></tr>)}
+            {preview.validRows.map((row) => <tr key={`valid-${row.sourceRow}`} className="border-t"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.trip.trip_number}</td><td className="p-3">{row.trip.origin} → {row.trip.destination}</td><td className="p-3 font-medium text-emerald-700">Tinka</td></tr>)}
             {preview.invalidRows.map((row) => <tr key={`invalid-${row.sourceRow}`} className="border-t bg-red-50"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.tripNumber}</td><td className="p-3">—</td><td className="p-3 text-red-700">{row.reason}</td></tr>)}
           </tbody>
         </table>
@@ -177,9 +177,9 @@ export function ExcelImport() {
     </section>}
 
     {result && <section role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-      <h2 className="font-semibold text-emerald-900">Import finished</h2>
+      <h2 className="font-semibold text-emerald-900">Importas baigtas</h2>
       <p className="mt-1 text-emerald-900">{result.imported} trips imported. {result.failed.length} rows skipped.</p>
-      <div className="mt-4 flex gap-4"><Link href="/trips" className="font-semibold underline">View trips</Link><Link href="/" className="font-semibold underline">View dashboard</Link></div>
+      <div className="mt-4 flex gap-4"><Link href="/trips" className="font-semibold underline">Rodyti reisus</Link><Link href="/" className="font-semibold underline">Rodyti suvestinę</Link></div>
       {!!result.failed.length && <ul className="mt-4 list-disc pl-5 text-sm text-red-800">{result.failed.map((row) => <li key={`${row.sourceRow}-${row.tripNumber}`}>Row {row.sourceRow} ({row.tripNumber}): {row.reason}</li>)}</ul>}
     </section>}
   </div>;

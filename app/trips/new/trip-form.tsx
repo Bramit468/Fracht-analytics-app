@@ -11,15 +11,15 @@ import type { Truck } from "../../../types/truck";
 import type { TripInsert } from "../../../types/trip";
 
 const fields = [
-  ["days", "Trip duration (days)", "1"],
-  ["paid_km", "Paid distance (km)", "0.01"],
-  ["empty_km", "Empty distance (km)", "0.01"],
-  ["fuel_l_per_100km", "Fuel consumption (L/100 km)", "0.0001"],
-  ["fuel_price", "Fuel price (€/L)", "0.0001"],
-  ["adblue_l_per_100km", "AdBlue consumption (L/100 km)", "0.0001"],
-  ["adblue_price", "AdBlue price (€/L)", "0.0001"],
+  ["days", "Reiso trukmė (paros)", "1"],
+  ["paid_km", "Apmokami km", "0.01"],
+  ["empty_km", "Tušti km", "0.01"],
+  ["fuel_l_per_100km", "Kuro sąnaudos (l/100 km)", "0.0001"],
+  ["fuel_price", "Kuro kaina (€/l)", "0.0001"],
+  ["adblue_l_per_100km", "AdBlue sąnaudos (l/100 km)", "0.0001"],
+  ["adblue_price", "AdBlue kaina (€/l)", "0.0001"],
 ] as const;
-const extras = [["bridges_cents", "Bridges / vignettes (€)"], ["ferries_cents", "Ferries (€)"], ["tunnels_cents", "Tunnels (€)"], ["parking_cents", "Parking (€)"]] as const;
+const extras = [["bridges_cents", "Tiltai / vinjetės (€)"], ["ferries_cents", "Keltai (€)"], ["tunnels_cents", "Tuneliai (€)"], ["parking_cents", "Parkingas (€)"]] as const;
 const inputClass = "mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3";
 
 export function TripForm() {
@@ -49,7 +49,7 @@ export function TripForm() {
           setTariffs(c.data.map(row => ({ country: row.country, rate: Number(row.rate), rateType: row.rate_type })));
         }
       } catch {
-        if (!cancelled) setError("Could not load trucks and road tariffs. Check the connection and try again.");
+        if (!cancelled) setError("Nepavyko užkrauti furų ir kelių įkainių. Patikrinkite ryšį ir bandykite dar kartą.");
       } finally { if (!cancelled) setLoading(false); }
     }
     void load();
@@ -63,21 +63,21 @@ export function TripForm() {
     const text = (name: string) => String(form.get(name) ?? "").trim();
     const number = (name: string) => {
       const value = Number(text(name));
-      if (!text(name) || !Number.isFinite(value) || value < 0) throw new Error("Enter valid non-negative numbers.");
+      if (!text(name) || !Number.isFinite(value) || value < 0) throw new Error("Įveskite neneigiamus skaičius.");
       return value;
     };
     const cents = (name: string) => {
       const value = parseEuroToCents(text(name));
-      if (value === null || value > 2147483647) throw new Error("Enter monetary amounts with at most two decimal places.");
+      if (value === null || value > 2147483647) throw new Error("Sumas įveskite eurais, ne daugiau kaip du skaitmenys po kablelio.");
       return value;
     };
     setError("");
     setSaved("");
     try {
       const truck = trucks.find(t => t.id === text("truck_id"));
-      if (!truck) throw new Error("Select a truck.");
+      if (!truck) throw new Error("Pasirinkite furą.");
       for (const key of ["trip_number", "origin", "destination", "trip_date"]) {
-        if (!text(key)) throw new Error("Complete the route details.");
+        if (!text(key)) throw new Error("Užpildykite reiso duomenis.");
       }
       const trip: TripInsert = {
         trip_number: text("trip_number"), origin: text("origin"), destination: text("destination"), trip_date: text("trip_date"), truck_id: truck.id,
@@ -89,9 +89,9 @@ export function TripForm() {
         freight_price_cents: mode === "freight" ? cents("revenue") : null,
         rate_per_km: mode === "per_km" ? number("revenue") : null,
       };
-      if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Trip duration must be a positive whole number.");
+      if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
       const legs = legIds.map(id => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
-      if (Math.abs(legs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Country distances must add up to paid plus empty kilometres.");
+      if (Math.abs(legs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
       const calculation = calculateSavedTrip(trip, legs, truck, tariffs);
       setResult(calculation);
       const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
@@ -99,34 +99,34 @@ export function TripForm() {
       busy.current = true;
       setSaving(true);
       const persisted = await saveTrip(trip, legs);
-      setSaved(`Trip ${persisted.trip_number} saved successfully.`);
+      setSaved(`Reisas ${persisted.trip_number} išsaugotas.`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not save trip. Check the database connection and that migration 0004 is applied.");
+      setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti reiso. Patikrinkite ryšį su duomenų baze ir ar pritaikyta migracija 0004.");
     } finally { busy.current = false; setSaving(false); }
   }
 
-  if (loading) return <p role="status">Loading trucks and road tariffs…</p>;
-  if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Add trucks and country tariffs before creating trips."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Retry</button></div>;
+  if (loading) return <p role="status">Kraunamos furos ir kelių įkainiai…</p>;
+  if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
   return <form onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
       <div className="grid gap-4 sm:grid-cols-2">
-        <label>Truck<select name="truck_id" required className={inputClass}><option value="">Select a truck</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-        {[["trip_number", "Trip number"], ["origin", "Origin"], ["destination", "Destination"], ["trip_date", "Date"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required className={inputClass} /></label>)}
+        <label>Fura<select name="truck_id" required className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required className={inputClass} /></label>)}
         {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={name.startsWith("adblue") || name === "empty_km" ? "0" : undefined} /></label>)}
-        <label>Revenue type<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Freight price</option><option value="per_km">Price per paid km</option></select></label>
-        <label>{mode === "freight" ? "Freight price (€)" : "Rate (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" className={inputClass} /></label>
+        <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
+        <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" className={inputClass} /></label>
       </div>
-      <section className="space-y-3"><h2 className="font-semibold">Road distances by country</h2><p className="text-sm text-slate-600">Include all kilometres. Select the free-road tariff for untolled distances.</p>
-        {legIds.map(id => <div key={id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Country<select required name={`country-${id}`} className={inputClass}><option value="">Select country</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Distance (km)<input name={`km-${id}`} type="number" min="0" step="0.01" required className={inputClass} /></label><button type="button" disabled={legIds.length === 1} onClick={() => { setLegIds(ids => ids.filter(i => i !== id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Remove</button></div>)}
-        <button type="button" className="underline" onClick={() => { setLegIds(ids => [...ids, nextId.current++]); setResult(null); setSaved(""); }}>Add country</button>
+      <section className="space-y-3"><h2 className="font-semibold">Atkarpos pagal šalis</h2><p className="text-sm text-slate-600">Surašykite visus kilometrus. Neapmokestintiems keliams pasirinkite „Nemokami“.</p>
+        {legIds.map(id => <div key={id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${id}`} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${id}`} type="number" min="0" step="0.01" required className={inputClass} /></label><button type="button" disabled={legIds.length === 1} onClick={() => { setLegIds(ids => ids.filter(i => i !== id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
+        <button type="button" className="underline" onClick={() => { setLegIds(ids => [...ids, nextId.current++]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
       </section>
       <div className="grid gap-4 sm:grid-cols-2">{extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue="0" className={inputClass} /></label>)}</div>
-      <p className="text-sm text-slate-600">Driver, insurance, depreciation and trailer costs come from the selected truck’s daily cost.</p>
-      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Calculate</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saving…" : "Save Trip"}</button></div>
+      <p className="text-sm text-slate-600">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš pasirinktos furos paros savikainos.</p>
+      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saugoma…" : "Išsaugoti reisą"}</button></div>
     </fieldset>
     {error && <p role="alert" className="text-red-700">{error}</p>}
-    {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">View trips</Link></p>}
-    {result && <section aria-label="Trip results" className="rounded-xl bg-slate-50 p-4"><h2 className="font-semibold">Trip results</h2><dl className="mt-3 grid gap-3 sm:grid-cols-2">{[["Fuel", result.fuelCents], ["AdBlue", result.adblueCents], ["Roads", result.roadCents], ["Truck", result.truckCents], ["Revenue", result.revenueCents], ["Total cost", result.totalCostCents], ["Profit", result.profitCents]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatCents(Number(value))}</dd></div>)}<div><dt>Margin</dt><dd>{result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}</dd></div><div><dt>Profit / paid km</dt><dd>{result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}</dd></div></dl></section>}
+    {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
+    {result && <section aria-label="Reiso rezultatai" className="rounded-xl bg-slate-50 p-4"><h2 className="font-semibold">Reiso rezultatai</h2><dl className="mt-3 grid gap-3 sm:grid-cols-2">{[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Pajamos", result.revenueCents], ["Kaštai iš viso", result.totalCostCents], ["Pelnas", result.profitCents]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatCents(Number(value))}</dd></div>)}<div><dt>Marža</dt><dd>{result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}</dd></div><div><dt>Pelnas už apmokamą km</dt><dd>{result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}</dd></div></dl></section>}
   </form>;
 }

@@ -22,7 +22,7 @@ export function TripList() {
         const loadedTrips = await listTrips();
         if (!cancelled) setTrips(loadedTrips);
       } catch {
-        if (!cancelled) setError("Could not load trips. Check the connection and try again.");
+        if (!cancelled) setError("Nepavyko užkrauti reisų. Patikrinkite ryšį ir bandykite dar kartą.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -32,7 +32,7 @@ export function TripList() {
     return () => { cancelled = true; };
   }, [attempt]);
 
-  if (loading) return <p role="status">Loading trips…</p>;
+  if (loading) return <p role="status">Kraunami reisai…</p>;
 
   if (error) {
     return <div>
@@ -41,13 +41,13 @@ export function TripList() {
         setLoading(true);
         setError("");
         setAttempt((value) => value + 1);
-      }}>Retry</button>
+      }}>Bandyti dar kartą</button>
     </div>;
   }
 
   if (!trips.length) {
     return <p className="rounded-2xl border border-dashed bg-white p-8 text-center text-slate-600">
-      No trips saved yet. Create the first trip to see its profit here.
+      Išsaugotų reisų dar nėra. Sukurkite pirmą reisą ir čia matysite jo pelną.
     </p>;
   }
 
@@ -63,16 +63,16 @@ export function TripList() {
           </div>
           <div className="text-right">
             <p className={`text-xl font-bold ${profitable ? "text-green-700" : "text-red-700"}`}>
-              {formatCents(trip.profitCents)} {profitable ? "profit" : "loss"}
+              {formatCents(trip.profitCents)} {profitable ? "pelnas" : "nuostolis"}
             </p>
             <p className="text-sm text-slate-500">
-              Margin {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
+              Marža {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
             </p>
           </div>
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-sm sm:max-w-md">
-          <div><dt className="text-slate-500">Revenue</dt><dd className="font-semibold">{formatCents(trip.revenueCents)}</dd></div>
-          <div><dt className="text-slate-500">Total cost</dt><dd className="font-semibold">{formatCents(trip.totalCostCents)}</dd></div>
+          <div><dt className="text-slate-500">Pajamos</dt><dd className="font-semibold">{formatCents(trip.revenueCents)}</dd></div>
+          <div><dt className="text-slate-500">Kaštai</dt><dd className="font-semibold">{formatCents(trip.totalCostCents)}</dd></div>
         </dl>
       </li>;
     })}

@@ -6,12 +6,12 @@ export default function TripsPage() {
     <div className="mx-auto max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link href="/" className="text-sm underline">Back to dashboard</Link>
-          <h1 className="mt-4 text-3xl font-semibold">Trips</h1>
+          <Link href="/" className="text-sm underline">Atgal į suvestinę</Link>
+          <h1 className="mt-4 text-3xl font-semibold">Reisai</h1>
         </div>
         <div className="flex gap-3">
-          <Link href="/trips/import" className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold hover:bg-slate-100">Import Excel</Link>
-          <Link href="/trips/new" className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700">New trip</Link>
+          <Link href="/trips/import" className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold hover:bg-slate-100">Importas iš Excel</Link>
+          <Link href="/trips/new" className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700">Naujas reisas</Link>
         </div>
       </div>
       <div className="mt-6"><TripList /></div>

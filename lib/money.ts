@@ -27,7 +27,6 @@ export function parseEuroToCents(input: string): number | null {
   return Number.isSafeInteger(total) ? total : null;
 }
 
-/** Centus parodo eurais lietuvišku formatu, pvz. 26900 -> „269,00 €". */
 /**
  * Centai į formos lauko reikšmę, kurią atgal perskaito parseEuroToCents.
  * Be valiutos ženklo ir tarpų — kitaip savo paties išvesties nebeperskaitytume.
@@ -36,6 +35,7 @@ export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Centus parodo eurais lietuvišku formatu, pvz. 26900 -> „269,00 €". */
 export function formatCents(cents: number): string {
   return new Intl.NumberFormat("lt-LT", {
     style: "currency",

@@ -8,6 +8,7 @@ import { truckRowToCalc } from "@/lib/truck";
 import type { Truck } from "@/types/truck";
 
 import { TruckForm } from "./truck-form";
+import { TruckRowActions } from "./truck-row-actions";
 
 export const metadata: Metadata = {
   title: "Furos | Fracht Analytics",
@@ -50,7 +51,10 @@ export default async function TrucksPage() {
                   <th className="py-2 pr-4 font-medium">Numeris</th>
                   <th className="py-2 pr-4 text-right font-medium">Paros savikaina</th>
                   <th className="py-2 pr-4 text-right font-medium">Priekaba / mėn.</th>
-                  <th className="py-2 text-right font-medium">Darbo dienos</th>
+                  <th className="py-2 pr-4 text-right font-medium">Darbo dienos</th>
+                  <th className="py-2 text-right font-medium">
+                    <span className="sr-only">Veiksmai</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -66,8 +70,11 @@ export default async function TrucksPage() {
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {formatCents(truck.trailer_monthly_cents)}
                     </td>
-                    <td className="py-2 text-right tabular-nums">
+                    <td className="py-2 pr-4 text-right tabular-nums">
                       {truck.working_days_per_month}
+                    </td>
+                    <td className="py-2 text-right">
+                      <TruckRowActions id={truck.id} plate={truck.plate} />
                     </td>
                   </tr>
                 ))}

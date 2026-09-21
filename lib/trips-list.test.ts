@@ -60,6 +60,7 @@ it("builds list values with the shared trip calculation", () => {
     destination: "Hamburg",
     tripDate: "2026-09-20",
     truckPlate: "NNN 888",
+    paidKm: 100,
     revenueCents: 25000,
     totalCostCents: 10000,
     profitCents: 15000,
@@ -68,8 +69,6 @@ it("builds list values with the shared trip calculation", () => {
   }]);
 });
 
-it("fails clearly when a trip references a missing truck", () => {
-  expect(() => buildTripSummaries([trip], [leg], [], [])).toThrow(
-    "Truck not found for trip LT001.",
-  );
+it("praleidžia reisą, kurio fura ištrinta, o ne nuverčia sąrašo", () => {
+  expect(buildTripSummaries([trip], [leg], [], [])).toEqual([]);
 });

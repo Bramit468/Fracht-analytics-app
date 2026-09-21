@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Fracht Analytics",
-  description: "Reisu pelningumas",
+  description: "Reisų pelningumas",
 };
 
 export default function RootLayout({

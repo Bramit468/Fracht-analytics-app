@@ -67,7 +67,7 @@ it("keeps valid rows when another row is invalid", () => {
   expect(preview.invalidRows).toEqual([{
     sourceRow: 3,
     tripNumber: "LT002",
-    reason: "Truck UNKNOWN does not exist.",
+    reason: "Furos UNKNOWN nėra sąraše.",
   }]);
 });
 

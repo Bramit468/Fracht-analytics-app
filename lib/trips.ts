@@ -12,6 +12,7 @@ export interface TripSummary {
   destination: string;
   tripDate: string;
   truckPlate: string;
+  paidKm: number;
   revenueCents: number;
   totalCostCents: number;
   profitCents: number;
@@ -34,10 +35,12 @@ export function buildTripSummaries(
     legsByTrip.set(leg.trip_id, tripLegs);
   }
 
-  return trips.map((trip) => {
+  // Reisas be furos praleidžiamas, o ne meta klaidą: viena ištrinta fura
+  // neturi nuversti viso sąrašo ir suvestinės.
+  return trips.flatMap((trip) => {
     const truck = trucksById.get(trip.truck_id);
     if (!truck) {
-      throw new Error(`Truck not found for trip ${trip.trip_number}.`);
+      return [];
     }
 
     const result = calculateSavedTrip(
@@ -47,19 +50,20 @@ export function buildTripSummaries(
       tariffs,
     );
 
-    return {
+    return [{
       id: trip.id,
       tripNumber: trip.trip_number,
       origin: trip.origin,
       destination: trip.destination,
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
+      paidKm: trip.paid_km,
       revenueCents: result.revenueCents,
       totalCostCents: result.totalCostCents,
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,
       profitPerKm: result.profitPerKm,
-    };
+    }];
   });
 }
 

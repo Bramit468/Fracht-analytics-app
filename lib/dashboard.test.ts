@@ -10,6 +10,7 @@ const trips: TripSummary[] = [
     destination: "Hamburg",
     tripDate: "2026-09-20",
     truckPlate: "NNN 888",
+    paidKm: 1740,
     revenueCents: 240000,
     totalCostCents: 152900,
     profitCents: 87100,
@@ -23,6 +24,7 @@ const trips: TripSummary[] = [
     destination: "Rotterdam",
     tripDate: "2026-09-21",
     truckPlate: "NNN 888",
+    paidKm: 1000,
     revenueCents: 100000,
     totalCostCents: 110000,
     profitCents: -10000,
@@ -31,7 +33,7 @@ const trips: TripSummary[] = [
   },
 ];
 
-it("calculates dashboard totals and averages", () => {
+it("skaičiuoja bendras sumas ir santykinius rodiklius", () => {
   const stats = calculateDashboardStats(trips);
 
   expect(stats).toMatchObject({
@@ -40,28 +42,25 @@ it("calculates dashboard totals and averages", () => {
     totalCostCents: 262900,
     profitCents: 77100,
   });
-  expect(stats.averageMarginPercent).toBeCloseTo(13.15);
-  expect(stats.averageProfitPerKm).toBeCloseTo(0.2);
+  // 77 100 / 340 000 = 22,68 %, o ne maržų vidurkis 13,15 %
+  expect(stats.marginPercent).toBeCloseTo(22.676);
+  expect(stats.profitPerKm).toBeCloseTo(771 / 2740);
 });
 
-it("returns zero totals and unavailable averages without trips", () => {
+it("be reisų grąžina nulius, o santykinius rodiklius – null", () => {
   expect(calculateDashboardStats([])).toEqual({
     tripCount: 0,
     revenueCents: 0,
     totalCostCents: 0,
     profitCents: 0,
-    averageMarginPercent: null,
-    averageProfitPerKm: null,
+    marginPercent: null,
+    profitPerKm: null,
   });
 });
 
-it("excludes unavailable trip ratios from averages", () => {
-  const stats = calculateDashboardStats([
-    ...trips,
-    { ...trips[0], id: "trip-3", marginPercent: null, profitPerKm: null },
-  ]);
+it("nuostolingas reisas mažina bendrą maržą", () => {
+  const stats = calculateDashboardStats([trips[1]]);
 
-  expect(stats.tripCount).toBe(3);
-  expect(stats.averageMarginPercent).toBeCloseTo(13.15);
-  expect(stats.averageProfitPerKm).toBeCloseTo(0.2);
+  expect(stats.marginPercent).toBeCloseTo(-10);
+  expect(stats.profitPerKm).toBeCloseTo(-0.1);
 });

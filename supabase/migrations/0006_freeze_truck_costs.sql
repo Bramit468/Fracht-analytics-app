@@ -33,7 +33,9 @@ as $$
   where t.id = p_truck_id;
 $$;
 
-revoke all on function public.truck_cost_snapshot(uuid) from public;
+-- revoke from public nepakanka: Supabase naujoms funkcijoms atskirai
+-- suteikia teises anon rolei (taip pat kaip 0005 su save_trip_with_legs).
+revoke all on function public.truck_cost_snapshot(uuid) from public, anon;
 grant execute on function public.truck_cost_snapshot(uuid) to authenticated;
 
 alter table public.trips add column if not exists truck_costs jsonb;

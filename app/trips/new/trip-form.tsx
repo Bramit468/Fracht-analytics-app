@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
+import { truckRowToCalc } from "../../../lib/truck";
 import { saveTrip } from "../../../lib/trips";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
@@ -92,7 +93,7 @@ export function TripForm() {
       if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
       const legs = legIds.map(id => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
       if (Math.abs(legs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
-      const calculation = calculateSavedTrip(trip, legs, truck, tariffs);
+      const calculation = calculateSavedTrip(trip, legs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
       const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
       if (action !== "save") return;

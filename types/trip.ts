@@ -10,6 +10,8 @@
  * Modelis: docs/skaiciavimo-modelis.md
  */
 
+import type { Truck as TruckCosts } from "../lib/calc";
+
 /** Kaip gaunamos reiso pajamos. */
 export type RevenueMode = "per_km" | "freight";
 
@@ -52,6 +54,12 @@ export interface Trip {
   rate_per_km: number | null;
   freight_price_cents: number | null;
 
+  /**
+   * Furos paros kaštai reiso išsaugojimo dieną (#38). Užpildo duomenų bazė,
+   * todėl vėliau pataisyta fura seno reiso pelno nebekeičia.
+   */
+  truck_costs: TruckCosts;
+
   created_at: string;
 }
 
@@ -64,8 +72,8 @@ export interface TripCountryLeg {
   km: number;
 }
 
-/** Laukai, kuriuos paduoda vartotojas. `id` ir `created_at` sugeneruoja DB. */
-export type TripInsert = Omit<Trip, "id" | "created_at">;
+/** Laukai, kuriuos paduoda vartotojas. Likusius užpildo DB. */
+export type TripInsert = Omit<Trip, "id" | "created_at" | "truck_costs">;
 
 /** Atkarpa prieš įrašymą — `id` sugeneruoja DB, `trip_id` žinomas tik po įrašymo. */
 export type TripCountryLegInsert = Omit<TripCountryLeg, "id" | "trip_id">;

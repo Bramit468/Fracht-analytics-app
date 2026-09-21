@@ -1,15 +1,14 @@
-import { calcTrip, type CountryTariff } from "./calc";
-import type { Truck } from "../types/truck";
+import { calcTrip, type CountryTariff, type Truck } from "./calc";
 import type { TripInsert, TripCountryLegInsert } from "../types/trip";
 
+/**
+ * `truck` yra kaštų rinkinys, o ne furos eilutė: išsaugotam reisui paduodama
+ * jo `truck_costs` kopija (#38), o dar neišsaugotam — dabartinė fura per
+ * `truckRowToCalc`.
+ */
 export function calculateSavedTrip(trip: TripInsert, legs: TripCountryLegInsert[], truck: Truck, tariffs: CountryTariff[]) {
   return calcTrip({
-    truck: { dailyCents: {
-      depreciation: truck.depreciation_cents, interest: truck.interest_cents,
-      insuranceKasko: truck.insurance_kasko_cents, insuranceCivil: truck.insurance_civil_cents,
-      insuranceCmr: truck.insurance_cmr_cents, driverSalary: truck.driver_salary_cents,
-      perDiem: truck.per_diem_cents, repairs: truck.repairs_cents, management: truck.management_cents,
-    }, trailerMonthlyCents: truck.trailer_monthly_cents, workingDaysPerMonth: truck.working_days_per_month },
+    truck,
     days: trip.days, paidKm: trip.paid_km, emptyKm: trip.empty_km,
     fuel: { litresPer100Km: trip.fuel_l_per_100km, pricePerLitre: trip.fuel_price },
     adblue: { litresPer100Km: trip.adblue_l_per_100km, pricePerLitre: trip.adblue_price },

@@ -35,8 +35,9 @@ export function buildTripSummaries(
     legsByTrip.set(leg.trip_id, tripLegs);
   }
 
-  // Reisas be furos praleidžiamas, o ne meta klaidą: viena ištrinta fura
-  // neturi nuversti viso sąrašo ir suvestinės.
+  // Kaštai imami iš reiso kopijos, fura reikalinga tik numeriui. Reisas be
+  // furos praleidžiamas, o ne meta klaidą: viena ištrinta fura neturi
+  // nuversti viso sąrašo ir suvestinės.
   return trips.flatMap((trip) => {
     const truck = trucksById.get(trip.truck_id);
     if (!truck) {
@@ -46,7 +47,7 @@ export function buildTripSummaries(
     const result = calculateSavedTrip(
       trip,
       (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
-      truck,
+      trip.truck_costs,
       tariffs,
     );
 

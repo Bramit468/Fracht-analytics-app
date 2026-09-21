@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { buildTripSummaries } from "./trips";
+import { truckRowToCalc } from "./truck";
 import type { Trip, TripCountryLeg } from "../types/trip";
 import type { Truck } from "../types/truck";
 
@@ -40,6 +41,7 @@ const trip: Trip = {
   revenue_mode: "freight",
   rate_per_km: null,
   freight_price_cents: 25000,
+  truck_costs: truckRowToCalc(truck),
   created_at: "2026-09-20T10:00:00Z",
 };
 
@@ -67,6 +69,15 @@ it("builds list values with the shared trip calculation", () => {
     marginPercent: 60,
     profitPerKm: 1.5,
   }]);
+});
+
+it("skaičiuoja pagal reiso kaštų kopiją, o ne pagal dabartinę furą", () => {
+  // Fura pabrango dvigubai jau po reiso — senas pelnas turi likti toks pat.
+  const brangesneFura: Truck = { ...truck, driver_salary_cents: 20000 };
+
+  expect(buildTripSummaries([trip], [leg], [brangesneFura], [
+    { country: "Nemokami", rate: 0, rateType: "per_km" },
+  ])[0]).toMatchObject({ totalCostCents: 10000, profitCents: 15000 });
 });
 
 it("praleidžia reisą, kurio fura ištrinta, o ne nuverčia sąrašo", () => {

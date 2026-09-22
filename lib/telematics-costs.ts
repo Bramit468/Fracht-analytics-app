@@ -46,6 +46,9 @@ export interface ActualCosts {
   dieselCents: number;
   adblueCents: number;
   tollCents: number;
+  /** Į reiso kaštų modelį netelpantys pirkimai. Rodomi atskirai, nemetami. */
+  otherCents: number;
+  /** Kuras + AdBlue + keliai. `otherCents` čia neįeina sąmoningai. */
   totalCents: number;
   /** Nupirkti AdBlue litrai. Tai pirkimai, ne sunaudojimas. */
   adblueL: number;
@@ -55,8 +58,6 @@ export interface ActualCosts {
   adbluePricePerL: number | null;
   /** Faktinės sąnaudos l/100 km. null, kai nevažiuota. */
   litresPer100Km: number | null;
-  /** Kiek pirkimų praleista dėl ne EUR valiutos – kad tyliai nedingtų. */
-  skippedRows: number;
 }
 
 /**
@@ -111,22 +112,52 @@ export function parseCanDaily(payload: unknown): DailyDistance[] {
   return rows;
 }
 
-/** Komentare tiekėjas rašo „Toll_Norway", „Toll DE Telepass", „Vignettes LT". */
+/**
+ * Kelio mokestis komentare vadinamas vietine kalba.
+ *
+ * Angliškas „toll" toli gražu ne visur: Vokietijoje Maut, Prancūzijoje péage,
+ * Italijoje pedaggio, Norvegijoje bompenger. Neatpažintas mokestis nukristų į
+ * `other` ir savikaina atrodytų mažesnė, nei yra — klaida ta puse, kurios
+ * nepastebi.
+ */
+const TOLL_WORDS = [
+  "toll", "vignette", "vinjet", "maut", "peage", "pedaggio", "peaje",
+  "portagem", "myto", "bompenger", "broavgift", "trangselskatt", "ecotaxe",
+];
+
+/** Be diakritikos ir mažosiomis: „Péage" ir „peage" turi sutapti. */
+function foldText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 function supplyKind(typeTitle: string | null, comment: string | null): SupplyKind {
   if (typeTitle === "Diesel") return "diesel";
   if (typeTitle === "Ad Blue") return "adblue";
   if (typeTitle === "Eurovignettes") return "toll";
 
-  const label = `${comment ?? ""}`.toLowerCase();
-  if (label.includes("toll") || label.includes("vignette")) return "toll";
-  return "other";
+  const label = foldText(`${typeTitle ?? ""} ${comment ?? ""}`);
+  return TOLL_WORDS.some((word) => label.includes(word)) ? "toll" : "other";
 }
 
-export function parseSupplies(payload: unknown): { supplies: Supply[]; skipped: number } {
+/**
+ * Pirkimai, kurių furai priskirti negalima.
+ *
+ * Jie nedingsta tyliai: nepriskirtos sumos rodomos atskirai, kitaip įmonės
+ * išlaidos iškristų iš akių ir niekas apie tai nesužinotų.
+ */
+export interface SupplyIssues {
+  /** Be furos numerio — įmonės lygio mokesčiai (komisiniai ir pan.). */
+  unassignedRows: number;
+  unassignedCents: number;
+  /** Ne eurais. Sumos neverčiame, nes kurso spėlioti neverta. */
+  otherCurrencyRows: number;
+}
+
+export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: SupplyIssues } {
   if (!Array.isArray(payload)) throw new Error("Supplies atsakymas turi būti sąrašas.");
 
   const supplies: Supply[] = [];
-  let skipped = 0;
+  const issues: SupplyIssues = { unassignedRows: 0, unassignedCents: 0, otherCurrencyRows: 0 };
 
   for (const row of payload) {
     if (typeof row !== "object" || row === null) continue;
@@ -134,13 +165,16 @@ export function parseSupplies(payload: unknown): { supplies: Supply[]; skipped: 
     const plate = text(source.Plates) ?? text(source.Number);
     const operationDate = text(source.OperationDate);
     const costCents = costToCents(source.TotalPrice);
+    const isEuro = text(source.CurrencyShortTitle) === "EUR" && costCents !== null;
 
-    // Be numerio pirkimo nepriskirsi furai — tokie būna įmonės lygio mokesčiai.
-    if (!plate || !operationDate) continue;
+    if (!isEuro) {
+      issues.otherCurrencyRows += 1;
+      continue;
+    }
 
-    // Kitos valiutos neverčiame spėliodami kursą – geriau parodyti, kiek jų buvo.
-    if (text(source.CurrencyShortTitle) !== "EUR" || costCents === null) {
-      skipped += 1;
+    if (!plate || !operationDate) {
+      issues.unassignedRows += 1;
+      issues.unassignedCents += costCents;
       continue;
     }
 
@@ -154,14 +188,13 @@ export function parseSupplies(payload: unknown): { supplies: Supply[]; skipped: 
     });
   }
 
-  return { supplies, skipped };
+  return { supplies, issues };
 }
 
 /** Laikotarpio ribos imtinai, formatu "2026-09-01". */
 export function summarizeActuals(
   daily: DailyDistance[],
   supplies: Supply[],
-  skipped: number,
   plate: string,
   from: string,
   to: string,
@@ -181,6 +214,7 @@ export function summarizeActuals(
   const dieselCents = sum("diesel");
   const adblueCents = sum("adblue");
   const tollCents = sum("toll");
+  const otherCents = sum("other");
 
   const litres = (kind: SupplyKind) =>
     mine.filter((s) => s.kind === kind).reduce((total, s) => total + (s.quantity ?? 0), 0);
@@ -198,12 +232,12 @@ export function summarizeActuals(
     dieselCents,
     adblueCents,
     tollCents,
+    otherCents,
     totalCents: dieselCents + adblueCents + tollCents,
     adblueL,
     fuelPricePerL: dieselL > 0 ? dieselCents / 100 / dieselL : null,
     adbluePricePerL: adblueL > 0 ? adblueCents / 100 / adblueL : null,
     litresPer100Km: km > 0 && fuelL > 0 ? (fuelL / km) * 100 : null,
-    skippedRows: skipped,
   };
 }
 

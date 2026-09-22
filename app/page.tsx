@@ -6,6 +6,7 @@ const navigation = [
   { href: "/trips", label: "Reisai" },
   { href: "/trips/new", label: "Naujas reisas" },
   { href: "/trips/import", label: "Importas iš Excel" },
+  { href: "/telematika", label: "Faktiniai kaštai" },
 ];
 
 function BrandMark() {

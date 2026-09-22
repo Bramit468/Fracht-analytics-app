@@ -123,7 +123,10 @@ export function TripForm({ tripId }: { tripId?: string }) {
       setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
       setResult(null);
       setSaved("");
-      setTelematika(`Užpildyta: ${Math.round(result.km)} km, keliai ${formatCents(result.tollCents)}. Tuščius km atskirkite patys.`);
+      const praleista = result.skippedRows > 0
+        ? ` Neįtraukta ${result.skippedRows} pirkim. kita valiuta (${result.skippedCurrencies.join(", ")}) — kurą ir kelius patikrinkite patys.`
+        : "";
+      setTelematika(`Užpildyta: ${Math.round(result.km)} km, keliai ${formatCents(result.tollCents)}. Tuščius km atskirkite patys.${praleista}`);
     } catch {
       setTelematika("Nepavyko susisiekti su telematika.");
     } finally {

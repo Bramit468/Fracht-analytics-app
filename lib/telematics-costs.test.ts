@@ -105,6 +105,33 @@ describe("parseSupplies", () => {
   });
 });
 
+describe("praleisti ne eurais pirkimai", () => {
+  it("grąžinami su fura ir data, kad būtų galima įspėti tik tą reisą", () => {
+    // Lentelei užtenka skaičiaus, o reiso formai reikia žinoti, kurią furą ir
+    // kurį laikotarpį tai liečia: ten suma įrašoma į reisą.
+    const { issues } = parseSupplies([
+      {
+        ItemId: "900", Plates: "lov 141", TypeTitle: "Other",
+        OperationDate: "2026-09-05 11:00:00", TotalPrice: "480.000",
+        CurrencyShortTitle: "NOK", Comment: "Bompenger",
+      },
+    ]);
+
+    expect(issues.otherCurrencyRows).toBe(1);
+    expect(issues.otherCurrency).toEqual([
+      { plate: "LOV 141", date: "2026-09-05", currency: "NOK" },
+    ]);
+  });
+
+  it("pirkimas be numerio irgi patenka į sąrašą", () => {
+    const { issues } = parseSupplies([
+      { ItemId: "901", OperationDate: "2026-09-05", TotalPrice: "10", CurrencyShortTitle: "PLN" },
+    ]);
+
+    expect(issues.otherCurrency[0].plate).toBeNull();
+  });
+});
+
 describe("summarizeActuals", () => {
   it("sudeda tik tos furos ir to laikotarpio duomenis", () => {
     expect(santrauka()).toMatchObject({
@@ -251,6 +278,7 @@ describe("nieko nedingsta tyliai", () => {
       unassignedRows: 1,
       unassignedCents: 1275,
       otherCurrencyRows: 0,
+      otherCurrency: [],
     });
   });
 });

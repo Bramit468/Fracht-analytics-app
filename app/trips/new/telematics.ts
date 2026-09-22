@@ -51,8 +51,8 @@ export async function fetchTelematicsFill(
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
       fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
     ]);
-    const { supplies, skipped } = parseSupplies(suppliesRaw);
-    costs = summarizeActuals(parseCanDaily(canRaw), supplies, skipped, plate, from, to);
+    const { supplies } = parseSupplies(suppliesRaw);
+    costs = summarizeActuals(parseCanDaily(canRaw), supplies, plate, from, to);
   } catch {
     return { ok: false, message: "Nepavyko gauti telematikos duomenų." };
   }

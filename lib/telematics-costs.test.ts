@@ -77,9 +77,9 @@ const RUGSEJO_PRADZIA = "2026-09-01";
 const RUGSEJO_PABAIGA = "2026-09-30";
 
 function santrauka(plate = "LOV 141") {
-  const { supplies, skipped } = parseSupplies(SUPPLIES);
+  const { supplies } = parseSupplies(SUPPLIES);
   return summarizeActuals(
-    parseCanDaily(CAN_DAILY), supplies, skipped, plate, RUGSEJO_PRADZIA, RUGSEJO_PABAIGA,
+    parseCanDaily(CAN_DAILY), supplies, plate, RUGSEJO_PRADZIA, RUGSEJO_PABAIGA,
   );
 }
 
@@ -92,9 +92,9 @@ describe("parseSupplies", () => {
   });
 
   it("kitos valiutos pirkimą suskaičiuoja atskirai, o ne priskiria nuliui", () => {
-    const { supplies, skipped } = parseSupplies(SUPPLIES);
+    const { supplies, issues } = parseSupplies(SUPPLIES);
 
-    expect(skipped).toBe(1);
+    expect(issues.otherCurrencyRows).toBe(1);
     expect(supplies).toHaveLength(5);
   });
 
@@ -154,9 +154,9 @@ describe("tripFillFromActuals", () => {
   });
 
   it("dienas skaičiuoja imtinai", () => {
-    const { supplies, skipped } = parseSupplies(SUPPLIES);
+    const { supplies } = parseSupplies(SUPPLIES);
     const viena = summarizeActuals(
-      parseCanDaily(CAN_DAILY), supplies, skipped, "LOV 141", "2026-09-01", "2026-09-01",
+      parseCanDaily(CAN_DAILY), supplies, "LOV 141", "2026-09-01", "2026-09-01",
     );
 
     expect(tripFillFromActuals(viena).days).toBe("1");
@@ -164,7 +164,7 @@ describe("tripFillFromActuals", () => {
 
   it("be kuro pirkimų palieka kainą tuščią, o ne nulį", () => {
     // Nulis atrodytų kaip nemokamas kuras ir tyliai iškreiptų pelną.
-    const tuscias = summarizeActuals([], [], 0, "LOV 141", "2026-09-01", "2026-09-30");
+    const tuscias = summarizeActuals([], [], "LOV 141", "2026-09-01", "2026-09-30");
     const fill = tripFillFromActuals(tuscias);
 
     expect(fill.fuel_price).toBe("");
@@ -179,7 +179,7 @@ describe("numerių rašybos skirtumai", () => {
     const can = parseCanDaily([
       { Date: "2026-09-10", Plates: "LZR 118", DayDistance: 500, DayFuelConsumption: 150 },
     ]);
-    const { supplies, skipped } = parseSupplies([
+    const { supplies } = parseSupplies([
       {
         Plates: "LZR118", TypeTitle: "Diesel", OperationDate: "2026-09-10 10:00:00",
         Quantity: "150.000", TotalPrice: "200.000", CurrencyShortTitle: "EUR",
@@ -189,8 +189,68 @@ describe("numerių rašybos skirtumai", () => {
 
     // Nesvarbu, kuria rašyba klausiama – atsakymas tas pats.
     for (const numeris of ["LZR118", "LZR 118", "lzr 118"]) {
-      expect(summarizeActuals(can, supplies, skipped, numeris, "2026-09-01", "2026-09-30"))
+      expect(summarizeActuals(can, supplies, numeris, "2026-09-01", "2026-09-30"))
         .toMatchObject({ km: 500, dieselCents: 20000 });
     }
+  });
+});
+
+describe("nieko nedingsta tyliai", () => {
+  const KITOMIS_KALBOMIS = [
+    {
+      Plates: "LOV 141", TypeTitle: "Other", OperationDate: "2026-09-04 10:00:00",
+      Quantity: "0.000", TotalPrice: "82.500", CurrencyShortTitle: "EUR",
+      Comment: "Maut Deutschland", Country: "DEU",
+    },
+    {
+      Plates: "LOV 141", TypeTitle: "Other", OperationDate: "2026-09-05 10:00:00",
+      Quantity: "0.000", TotalPrice: "41.300", CurrencyShortTitle: "EUR",
+      Comment: "Péage APRR", Country: "FRA",
+    },
+    {
+      Plates: "LOV 141", TypeTitle: "Other", OperationDate: "2026-09-06 10:00:00",
+      Quantity: "0.000", TotalPrice: "25.100", CurrencyShortTitle: "EUR",
+      Comment: "Pedaggio Autostrade", Country: "ITA",
+    },
+    {
+      // Tikrai ne kelias – plovykla. Turi likti „kita".
+      Plates: "LOV 141", TypeTitle: "Other", OperationDate: "2026-09-07 10:00:00",
+      Quantity: "1.000", TotalPrice: "30.000", CurrencyShortTitle: "EUR",
+      Comment: "Truck wash", Country: "LTU",
+    },
+    {
+      // Be numerio – įmonės lygio mokestis.
+      Plates: "", Number: null, TypeTitle: "Other", OperationDate: "2026-09-08 10:00:00",
+      Quantity: "0.000", TotalPrice: "12.750", CurrencyShortTitle: "EUR",
+      Comment: "Commission fee", Country: null,
+    },
+  ];
+
+  it("kelio mokestį atpažįsta ir vokiškai, prancūziškai, itališkai", () => {
+    const { supplies } = parseSupplies(KITOMIS_KALBOMIS);
+    const keliai = supplies.filter((s) => s.kind === "toll");
+
+    // Be šito Maut, Péage ir Pedaggio nukristų į „kita", o savikaina €/km
+    // atrodytų mažesnė, nei yra.
+    expect(keliai.map((s) => s.costCents)).toEqual([8250, 4130, 2510]);
+  });
+
+  it("ne kelio išlaidos lieka atskirai ir į bendrą sumą neįeina", () => {
+    const { supplies } = parseSupplies(KITOMIS_KALBOMIS);
+    const stats = summarizeActuals([], supplies, "LOV 141", "2026-09-01", "2026-09-30");
+
+    expect(stats.tollCents).toBe(14890);
+    expect(stats.otherCents).toBe(3000);
+    expect(stats.totalCents).toBe(14890);
+  });
+
+  it("pirkimą be furos numerio suskaičiuoja, o ne išmeta", () => {
+    const { issues } = parseSupplies(KITOMIS_KALBOMIS);
+
+    expect(issues).toEqual({
+      unassignedRows: 1,
+      unassignedCents: 1275,
+      otherCurrencyRows: 0,
+    });
   });
 });

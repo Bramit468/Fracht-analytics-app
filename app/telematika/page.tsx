@@ -9,6 +9,7 @@ import {
   plateKey,
   summarizeActuals,
   type ActualCosts,
+  type SupplyIssues,
 } from "@/lib/telematics-costs";
 
 export const metadata: Metadata = {
@@ -42,7 +43,7 @@ async function fetchJson(url: string | undefined): Promise<unknown> {
 async function loadCosts(
   from: string,
   to: string,
-): Promise<{ eilutes: ActualCosts[]; klaida?: string }> {
+): Promise<{ eilutes: ActualCosts[]; issues?: SupplyIssues; klaida?: string }> {
   try {
     const [canRaw, suppliesRaw] = await Promise.all([
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
@@ -50,7 +51,7 @@ async function loadCosts(
     ]);
 
     const daily = parseCanDaily(canRaw);
-    const { supplies, skipped } = parseSupplies(suppliesRaw);
+    const { supplies, issues } = parseSupplies(suppliesRaw);
 
     // Tas pats numeris ateina ir su tarpu, ir be jo. Rodome variantą su tarpu,
     // nes toks pat yra furų sąraše.
@@ -65,10 +66,10 @@ async function loadCosts(
 
     // Furos, kurios per laikotarpį nei važiavo, nei pirko, sąraše tik trukdytų.
     const eilutes = plates
-      .map((plate) => summarizeActuals(daily, supplies, skipped, plate, from, to))
-      .filter((row) => row.km > 0 || row.totalCents > 0);
+      .map((plate) => summarizeActuals(daily, supplies, plate, from, to))
+      .filter((row) => row.km > 0 || row.totalCents > 0 || row.otherCents > 0);
 
-    return { eilutes };
+    return { eilutes, issues };
   } catch {
     return {
       eilutes: [],
@@ -90,16 +91,16 @@ export default async function TelematikaPage({
   await connection();
 
   const { from, to } = readRange(await searchParams);
-  const { eilutes, klaida } = await loadCosts(from, to);
+  const { eilutes, issues, klaida } = await loadCosts(from, to);
 
   const bendra = {
     km: eilutes.reduce((t, r) => t + r.km, 0),
     diesel: eilutes.reduce((t, r) => t + r.dieselCents, 0),
     adblue: eilutes.reduce((t, r) => t + r.adblueCents, 0),
     toll: eilutes.reduce((t, r) => t + r.tollCents, 0),
+    kita: eilutes.reduce((t, r) => t + r.otherCents, 0),
     total: eilutes.reduce((t, r) => t + r.totalCents, 0),
   };
-  const praleista = eilutes[0]?.skippedRows ?? 0;
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
@@ -109,8 +110,9 @@ export default async function TelematikaPage({
         </Link>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">Faktiniai kaštai</h1>
         <p className="text-sm text-neutral-500">
-          Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų. Pajamų čia
-          nėra: telematika jų su fura nesieja.
+          Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų. „Iš viso“
+          apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra: telematika
+          jų su fura nesieja.
         </p>
       </header>
 
@@ -158,6 +160,7 @@ export default async function TelematikaPage({
               <th className="py-2 pr-4 text-right font-medium">Kuras</th>
               <th className="py-2 pr-4 text-right font-medium">AdBlue</th>
               <th className="py-2 pr-4 text-right font-medium">Keliai</th>
+              <th className="py-2 pr-4 text-right font-medium">Kita</th>
               <th className="py-2 pr-4 text-right font-medium">Iš viso</th>
               <th className="py-2 text-right font-medium">Savikaina</th>
             </tr>
@@ -178,6 +181,7 @@ export default async function TelematikaPage({
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.dieselCents)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.adblueCents)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.tollCents)}</td>
+                <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.otherCents)}</td>
                 <td className="py-2 pr-4 text-right font-semibold tabular-nums">
                   {formatCents(row.totalCents)}
                 </td>
@@ -195,6 +199,7 @@ export default async function TelematikaPage({
               <td className="py-2 pr-4 text-right tabular-nums">{formatCents(bendra.diesel)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{formatCents(bendra.adblue)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{formatCents(bendra.toll)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatCents(bendra.kita)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{formatCents(bendra.total)}</td>
               <td className="py-2 text-right tabular-nums">
                 {eurPerKm(bendra.total, bendra.km)}
@@ -204,10 +209,20 @@ export default async function TelematikaPage({
         </table>
       )}
 
-      {praleista > 0 && (
-        <p className="text-xs text-neutral-500">
-          {praleista} pirkimai neįskaityti – jie ne eurais, o kurso spėlioti neverta.
-        </p>
+      {issues && (issues.unassignedRows > 0 || issues.otherCurrencyRows > 0) && (
+        <div className="text-xs text-neutral-500">
+          <p className="font-medium">Į lentelę nepatenka:</p>
+          {issues.unassignedRows > 0 && (
+            <p>
+              {issues.unassignedRows} pirkimai be furos numerio, iš viso{" "}
+              {formatCents(issues.unassignedCents)} – tai įmonės lygio mokesčiai,
+              konkrečiai furai jų priskirti neįmanoma.
+            </p>
+          )}
+          {issues.otherCurrencyRows > 0 && (
+            <p>{issues.otherCurrencyRows} pirkimai ne eurais – kurso spėlioti neverta.</p>
+          )}
+        </div>
       )}
     </main>
   );

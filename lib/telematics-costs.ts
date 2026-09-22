@@ -59,6 +59,18 @@ export interface ActualCosts {
   skippedRows: number;
 }
 
+/**
+ * Raktas furai atpažinti.
+ *
+ * Tas pats vilkikas skirtinguose tiekėjo atsakymuose rašomas skirtingai:
+ * CANDaily siunčia „LZR 118", o Supplies – „LZR118". Lyginant paraidžiui
+ * fura suskyla į dvi: viena su kilometrais be kaštų, kita su kaštais be
+ * kilometrų. Todėl lyginama be tarpų.
+ */
+export function plateKey(plate: string): string {
+  return plate.replace(/\s+/g, "").toUpperCase();
+}
+
 function text(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
@@ -154,9 +166,9 @@ export function summarizeActuals(
   from: string,
   to: string,
 ): ActualCosts {
-  const wanted = normalizePlate(plate);
+  const wanted = plateKey(plate);
   const inRange = (row: { plate: string; date: string }) =>
-    row.plate === wanted && row.date >= from && row.date <= to;
+    plateKey(row.plate) === wanted && row.date >= from && row.date <= to;
 
   const days = daily.filter(inRange);
   const km = days.reduce((total, day) => total + day.km, 0);
@@ -177,7 +189,7 @@ export function summarizeActuals(
   const adblueL = litres("adblue");
 
   return {
-    plate: wanted,
+    plate: normalizePlate(plate),
     from,
     to,
     days: days.length,

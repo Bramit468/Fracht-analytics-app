@@ -47,8 +47,12 @@ export interface ActualCosts {
   adblueCents: number;
   tollCents: number;
   totalCents: number;
+  /** Nupirkti AdBlue litrai. Tai pirkimai, ne sunaudojimas. */
+  adblueL: number;
   /** Faktinė sumokėta kaina už litrą. null, kai per laikotarpį nepirkta. */
   fuelPricePerL: number | null;
+  /** Faktinė AdBlue kaina už litrą. null, kai nepirkta. */
+  adbluePricePerL: number | null;
   /** Faktinės sąnaudos l/100 km. null, kai nevažiuota. */
   litresPer100Km: number | null;
   /** Kiek pirkimų praleista dėl ne EUR valiutos – kad tyliai nedingtų. */
@@ -166,9 +170,11 @@ export function summarizeActuals(
   const adblueCents = sum("adblue");
   const tollCents = sum("toll");
 
-  const dieselL = mine
-    .filter((s) => s.kind === "diesel")
-    .reduce((total, s) => total + (s.quantity ?? 0), 0);
+  const litres = (kind: SupplyKind) =>
+    mine.filter((s) => s.kind === kind).reduce((total, s) => total + (s.quantity ?? 0), 0);
+
+  const dieselL = litres("diesel");
+  const adblueL = litres("adblue");
 
   return {
     plate: wanted,
@@ -181,8 +187,56 @@ export function summarizeActuals(
     adblueCents,
     tollCents,
     totalCents: dieselCents + adblueCents + tollCents,
+    adblueL,
     fuelPricePerL: dieselL > 0 ? dieselCents / 100 / dieselL : null,
+    adbluePricePerL: adblueL > 0 ? adblueCents / 100 / adblueL : null,
     litresPer100Km: km > 0 && fuelL > 0 ? (fuelL / km) * 100 : null,
     skippedRows: skipped,
+  };
+}
+
+/** Reiso formos laukai, užpildyti iš faktinių duomenų (#44). */
+export interface TripFill {
+  days: string;
+  paid_km: string;
+  empty_km: string;
+  fuel_l_per_100km: string;
+  fuel_price: string;
+  adblue_l_per_100km: string;
+  adblue_price: string;
+  bridges_cents: string;
+  /** Visi laikotarpio km – atkarpai „Nemokami", kad formos patikra sutaptų. */
+  legKm: string;
+}
+
+/** Dienų skaičius imtinai: "2026-09-01".."2026-09-03" = 3. */
+function spanDays(from: string, to: string): number {
+  const diena = 86_400_000;
+  return Math.round((Date.parse(to) - Date.parse(from)) / diena) + 1;
+}
+
+/**
+ * Faktinius duomenis paverčia formos reikšmėmis.
+ *
+ * Ko telematika **negali** pasakyti, tas neužpildoma:
+ * - apmokamų ir tuščių km skirtumo nėra, todėl visi km dedami į apmokamus,
+ *   o tuščius vartotojas atskiria pats;
+ * - sumokėti keliai dedami į „Tiltai / vinjetės", o atkarpa paliekama
+ *   „Nemokami": tikra sąskaita pakeičia įkainio spėjimą;
+ * - pajamų telematikoje nėra visai.
+ */
+export function tripFillFromActuals(costs: ActualCosts): TripFill {
+  const round = (value: number, places: number) => value.toFixed(places);
+
+  return {
+    days: String(Math.max(1, spanDays(costs.from, costs.to))),
+    paid_km: round(costs.km, 2),
+    empty_km: "0",
+    fuel_l_per_100km: costs.litresPer100Km === null ? "" : round(costs.litresPer100Km, 4),
+    fuel_price: costs.fuelPricePerL === null ? "" : round(costs.fuelPricePerL, 4),
+    adblue_l_per_100km: costs.km > 0 && costs.adblueL > 0 ? round((costs.adblueL / costs.km) * 100, 4) : "0",
+    adblue_price: costs.adbluePricePerL === null ? "0" : round(costs.adbluePricePerL, 4),
+    bridges_cents: round(costs.tollCents / 100, 2),
+    legKm: round(costs.km, 2),
   };
 }

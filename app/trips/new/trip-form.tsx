@@ -7,6 +7,7 @@ import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money"
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { truckRowToCalc } from "../../../lib/truck";
 import { getTripWithLegs, saveTrip } from "../../../lib/trips";
+import { fetchTelematicsFill } from "./telematics";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -50,6 +51,9 @@ export function TripForm({ tripId }: { tripId?: string }) {
   const nextId = useRef(1);
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [telematika, setTelematika] = useState("");
+  const [pildoma, setPildoma] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -87,6 +91,45 @@ export function TripForm({ tripId }: { tripId?: string }) {
     void load();
     return () => { cancelled = true; };
   }, [attempt, tripId]);
+
+  /** Užpildo laukus faktiniais duomenimis. Vartotojas gali juos taisyti. */
+  async function fillFromTelematics() {
+    const form = formRef.current;
+    if (!form || pildoma) return;
+
+    const value = (name: string) => {
+      const field = form.elements.namedItem(name);
+      return field instanceof HTMLInputElement || field instanceof HTMLSelectElement ? field.value : "";
+    };
+    const plate = trucks.find(t => t.id === value("truck_id"))?.plate ?? "";
+
+    setPildoma(true);
+    setTelematika("");
+    try {
+      const result = await fetchTelematicsFill(plate, value("tele_from"), value("tele_to"));
+      if (!result.ok) {
+        setTelematika(result.message);
+        return;
+      }
+
+      for (const [name, filled] of Object.entries(result.fill)) {
+        if (name === "legKm" || filled === "") continue;
+        const field = form.elements.namedItem(name);
+        if (field instanceof HTMLInputElement) field.value = filled;
+      }
+
+      // Atkarpos pakeičiamos viena „Nemokami" – tikri keliai jau suvesti kaip
+      // sumokėta suma, todėl įkainis pagal šalis čia tik dubliuotų kaštus.
+      setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
+      setResult(null);
+      setSaved("");
+      setTelematika(`Užpildyta: ${Math.round(result.km)} km, keliai ${formatCents(result.tollCents)}. Tuščius km atskirkite patys.`);
+    } catch {
+      setTelematika("Nepavyko susisiekti su telematika.");
+    } finally {
+      setPildoma(false);
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,8 +185,21 @@ export function TripForm({ tripId }: { tripId?: string }) {
   if (loading) return <p role="status">{tripId ? "Kraunamas reisas…" : "Kraunamos furos ir kelių įkainiai…"}</p>;
   if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
-  return <form onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
+  return <form ref={formRef} onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
+      <section className="rounded-xl bg-slate-50 p-4">
+        <h2 className="font-semibold">Užpildyti iš telematikos</h2>
+        <p className="text-sm text-slate-600">Pasirinkite furą ir laikotarpį – km, kuras ir sumokėti keliai bus paimti iš tikrų duomenų.</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm">Nuo<input name="tele_from" type="date" className={inputClass} /></label>
+          <label className="text-sm">Iki<input name="tele_to" type="date" className={inputClass} /></label>
+          <button type="button" disabled={pildoma} onClick={() => void fillFromTelematics()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+            {pildoma ? "Imama…" : "Užpildyti"}
+          </button>
+        </div>
+        {telematika && <p role="status" className="mt-3 text-sm text-slate-700">{telematika}</p>}
+      </section>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
         {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}

@@ -149,10 +149,15 @@ export function TripForm({ tripId }: { tripId?: string }) {
     setError("");
     setSaved("");
     try {
+      const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
       const truck = trucks.find(t => t.id === text("truck_id"));
       if (!truck) throw new Error("Pasirinkite furą.");
-      for (const key of ["trip_number", "origin", "destination", "trip_date"]) {
-        if (!text(key)) throw new Error("Užpildykite reiso duomenis.");
+      // Numerio, krypties ir datos skaičiavimas nenaudoja, o kainą dažnai
+      // reikia pasitikrinti dar jų neturint. Įrašant reikalavimas lieka (#52).
+      if (action === "save") {
+        for (const key of ["trip_number", "origin", "destination", "trip_date"]) {
+          if (!text(key)) throw new Error("Užpildykite reiso duomenis.");
+        }
       }
       const trip: TripInsert = {
         trip_number: text("trip_number"), origin: text("origin"), destination: text("destination"), trip_date: text("trip_date"), truck_id: truck.id,
@@ -169,7 +174,6 @@ export function TripForm({ tripId }: { tripId?: string }) {
       if (Math.abs(tripLegs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
       const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
-      const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
       if (action !== "save") return;
       busy.current = true;
       setSaving(true);
@@ -202,7 +206,7 @@ export function TripForm({ tripId }: { tripId?: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} required defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
+        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
         {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") || name === "empty_km" ? "0" : undefined)} /></label>)}
         <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
         <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>

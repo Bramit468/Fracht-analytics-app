@@ -78,8 +78,17 @@ async function loadCosts(
   }
 }
 
+/**
+ * Žemiau šios ridos santykiniai rodikliai praranda prasmę (#50).
+ *
+ * Vienas pirkimas, padalintas iš kelių šimtų metrų, duoda šimtus eurų
+ * kilometrui — skaičius teisingas, bet šalia tikrų 0,3–0,6 €/km atrodo kaip
+ * programos klaida. Slepiamas tik santykis; pirkimai ir rida lieka matomi.
+ */
+const MIN_KM_SANTYKIAMS = 100;
+
 function eurPerKm(totalCents: number, km: number): string {
-  return km > 0 ? `${(totalCents / 100 / km).toFixed(3)} €/km` : "—";
+  return km >= MIN_KM_SANTYKIAMS ? `${(totalCents / 100 / km).toFixed(3)} €/km` : "—";
 }
 
 export default async function TelematikaPage({
@@ -173,7 +182,9 @@ export default async function TelematikaPage({
                   {Math.round(row.km).toLocaleString("lt-LT")}
                 </td>
                 <td className="py-2 pr-4 text-right tabular-nums">
-                  {row.litresPer100Km === null ? "—" : row.litresPer100Km.toFixed(1)}
+                  {row.litresPer100Km === null || row.km < MIN_KM_SANTYKIAMS
+                    ? "—"
+                    : row.litresPer100Km.toFixed(1)}
                 </td>
                 <td className="py-2 pr-4 text-right tabular-nums">
                   {row.fuelPricePerL === null ? "—" : row.fuelPricePerL.toFixed(3)}

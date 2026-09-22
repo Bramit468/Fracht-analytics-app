@@ -3,14 +3,24 @@
 import {
   parseCanDaily,
   parseSupplies,
+  plateKey,
   summarizeActuals,
   tripFillFromActuals,
+  type SkippedSupply,
   type TripFill,
 } from "@/lib/telematics-costs";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export type TelematicsFillResult =
-  | { ok: true; fill: TripFill; km: number; tollCents: number }
+  | {
+      ok: true;
+      fill: TripFill;
+      km: number;
+      tollCents: number;
+      /** Valiutos, kuriomis pirkta ir kurios į sumas nepateko. Tuščia – viskas eurais. */
+      skippedCurrencies: string[];
+      skippedRows: number;
+    }
   | { ok: false; message: string };
 
 async function fetchJson(url: string | undefined): Promise<unknown> {
@@ -46,13 +56,27 @@ export async function fetchTelematicsFill(
   }
 
   let costs;
+  let skipped: SkippedSupply[] = [];
   try {
     const [canRaw, suppliesRaw] = await Promise.all([
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
       fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
     ]);
-    const { supplies } = parseSupplies(suppliesRaw);
+    const { supplies, issues } = parseSupplies(suppliesRaw);
     costs = summarizeActuals(parseCanDaily(canRaw), supplies, plate, from, to);
+
+    // Ne eurais pirkti kuras ir keliai į sumas nepatenka. Lentelėje tai matyti,
+    // o čia suma įrašoma į reisą, todėl tylėti negalima: Norvegijos reisas
+    // gautų „keliai 0,00 €" ir atrodytų pelningesnis, nei yra (#56).
+    const wanted = plateKey(plate);
+    skipped = issues.otherCurrency.filter(
+      (row) =>
+        row.plate !== null &&
+        plateKey(row.plate) === wanted &&
+        row.date !== null &&
+        row.date >= from &&
+        row.date <= to,
+    );
   } catch {
     return { ok: false, message: "Nepavyko gauti telematikos duomenų." };
   }
@@ -70,5 +94,7 @@ export async function fetchTelematicsFill(
     fill: tripFillFromActuals(costs),
     km: costs.km,
     tollCents: costs.tollCents,
+    skippedCurrencies: [...new Set(skipped.map((row) => row.currency).filter(Boolean))].sort(),
+    skippedRows: skipped.length,
   };
 }

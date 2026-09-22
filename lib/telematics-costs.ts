@@ -151,13 +151,33 @@ export interface SupplyIssues {
   unassignedCents: number;
   /** Ne eurais. Sumos neverčiame, nes kurso spėlioti neverta. */
   otherCurrencyRows: number;
+  /**
+   * Tos pačios eilutės su fura ir data.
+   *
+   * Lentelei užtenka skaičiaus, bet reiso forma iš šitų duomenų **įrašo sumą į
+   * reisą**. Tada reikia įspėti tik tą furą ir laikotarpį, kurį tai liečia, o
+   * ne visą atsakymą.
+   */
+  otherCurrency: SkippedSupply[];
+}
+
+/** Praleistas pirkimas — tiek, kiek reikia įspėjimui. */
+export interface SkippedSupply {
+  plate: string | null;
+  date: string | null;
+  currency: string;
 }
 
 export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: SupplyIssues } {
   if (!Array.isArray(payload)) throw new Error("Supplies atsakymas turi būti sąrašas.");
 
   const supplies: Supply[] = [];
-  const issues: SupplyIssues = { unassignedRows: 0, unassignedCents: 0, otherCurrencyRows: 0 };
+  const issues: SupplyIssues = {
+    unassignedRows: 0,
+    unassignedCents: 0,
+    otherCurrencyRows: 0,
+    otherCurrency: [],
+  };
 
   for (const row of payload) {
     if (typeof row !== "object" || row === null) continue;
@@ -169,6 +189,11 @@ export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: S
 
     if (!isEuro) {
       issues.otherCurrencyRows += 1;
+      issues.otherCurrency.push({
+        plate: plate === null ? null : normalizePlate(plate),
+        date: operationDate === null ? null : operationDate.slice(0, 10),
+        currency: text(source.CurrencyShortTitle) ?? "",
+      });
       continue;
     }
 

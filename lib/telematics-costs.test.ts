@@ -171,3 +171,26 @@ describe("tripFillFromActuals", () => {
     expect(fill.fuel_l_per_100km).toBe("");
   });
 });
+
+describe("numerių rašybos skirtumai", () => {
+  it("sujungia furą, kurios km ir pirkimai rašomi skirtingai", () => {
+    // CANDaily siunčia „LZR 118", Supplies – „LZR118". Iki pataisymo fura
+    // suskildavo į dvi: viena su km be kaštų, kita su kaštais be km.
+    const can = parseCanDaily([
+      { Date: "2026-09-10", Plates: "LZR 118", DayDistance: 500, DayFuelConsumption: 150 },
+    ]);
+    const { supplies, skipped } = parseSupplies([
+      {
+        Plates: "LZR118", TypeTitle: "Diesel", OperationDate: "2026-09-10 10:00:00",
+        Quantity: "150.000", TotalPrice: "200.000", CurrencyShortTitle: "EUR",
+        Comment: "Diesel", Country: "LTU",
+      },
+    ]);
+
+    // Nesvarbu, kuria rašyba klausiama – atsakymas tas pats.
+    for (const numeris of ["LZR118", "LZR 118", "lzr 118"]) {
+      expect(summarizeActuals(can, supplies, skipped, numeris, "2026-09-01", "2026-09-30"))
+        .toMatchObject({ km: 500, dieselCents: 20000 });
+    }
+  });
+});

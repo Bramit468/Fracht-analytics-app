@@ -6,6 +6,7 @@ import { formatCents } from "@/lib/money";
 import {
   parseCanDaily,
   parseSupplies,
+  plateKey,
   summarizeActuals,
   type ActualCosts,
 } from "@/lib/telematics-costs";
@@ -51,9 +52,16 @@ async function loadCosts(
     const daily = parseCanDaily(canRaw);
     const { supplies, skipped } = parseSupplies(suppliesRaw);
 
-    const plates = [
-      ...new Set([...daily.map((d) => d.plate), ...supplies.map((s) => s.plate)]),
-    ].sort();
+    // Tas pats numeris ateina ir su tarpu, ir be jo. Rodome variantą su tarpu,
+    // nes toks pat yra furų sąraše.
+    const pagalRakta = new Map<string, string>();
+    for (const plate of [...daily.map((d) => d.plate), ...supplies.map((s) => s.plate)]) {
+      const esamas = pagalRakta.get(plateKey(plate));
+      if (!esamas || (plate.includes(" ") && !esamas.includes(" "))) {
+        pagalRakta.set(plateKey(plate), plate);
+      }
+    }
+    const plates = [...pagalRakta.values()].sort();
 
     // Furos, kurios per laikotarpį nei važiavo, nei pirko, sąraše tik trukdytų.
     const eilutes = plates

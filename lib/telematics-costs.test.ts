@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseCanDaily, parseSupplies, summarizeActuals } from "./telematics-costs";
+import {
+  parseCanDaily,
+  parseSupplies,
+  summarizeActuals,
+  tripFillFromActuals,
+} from "./telematics-costs";
 
 // Sutrumpintos tikrų atsakymų kopijos. Numeriai ir tiekėjai palikti, nes tai
 // įmonės duomenys; vairuotojų laukų čia nėra.
@@ -130,5 +135,39 @@ describe("summarizeActuals", () => {
   it("numerio rašybos skirtumai nesuskaldo tos pačios furos", () => {
     // Antra diena atsakyme atėjo mažosiomis raidėmis.
     expect(santrauka().days).toBe(2);
+  });
+});
+
+describe("tripFillFromActuals", () => {
+  it("užpildo laukus taip, kaip juos skaito forma", () => {
+    expect(tripFillFromActuals(santrauka())).toEqual({
+      days: "30",
+      paid_km: "903.83",
+      empty_km: "0",
+      fuel_l_per_100km: "28.9324",
+      fuel_price: "1.3766",
+      adblue_l_per_100km: "4.4256",
+      adblue_price: "0.7715",
+      bridges_cents: "250.50",
+      legKm: "903.83",
+    });
+  });
+
+  it("dienas skaičiuoja imtinai", () => {
+    const { supplies, skipped } = parseSupplies(SUPPLIES);
+    const viena = summarizeActuals(
+      parseCanDaily(CAN_DAILY), supplies, skipped, "LOV 141", "2026-09-01", "2026-09-01",
+    );
+
+    expect(tripFillFromActuals(viena).days).toBe("1");
+  });
+
+  it("be kuro pirkimų palieka kainą tuščią, o ne nulį", () => {
+    // Nulis atrodytų kaip nemokamas kuras ir tyliai iškreiptų pelną.
+    const tuscias = summarizeActuals([], [], 0, "LOV 141", "2026-09-01", "2026-09-30");
+    const fill = tripFillFromActuals(tuscias);
+
+    expect(fill.fuel_price).toBe("");
+    expect(fill.fuel_l_per_100km).toBe("");
   });
 });

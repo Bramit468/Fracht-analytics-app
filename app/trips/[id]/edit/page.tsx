@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { TripForm } from "../../new/trip-form";
+import { TripVarianceSection } from "./variance";
 
 export default async function EditTripPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -8,5 +10,7 @@ export default async function EditTripPage({ params }: { params: Promise<{ id: s
     <Link href="/trips" className="text-sm underline">Atgal į reisus</Link>
     <h1 className="my-6 text-3xl font-semibold">Reiso taisymas</h1>
     <div className="rounded-2xl border bg-white p-6 shadow-sm"><TripForm tripId={id} /></div>
+    {/* Telematikos užklausa lėta, o forma nuo jos nepriklauso – tegul nelaukia. */}
+    <Suspense fallback={null}><TripVarianceSection tripId={id} /></Suspense>
   </div></main>;
 }

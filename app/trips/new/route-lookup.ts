@@ -93,6 +93,14 @@ export async function lookupRoute(
       `&waypoints=${to.latitude},${to.longitude}` +
       `&profile=${PTV_TRUCK_PROFILE}&results=TOLL_COSTS`;
 
+    // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
+    // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.
+    console.info(
+      "PTV maršrutas",
+      `${from.formattedAddress} [${from.latitude},${from.longitude}] ->`,
+      `${to.formattedAddress} [${to.latitude},${to.longitude}]`,
+    );
+
     const estimate = routeEstimate(await ptvJson(url, key));
     if (!estimate) {
       return { ok: false, message: "Nepavyko suskaičiuoti maršruto." };
@@ -117,6 +125,15 @@ export async function lookupRoute(
         return {
           ok: false,
           message: "Maršrutų paslauga nepriėmė rakto. Patikrinkite PTV_API_KEY reikšmę Vercel’yje – dažniausiai įsivelia tarpas arba eilutės pabaiga.",
+        };
+      }
+      if (cause.body.includes("ROUTING_ROUTE_NOT_FOUND")) {
+        return {
+          ok: false,
+          message:
+            `PTV nerado vilkikui tinkamo kelio tarp „${origin}“ ir „${destination}“. `
+            + "Dažniausia priežastis – tikslus namo taškas gatvėje, kuri uždara sunkiasvorėms. "
+            + "Pabandykite nurodyti miestą arba artimiausią didesnę gatvę.",
         };
       }
       if (cause.status === 429) {

@@ -11,6 +11,8 @@ import { getTripWithLegs, saveTrip } from "../../../lib/trips";
 import { fetchTelematicsFill } from "./telematics";
 import { lookupRoute } from "./route-lookup";
 import { AddressField } from "./address-field";
+import { RouteMap } from "./route-map";
+import type { LineCoordinate } from "../../../lib/route-line";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -68,6 +70,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [pildoma, setPildoma] = useState(false);
   const [marsrutas, setMarsrutas] = useState("");
   const [skaiciuoja, setSkaiciuoja] = useState(false);
+  const [marsrutoLinija, setMarsrutoLinija] = useState<LineCoordinate[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
   /** Apmokami km skaičiavimo metu — reikia įkainiui už km pasiūlyme. */
@@ -174,8 +177,10 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       );
       if (!result.ok) {
         setMarsrutas(result.message);
+        setMarsrutoLinija([]);
         return;
       }
+      setMarsrutoLinija(result.line);
 
       for (const [name, filled] of Object.entries(result.fill)) {
         if (name === "legKm") continue;
@@ -281,6 +286,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           </button>
           <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
           {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
+          <RouteMap line={marsrutoLinija} />
         </div>}
       </Skiltis>
 

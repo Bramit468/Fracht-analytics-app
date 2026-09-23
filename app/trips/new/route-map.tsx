@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Map as MapLibreMap, Marker, NavigationControl } from "maplibre-gl";
+import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
+
+// MapLibre 6 worker turi importuoti greta esantį shared modulį. Next.js
+// sugeneruotas worker URL Vercel aplinkoje to modulio neturėjo, todėl
+// bazinis žemėlapis pasirodydavo, o GeoJSON maršruto linija – ne.
+setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 /**
  * Maršrutas žemėlapyje (#74).

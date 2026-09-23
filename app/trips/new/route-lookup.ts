@@ -1,6 +1,12 @@
 "use server";
 
 import {
+  parseNominatim,
+  NOMINATIM_URL,
+  NOMINATIM_USER_AGENT,
+  type FoundAddress,
+} from "@/lib/nominatim";
+import {
   firstPlace,
   routeEstimate,
   routeFill,
@@ -54,6 +60,42 @@ async function geocodePayload(query: string, key: string) {
 
 async function geocode(query: string, key: string) {
   return firstPlace(await geocodePayload(query, key));
+}
+
+/** Trumpiausia užklausa, kuriai apskritai verta kreiptis į paiešką. */
+const MIN_PAIESKA = 3;
+
+/**
+ * Adreso paieška lietuviškai (#73).
+ *
+ * Eina per serverį, nes Nominatim reikalauja atpažįstamo `User-Agent`, o
+ * naršyklė jo nustatyti neleidžia. Ir jų taisyklės neleidžia siųsti užklausos
+ * po kiekvieno klavišo — todėl paieška vyksta paspaudus mygtuką.
+ *
+ * Tuščias sąrašas grąžinamas tyliai: paieška yra pagalba, ne veiksmas.
+ */
+export async function searchAddress(query: string): Promise<FoundAddress[]> {
+  if (query.trim().length < MIN_PAIESKA) return [];
+
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return [];
+
+  try {
+    const url =
+      `${NOMINATIM_URL}?q=${encodeURIComponent(query)}` +
+      "&format=json&limit=8&accept-language=lt";
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": NOMINATIM_USER_AGENT },
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+
+    return parseNominatim(await response.json());
+  } catch {
+    return [];
+  }
 }
 
 /**

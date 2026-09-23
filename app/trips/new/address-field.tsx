@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { PlaceSuggestion } from "@/lib/ptv-route";
+import { placeLabel, type PhotonPlace } from "@/lib/photon";
 
-import { resolveSuggestion, suggestPlaces } from "./route-lookup";
+import { suggestPlaces } from "./route-lookup";
 
 /** Kiek laukti po paskutinio klavišo, kad nesiųstume užklausos kas simbolį. */
 const DELSA_MS = 400;
@@ -34,10 +34,9 @@ export function AddressField({
   inputClass: string;
 }) {
   const [query, setQuery] = useState(defaultValue);
-  const [places, setPlaces] = useState<PlaceSuggestion[]>([]);
+  const [places, setPlaces] = useState<PhotonPlace[]>([]);
   const [open, setOpen] = useState(false);
   const [point, setPoint] = useState("");
-  const [busy, setBusy] = useState(false);
   const paskutine = useRef("");
 
   useEffect(() => {
@@ -64,25 +63,13 @@ export function AddressField({
     };
   }, [query, enabled]);
 
-  /**
-   * PTV pasiūlymas koordinačių neturi — jas reikia atskirai pasiimti pagal
-   * jo sunormintą tekstą. Nepavykus paliekamas įskaitomas adresas be taško:
-   * maršrutas tada geokoduos iš teksto, kaip be pasirinkimo.
-   */
-  async function choose(place: PlaceSuggestion) {
-    const label = [place.caption, place.subCaption].filter(Boolean).join(", ");
+  function choose(place: PhotonPlace) {
+    const label = placeLabel(place);
     paskutine.current = label;
     setQuery(label);
+    // Photon koordinates duoda iškart, tad antro žingsnio nereikia.
+    setPoint(`${place.latitude},${place.longitude}`);
     setOpen(false);
-    setBusy(true);
-    try {
-      const resolved = await resolveSuggestion(place.searchText);
-      setPoint(resolved.ok ? `${resolved.place.latitude},${resolved.place.longitude}` : "");
-    } catch {
-      setPoint("");
-    } finally {
-      setBusy(false);
-    }
   }
 
   return (
@@ -104,21 +91,19 @@ export function AddressField({
       />
       <input type="hidden" name={`${name}_point`} value={point} />
 
-      {busy && <span className="text-xs text-slate-500">Tikslinama…</span>}
-
       {open && places.length > 0 && (
         <ul className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border bg-white shadow-lg">
           {places.map((place) => (
-            <li key={`${place.caption}|${place.subCaption}`}>
+            <li key={`${place.latitude},${place.longitude},${place.label}`}>
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => void choose(place)}
+                onClick={() => choose(place)}
                 className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
               >
-                <span className="block">{place.caption}</span>
-                {place.subCaption && (
-                  <span className="block text-xs text-slate-500">{place.subCaption}</span>
+                <span className="block">{place.label}</span>
+                {place.sublabel && (
+                  <span className="block text-xs text-slate-500">{place.sublabel}</span>
                 )}
               </button>
             </li>

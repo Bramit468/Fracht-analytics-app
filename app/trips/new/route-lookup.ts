@@ -1,17 +1,15 @@
 "use server";
 
+import { parsePhotonPlaces, PHOTON_URL, type PhotonPlace } from "@/lib/photon";
 import {
   firstPlace,
-  parseSuggestions,
   routeEstimate,
   routeFill,
   suggestedDays,
   PTV_GEOCODING_URL,
   PTV_ROUTING_URL,
-  PTV_SUGGESTIONS_URL,
   PTV_TRUCK_PROFILE,
   type GeocodedPlace,
-  type PlaceSuggestion,
   type RouteFill,
 } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -69,45 +67,29 @@ async function signedIn(): Promise<boolean> {
 }
 
 /**
- * Adreso pasiūlymai rašant (#65).
+ * Adreso pasiūlymai rašant (#68).
  *
- * Naudojamas PTV autocomplete, o ne geokoderis: geokoderis neužbaigtam tekstui
- * grąžina artimiausią panašumą, ir „klaipėdos g" virsta G. D. Kuverto gatve
- * Neringoje su 64 balais iš 100.
+ * Naudojamas Photon, o ne PTV: PTV paieška hierarchinė, todėl „klaipėdos g."
+ * jam reiškia Klaipėdos apskritį ir vietoves iš G raidės, o ne Klaipėdos
+ * gatvę. Photon tą pačią užklausą supranta taip, kaip žmogus.
+ *
+ * Maršrutas ir mokesčiai lieka PTV — keičiama tik ta dalis, kurios jis nemoka.
+ *
+ * Pasiūlymai iškart turi koordinates, tad antro žingsnio nereikia.
  *
  * Tuščias sąrašas grąžinamas tyliai: pasiūlymai yra pagalba, ne veiksmas.
  */
-export async function suggestPlaces(query: string): Promise<PlaceSuggestion[]> {
-  const key = process.env.PTV_API_KEY?.trim();
-  if (!key || query.trim().length < MIN_PAIESKA) return [];
+export async function suggestPlaces(query: string): Promise<PhotonPlace[]> {
+  if (query.trim().length < MIN_PAIESKA) return [];
   if (!(await signedIn())) return [];
 
   try {
-    const url = `${PTV_SUGGESTIONS_URL}?searchText=${encodeURIComponent(query)}`;
-    return parseSuggestions(await ptvJson(url, key));
+    const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=10`;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return [];
+    return parsePhotonPlaces(await response.json());
   } catch {
     return [];
-  }
-}
-
-/**
- * Pasirinktą pasiūlymą paverčia tašku.
- *
- * PTV pasiūlymas koordinačių neturi — jis duoda sunormintą tekstą, kurį reikia
- * paduoti geokoderiui. Toks dviejų žingsnių kelias yra jų numatytas.
- */
-export async function resolveSuggestion(
-  searchText: string,
-): Promise<{ ok: true; place: GeocodedPlace } | { ok: false }> {
-  const key = process.env.PTV_API_KEY?.trim();
-  if (!key || !searchText.trim()) return { ok: false };
-  if (!(await signedIn())) return { ok: false };
-
-  try {
-    const place = firstPlace(await geocodePayload(searchText, key));
-    return place ? { ok: true, place } : { ok: false };
-  } catch {
-    return { ok: false };
   }
 }
 

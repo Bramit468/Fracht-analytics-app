@@ -5,6 +5,7 @@ import {
   placeSuggestions,
   routeEstimate,
   routeFill,
+  routeRequestUrl,
   suggestedDays,
 } from "./ptv-route";
 
@@ -35,7 +36,18 @@ const ROUTE = {
         { countryCode: "NO", convertedPrice: { price: 14.16, currency: "EUR" } },
       ],
     },
+    sections: [
+      { tollRoadType: "GENERAL", countryCode: "PL", costs: [{ convertedPrice: { price: 161.92, currency: "EUR" } }] },
+      { tollRoadType: "GENERAL", countryCode: "DE", costs: [{ convertedPrice: { price: 113.48, currency: "EUR" } }] },
+      { tollRoadType: "BRIDGE", countryCode: "DK", costs: [{ convertedPrice: { price: 195.13, currency: "EUR" } }] },
+      { tollRoadType: "TUNNEL", countryCode: "SE", costs: [{ convertedPrice: { price: 0.8, currency: "EUR" } }] },
+      { tollRoadType: "FERRY", countryCode: "NO", costs: [{ convertedPrice: { price: 14.16, currency: "EUR" } }] },
+    ],
   },
+  events: [
+    { combinedTransport: { name: "Gedser - Rostock", type: "BOAT", accessType: "ENTER" } },
+    { combinedTransport: { name: "Gedser - Rostock", type: "BOAT", accessType: "EXIT" } },
+  ],
 };
 
 describe("firstPlace", () => {
@@ -102,6 +114,11 @@ describe("routeEstimate", () => {
       km: 2060.36,
       travelHours: 29.9,
       tollCents: 48549,
+      bridgesCents: 47053,
+      ferriesCents: 1416,
+      tunnelsCents: 80,
+      ferryDetected: true,
+      ferryNames: ["Gedser - Rostock"],
       violated: false,
     });
   });
@@ -122,7 +139,29 @@ describe("routeEstimate", () => {
   it("maršrutas be mokesčių duoda nulį, o ne klaidą", () => {
     const estimate = routeEstimate({ distance: 120000, travelTime: 5400, violated: false });
 
-    expect(estimate).toMatchObject({ km: 120, tollCents: 0, byCountry: [] });
+    expect(estimate).toMatchObject({
+      km: 120,
+      tollCents: 0,
+      bridgesCents: 0,
+      ferriesCents: 0,
+      tunnelsCents: 0,
+      ferryDetected: false,
+      byCountry: [],
+    });
+  });
+
+  it("aptinka keltą net kai PTV nepateikia jo kainos", () => {
+    const estimate = routeEstimate({
+      distance: 100000,
+      travelTime: 7200,
+      events: [{ combinedTransport: { name: "Rostock - Gedser", type: "BOAT", accessType: "ENTER" } }],
+    });
+
+    expect(estimate).toMatchObject({
+      ferryDetected: true,
+      ferryNames: ["Rostock - Gedser"],
+      ferriesCents: 0,
+    });
   });
 
   it("pažeistas ribojimas perduodamas toliau", () => {
@@ -143,7 +182,9 @@ describe("routeFill", () => {
 
     expect(routeFill(estimate)).toEqual({
       paid_km: "2060.36",
-      bridges_cents: "485.49",
+      bridges_cents: "470.53",
+      ferries_cents: "14.16",
+      tunnels_cents: "0.80",
       legKm: "2060.36",
     });
   });
@@ -155,6 +196,27 @@ describe("routeFill", () => {
     // Kelio laikas nėra reiso trukmė. Spėta trukmė tyliai iškreiptų furos
     // paros kaštus, o su jais ir pelną.
     expect(Object.keys(routeFill(estimate))).not.toContain("days");
+  });
+});
+
+describe("routeRequestUrl", () => {
+  const from = { latitude: 54.1, longitude: 12.1 };
+  const to = { latitude: 54.6, longitude: 11.4 };
+
+  it("prašo mokesčių sekcijų ir kelto įvykių", () => {
+    const url = new URL(routeRequestUrl(from, to, false));
+
+    expect(url.searchParams.get("results")).toBe(
+      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,POLYLINE",
+    );
+    expect(url.searchParams.get("options[currency]")).toBe("EUR");
+    expect(url.searchParams.has("options[avoid]")).toBe(false);
+  });
+
+  it("naudoja oficialų FERRIES vengimo parametrą", () => {
+    const url = new URL(routeRequestUrl(from, to, true));
+
+    expect(url.searchParams.get("options[avoid]")).toBe("FERRIES");
   });
 });
 

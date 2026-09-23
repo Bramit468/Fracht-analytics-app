@@ -11,10 +11,9 @@ import {
   firstPlace,
   routeEstimate,
   routeFill,
+  routeRequestUrl,
   suggestedDays,
   PTV_GEOCODING_URL,
-  PTV_ROUTING_URL,
-  PTV_TRUCK_PROFILE,
   type GeocodedPlace,
   type RouteFill,
 } from "@/lib/ptv-route";
@@ -26,6 +25,12 @@ export type RouteLookupResult =
       fill: RouteFill;
       km: number;
       tollCents: number;
+      bridgesCents: number;
+      ferriesCents: number;
+      tunnelsCents: number;
+      ferryDetected: boolean;
+      ferryNames: string[];
+      avoidedFerries: boolean;
       days: number;
       /** Ką PTV suprato iš adresų – kad matytųsi, jei suprato ne tai. */
       fromAddress: string;
@@ -123,6 +128,7 @@ export async function lookupRoute(
   destination: string,
   fromPoint?: string,
   toPoint?: string,
+  avoidFerries = false,
 ): Promise<RouteLookupResult> {
   // Įklijuojant į Vercel lengvai prilimpa tarpas ar eilutės pabaiga, o PTV
   // tada atmeta raktą kaip neteisingą.
@@ -152,10 +158,7 @@ export async function lookupRoute(
     if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
     if (!to) return { ok: false, message: `Nepavyko rasti adreso „${destination}“.` };
 
-    const url =
-      `${PTV_ROUTING_URL}?waypoints=${from.latitude},${from.longitude}` +
-      `&waypoints=${to.latitude},${to.longitude}` +
-      `&profile=${PTV_TRUCK_PROFILE}&results=TOLL_COSTS,POLYLINE`;
+    const url = routeRequestUrl(from, to, avoidFerries);
 
     // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
     // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.
@@ -182,6 +185,12 @@ export async function lookupRoute(
       fill: routeFill(estimate),
       km: estimate.km,
       tollCents: estimate.tollCents,
+      bridgesCents: estimate.bridgesCents,
+      ferriesCents: estimate.ferriesCents,
+      tunnelsCents: estimate.tunnelsCents,
+      ferryDetected: estimate.ferryDetected,
+      ferryNames: estimate.ferryNames,
+      avoidedFerries: avoidFerries,
       days: suggestedDays(estimate.travelHours),
       fromAddress: from.formattedAddress,
       toAddress: to.formattedAddress,

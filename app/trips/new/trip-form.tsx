@@ -70,6 +70,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [pildoma, setPildoma] = useState(false);
   const [marsrutas, setMarsrutas] = useState("");
   const [skaiciuoja, setSkaiciuoja] = useState(false);
+  const [vengtiKeltu, setVengtiKeltu] = useState(false);
   const [marsrutoLinija, setMarsrutoLinija] = useState<LineCoordinate[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
@@ -174,6 +175,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         value("destination"),
         value("origin_point"),
         value("destination_point"),
+        vengtiKeltu,
       );
       if (!result.ok) {
         setMarsrutas(result.message);
@@ -197,11 +199,22 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       const ispejimai = [
         result.violated ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
         result.approximate ? "Adresas rastas tik iki miesto, tad km apytiksliai." : "",
+        result.ferryDetected && result.ferriesCents === 0
+          ? `Keltas aptiktas${result.ferryNames.length ? ` (${result.ferryNames.join(", ")})` : ""}, bet PTV bilieto kainos nepateikė — įrašykite ją lauke „Keltai (€)“.`
+          : "",
+        result.ferryDetected && result.ferriesCents > 0
+          ? `Kelto kaina ${formatCents(result.ferriesCents)} įtraukta.`
+          : "",
+        result.avoidedFerries && result.ferryDetected
+          ? "PTV šio kelto išvengti negalėjo."
+          : "",
       ].filter(Boolean).join(" ");
 
       setMarsrutas(
         `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km)} km, `
-        + `keliai ${formatCents(result.tollCents)}. Siūloma trukmė ${result.days} par. – `
+        + `keliai / tiltai ${formatCents(result.bridgesCents)}, `
+        + `keltai ${formatCents(result.ferriesCents)}, tuneliai ${formatCents(result.tunnelsCents)}. `
+        + `Iš viso ${formatCents(result.tollCents)}. Siūloma trukmė ${result.days} par. – `
         + `įrašykite patys, jei sutinkate. ${ispejimai}`.trim(),
       );
     } catch {
@@ -281,9 +294,19 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         </div>
         {/* Mygtukas šalia laukų, kuriuos jis užpildo, o ne atskiroje dėžutėje viršuje. */}
         {routeLookup && <div className="mt-3">
-          <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
-            {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
-          </button>
+          <div className="flex flex-wrap items-center gap-4">
+            <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+              {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
+            </button>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={vengtiKeltu}
+                onChange={(event) => setVengtiKeltu(event.target.checked)}
+              />
+              Vengti keltų
+            </label>
+          </div>
           <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
           {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
           <RouteMap line={marsrutoLinija} />

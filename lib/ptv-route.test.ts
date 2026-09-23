@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   firstPlace,
+  placeSuggestions,
   routeEstimate,
   routeFill,
   suggestedDays,
@@ -54,6 +55,42 @@ describe("firstPlace", () => {
     expect(firstPlace({})).toBeNull();
     expect(firstPlace(null)).toBeNull();
     expect(firstPlace({ locations: [{ formattedAddress: "be taško" }] })).toBeNull();
+  });
+});
+
+describe("placeSuggestions", () => {
+  /** „Klaipėdos g. 4“ PTV grąžina 42 adresus keturiuose miestuose. */
+  const DAUG = {
+    locations: [
+      { formattedAddress: "Klaipėdos gatvė 4, 40411 Subačius", locationType: "EXACT_ADDRESS", referencePosition: { latitude: 55.7, longitude: 24.7 } },
+      { formattedAddress: "Klaipėdos gatvė 4, 89213 Mažeikiai", locationType: "EXACT_ADDRESS", referencePosition: { latitude: 56.3, longitude: 22.3 } },
+      { formattedAddress: "Klaipėdos gatvė 4, 87303 Telšiai", locationType: "EXACT_ADDRESS", referencePosition: { latitude: 55.9, longitude: 22.2 } },
+    ],
+  };
+
+  it("grąžina visus variantus, o ne pirmą", () => {
+    // Visi jie vienodo tikslumo, tad pirmas sąraše yra atsitiktinis. Imti jį
+    // reikštų nuvesti furą į Mažeikius, kai žmogus galvojo apie Telšius.
+    expect(placeSuggestions(DAUG)).toHaveLength(3);
+  });
+
+  it("riboja sąrašo ilgį", () => {
+    expect(placeSuggestions(DAUG, 2)).toHaveLength(2);
+  });
+
+  it("nekartoja to paties adreso", () => {
+    const suPasikartojimu = { locations: [...DAUG.locations, DAUG.locations[0]] };
+    expect(placeSuggestions(suPasikartojimu)).toHaveLength(3);
+  });
+
+  it("praleidžia įrašus be taško", () => {
+    expect(placeSuggestions({ locations: [{ formattedAddress: "be taško" }] })).toEqual([]);
+  });
+
+  it("tuščias ar netinkamas atsakymas duoda tuščią sąrašą", () => {
+    expect(placeSuggestions({})).toEqual([]);
+    expect(placeSuggestions(null)).toEqual([]);
+    expect(placeSuggestions({ locations: "ne sąrašas" })).toEqual([]);
   });
 });
 

@@ -52,14 +52,10 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-/** Pirmas rastas taškas, arba `null`, jei adresas neatpažintas. */
-export function firstPlace(payload: unknown): GeocodedPlace | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const locations = (payload as { locations?: unknown }).locations;
-  if (!Array.isArray(locations) || locations.length === 0) return null;
-
-  const first = locations[0] as Record<string, unknown>;
-  const position = first.referencePosition as Record<string, unknown> | undefined;
+function toPlace(row: unknown): GeocodedPlace | null {
+  if (typeof row !== "object" || row === null) return null;
+  const location = row as Record<string, unknown>;
+  const position = location.referencePosition as Record<string, unknown> | undefined;
   const latitude = decimal(position?.latitude);
   const longitude = decimal(position?.longitude);
   if (latitude === null || longitude === null) return null;
@@ -67,9 +63,45 @@ export function firstPlace(payload: unknown): GeocodedPlace | null {
   return {
     latitude,
     longitude,
-    formattedAddress: text(first.formattedAddress) ?? "",
-    locationType: text(first.locationType) ?? "",
+    formattedAddress: text(location.formattedAddress) ?? "",
+    locationType: text(location.locationType) ?? "",
   };
+}
+
+/**
+ * Keli variantai pasirinkimui (#65).
+ *
+ * „Klaipėdos g. 4" PTV grąžina 42 adresus keturiuose miestuose, visus vienodo
+ * tikslumo. Pirmas sąraše yra atsitiktinis, todėl rinktis turi žmogus.
+ */
+export function placeSuggestions(payload: unknown, limit = 6): GeocodedPlace[] {
+  if (typeof payload !== "object" || payload === null) return [];
+  const locations = (payload as { locations?: unknown }).locations;
+  if (!Array.isArray(locations)) return [];
+
+  const places: GeocodedPlace[] = [];
+  const seen = new Set<string>();
+
+  for (const row of locations) {
+    const place = toPlace(row);
+    // Tas pats adresas kartojasi skirtingais įrašais; sąraše to matyti nereikia.
+    if (!place || place.formattedAddress === "" || seen.has(place.formattedAddress)) continue;
+    seen.add(place.formattedAddress);
+    places.push(place);
+    if (places.length >= limit) break;
+  }
+
+  return places;
+}
+
+/**
+ * Pirmas rastas taškas, arba `null`, jei adresas neatpažintas.
+ *
+ * Naudojama tik tada, kai vartotojas varianto nepasirinko. Tada spėjimas
+ * paženklinamas, o ne pateikiamas kaip tiesa.
+ */
+export function firstPlace(payload: unknown): GeocodedPlace | null {
+  return placeSuggestions(payload, 1)[0] ?? null;
 }
 
 /**

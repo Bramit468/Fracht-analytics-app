@@ -9,6 +9,7 @@ import {
   type SkippedSupply,
   type TripFill,
 } from "@/lib/telematics-costs";
+import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export type TelematicsFillResult =
@@ -58,11 +59,14 @@ export async function fetchTelematicsFill(
   let costs;
   let skipped: SkippedSupply[] = [];
   try {
-    const [canRaw, suppliesRaw] = await Promise.all([
+    const [canRaw, suppliesRaw, rates] = await Promise.all([
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
       fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchEcbRates(),
     ]);
-    const { supplies, issues } = parseSupplies(suppliesRaw);
+    const { supplies, issues } = parseSupplies(suppliesRaw, (amount, currency, date) =>
+      toEuroCents(rates, amount, currency, date),
+    );
     costs = summarizeActuals(parseCanDaily(canRaw), supplies, plate, from, to);
 
     // Ne eurais pirkti kuras ir keliai į sumas nepatenka. Lentelėje tai matyti,

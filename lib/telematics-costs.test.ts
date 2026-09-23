@@ -123,6 +123,41 @@ describe("praleisti ne eurais pirkimai", () => {
     ]);
   });
 
+  it("su kursu kronos patenka į kelių sumą, o ne į praleistas", () => {
+    // Be kurso Norvegijos reisas rodydavo „keliai 0,00 €" (#57).
+    const kursas = (amount: number, currency: string) =>
+      currency === "NOK" ? Math.round((amount / 11.7025) * 100) : null;
+
+    const { supplies, issues } = parseSupplies(
+      [
+        {
+          ItemId: "902", Plates: "LOV 141", TypeTitle: "Other",
+          OperationDate: "2026-09-05", TotalPrice: "480.000",
+          CurrencyShortTitle: "NOK", Comment: "Bompenger",
+        },
+      ],
+      kursas,
+    );
+
+    expect(supplies).toHaveLength(1);
+    expect(supplies[0].kind).toBe("toll");
+    expect(supplies[0].costCents).toBe(4102);
+    expect(issues.convertedRows).toBe(1);
+    expect(issues.convertedCents).toBe(4102);
+    expect(issues.otherCurrencyRows).toBe(0);
+  });
+
+  it("valiuta be kurso lieka praleista, o ne konvertuota spėjant", () => {
+    const { supplies, issues } = parseSupplies(
+      [{ ItemId: "903", Plates: "LOV 141", OperationDate: "2026-09-05", TotalPrice: "10", CurrencyShortTitle: "PLN" }],
+      () => null,
+    );
+
+    expect(supplies).toEqual([]);
+    expect(issues.otherCurrencyRows).toBe(1);
+    expect(issues.convertedRows).toBe(0);
+  });
+
   it("pirkimas be numerio irgi patenka į sąrašą", () => {
     const { issues } = parseSupplies([
       { ItemId: "901", OperationDate: "2026-09-05", TotalPrice: "10", CurrencyShortTitle: "PLN" },
@@ -279,6 +314,8 @@ describe("nieko nedingsta tyliai", () => {
       unassignedCents: 1275,
       otherCurrencyRows: 0,
       otherCurrency: [],
+      convertedRows: 0,
+      convertedCents: 0,
     });
   });
 });

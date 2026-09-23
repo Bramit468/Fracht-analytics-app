@@ -9,6 +9,7 @@ import { truckRowToCalc } from "../../../lib/truck";
 import { getTripWithLegs, saveTrip } from "../../../lib/trips";
 import { fetchTelematicsFill } from "./telematics";
 import { lookupRoute } from "./route-lookup";
+import { AddressField } from "./address-field";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -150,7 +151,12 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     setSkaiciuoja(true);
     setMarsrutas("");
     try {
-      const result = await lookupRoute(value("origin"), value("destination"));
+      const result = await lookupRoute(
+        value("origin"),
+        value("destination"),
+        value("origin_point"),
+        value("destination_point"),
+      );
       if (!result.ok) {
         setMarsrutas(result.message);
         return;
@@ -269,7 +275,9 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-        {[["trip_number", "Reiso nr."], ["origin", "Iš"], ["destination", "Į"], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
+        {[["trip_number", "Reiso nr."], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
+        <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
+        <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
         {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") || name === "empty_km" ? "0" : undefined)} /></label>)}
         <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
         <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>

@@ -2,12 +2,14 @@
 
 import {
   firstPlace,
+  placeSuggestions,
   routeEstimate,
   routeFill,
   suggestedDays,
   PTV_GEOCODING_URL,
   PTV_ROUTING_URL,
   PTV_TRUCK_PROFILE,
+  type GeocodedPlace,
   type RouteFill,
 } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -46,9 +48,37 @@ async function ptvJson(url: string, key: string): Promise<unknown> {
   return response.json();
 }
 
-async function geocode(query: string, key: string) {
+async function geocodePayload(query: string, key: string) {
   const url = `${PTV_GEOCODING_URL}?searchText=${encodeURIComponent(query)}`;
-  return firstPlace(await ptvJson(url, key));
+  return ptvJson(url, key);
+}
+
+async function geocode(query: string, key: string) {
+  return firstPlace(await geocodePayload(query, key));
+}
+
+/** Kiek simbolių būtina, kad užklausa apskritai turėtų prasmę. */
+const MIN_PAIESKA = 3;
+
+/**
+ * Adreso variantai pasirinkimui (#65).
+ *
+ * Grąžina tuščią sąrašą tyliai: siūlymai yra pagalba, o ne veiksmas, todėl
+ * jų nebuvimas neturi virsti klaidos žinute po lauku.
+ */
+export async function suggestPlaces(query: string): Promise<GeocodedPlace[]> {
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key || query.trim().length < MIN_PAIESKA) return [];
+
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return [];
+
+  try {
+    return placeSuggestions(await geocodePayload(query, key));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -58,9 +88,21 @@ async function geocode(query: string, key: string) {
  * Prisijungimas tikrinamas ir čia: server action pasiekiama adresu, ne tik
  * per mygtuką.
  */
+/** „55.7,24.3" iš paslėpto lauko. Netinkamas tekstas verčia geokoduoti iš naujo. */
+function pickedPoint(value: string | undefined, label: string): GeocodedPlace | null {
+  const parts = (value ?? "").split(",");
+  if (parts.length !== 2) return null;
+  const latitude = Number(parts[0]);
+  const longitude = Number(parts[1]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return { latitude, longitude, formattedAddress: label, locationType: "PICKED" };
+}
+
 export async function lookupRoute(
   origin: string,
   destination: string,
+  fromPoint?: string,
+  toPoint?: string,
 ): Promise<RouteLookupResult> {
   // Įklijuojant į Vercel lengvai prilimpa tarpas ar eilutės pabaiga, o PTV
   // tada atmeta raktą kaip neteisingą.
@@ -80,9 +122,11 @@ export async function lookupRoute(
   }
 
   try {
+    // Pasirinktas variantas naudojamas kaip yra: tada tiksliai žinoma, kurį
+    // tašką žmogus turėjo omenyje, ir spėlioti nebereikia (#65).
     const [from, to] = await Promise.all([
-      geocode(origin, key),
-      geocode(destination, key),
+      pickedPoint(fromPoint, origin) ?? geocode(origin, key),
+      pickedPoint(toPoint, destination) ?? geocode(destination, key),
     ]);
 
     if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
@@ -114,7 +158,10 @@ export async function lookupRoute(
       days: suggestedDays(estimate.travelHours),
       fromAddress: from.formattedAddress,
       toAddress: to.formattedAddress,
-      approximate: from.locationType !== "EXACT_ADDRESS" || to.locationType !== "EXACT_ADDRESS",
+      // Pasirinktas variantas laikomas tiksliu: žmogus jį matė ir patvirtino.
+      approximate: [from, to].some(
+        (place) => place.locationType !== "EXACT_ADDRESS" && place.locationType !== "PICKED",
+      ),
       violated: estimate.violated,
     };
   } catch (cause) {

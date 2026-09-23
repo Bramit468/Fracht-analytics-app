@@ -149,8 +149,17 @@ export interface SupplyIssues {
   /** Be furos numerio — įmonės lygio mokesčiai (komisiniai ir pan.). */
   unassignedRows: number;
   unassignedCents: number;
-  /** Ne eurais. Sumos neverčiame, nes kurso spėlioti neverta. */
+  /** Ne eurais ir be kurso. Tokių neverčiame: spėti kursą blogiau nei praleisti. */
   otherCurrencyRows: number;
+  /**
+   * Perskaičiuota ECB kursu (#57).
+   *
+   * Rodoma atskirai, nes tai **įvertis**: kortelės tiekėjas nurašo savo kursu
+   * su savo marža. Sumaišius su tikromis sumomis, puslapis vadintųsi
+   * „Faktiniai kaštai" ir rodytų spėjimą.
+   */
+  convertedRows: number;
+  convertedCents: number;
   /**
    * Tos pačios eilutės su fura ir data.
    *
@@ -168,7 +177,16 @@ export interface SkippedSupply {
   currency: string;
 }
 
-export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: SupplyIssues } {
+/**
+ * Suma svetima valiuta į eurų centus, arba `null`, jei kurso nėra.
+ * Paduodama iš išorės, kad šis failas nieko nežinotų apie ECB (#57).
+ */
+export type ToEuroCents = (amount: number, currency: string, date: string) => number | null;
+
+export function parseSupplies(
+  payload: unknown,
+  toEuroCents?: ToEuroCents,
+): { supplies: Supply[]; issues: SupplyIssues } {
   if (!Array.isArray(payload)) throw new Error("Supplies atsakymas turi būti sąrašas.");
 
   const supplies: Supply[] = [];
@@ -177,6 +195,8 @@ export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: S
     unassignedCents: 0,
     otherCurrencyRows: 0,
     otherCurrency: [],
+    convertedRows: 0,
+    convertedCents: 0,
   };
 
   for (const row of payload) {
@@ -184,17 +204,35 @@ export function parseSupplies(payload: unknown): { supplies: Supply[]; issues: S
     const source = row as Record<string, unknown>;
     const plate = text(source.Plates) ?? text(source.Number);
     const operationDate = text(source.OperationDate);
-    const costCents = costToCents(source.TotalPrice);
-    const isEuro = text(source.CurrencyShortTitle) === "EUR" && costCents !== null;
+    const currency = text(source.CurrencyShortTitle);
+    const date = operationDate === null ? null : operationDate.slice(0, 10);
 
-    if (!isEuro) {
+    // Eurai imami kaip yra; svetima valiuta verčiama, jei kursas paduotas.
+    let costCents = currency === "EUR" ? costToCents(source.TotalPrice) : null;
+    let converted = false;
+
+    if (costCents === null && currency !== null && currency !== "EUR" && date !== null && toEuroCents) {
+      const amount = decimal(source.TotalPrice);
+      const inEuro = amount === null ? null : toEuroCents(amount, currency, date);
+      if (inEuro !== null) {
+        costCents = inEuro;
+        converted = true;
+      }
+    }
+
+    if (costCents === null) {
       issues.otherCurrencyRows += 1;
       issues.otherCurrency.push({
         plate: plate === null ? null : normalizePlate(plate),
-        date: operationDate === null ? null : operationDate.slice(0, 10),
-        currency: text(source.CurrencyShortTitle) ?? "",
+        date,
+        currency: currency ?? "",
       });
       continue;
+    }
+
+    if (converted) {
+      issues.convertedRows += 1;
+      issues.convertedCents += costCents;
     }
 
     if (!plate || !operationDate) {

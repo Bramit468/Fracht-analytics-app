@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 
+import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { formatCents } from "@/lib/money";
 import {
   parseCanDaily,
@@ -45,13 +46,16 @@ async function loadCosts(
   to: string,
 ): Promise<{ eilutes: ActualCosts[]; issues?: SupplyIssues; klaida?: string }> {
   try {
-    const [canRaw, suppliesRaw] = await Promise.all([
+    const [canRaw, suppliesRaw, rates] = await Promise.all([
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
       fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchEcbRates(),
     ]);
 
     const daily = parseCanDaily(canRaw);
-    const { supplies, issues } = parseSupplies(suppliesRaw);
+    const { supplies, issues } = parseSupplies(suppliesRaw, (amount, currency, date) =>
+      toEuroCents(rates, amount, currency, date),
+    );
 
     // Tas pats numeris ateina ir su tarpu, ir be jo. Rodome variantą su tarpu,
     // nes toks pat yra furų sąraše.
@@ -231,9 +235,21 @@ export default async function TelematikaPage({
             </p>
           )}
           {issues.otherCurrencyRows > 0 && (
-            <p>{issues.otherCurrencyRows} pirkimai ne eurais – kurso spėlioti neverta.</p>
+            <p>
+              {issues.otherCurrencyRows} pirkimai ne eurais, kuriems kurso nerasta – jų
+              suma neskaičiuota, nes spėti kursą blogiau nei praleisti.
+            </p>
           )}
         </div>
+      )}
+
+      {issues && issues.convertedRows > 0 && (
+        <p className="text-xs text-neutral-500">
+          <span className="font-medium">Įvertis:</span> {issues.convertedRows} pirkimai už{" "}
+          {formatCents(issues.convertedCents)} perskaičiuoti iš kitos valiutos ECB pirkimo
+          dienos kursu. Kortelės tiekėjas nurašo savo kursu su marža, tad tikroji suma
+          šiek tiek skiriasi.
+        </p>
       )}
     </main>
   );

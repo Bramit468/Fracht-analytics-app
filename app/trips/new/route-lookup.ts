@@ -1,6 +1,5 @@
 "use server";
 
-import { parsePhotonPlaces, PHOTON_URL, type PhotonPlace } from "@/lib/photon";
 import {
   firstPlace,
   routeEstimate,
@@ -55,42 +54,6 @@ async function geocodePayload(query: string, key: string) {
 
 async function geocode(query: string, key: string) {
   return firstPlace(await geocodePayload(query, key));
-}
-
-/** Kiek simbolių būtina, kad užklausa apskritai turėtų prasmę. */
-const MIN_PAIESKA = 3;
-
-async function signedIn(): Promise<boolean> {
-  const supabase = await createServerSupabaseClient();
-  const { data } = await supabase.auth.getClaims();
-  return Boolean(data?.claims);
-}
-
-/**
- * Adreso pasiūlymai rašant (#68).
- *
- * Naudojamas Photon, o ne PTV: PTV paieška hierarchinė, todėl „klaipėdos g."
- * jam reiškia Klaipėdos apskritį ir vietoves iš G raidės, o ne Klaipėdos
- * gatvę. Photon tą pačią užklausą supranta taip, kaip žmogus.
- *
- * Maršrutas ir mokesčiai lieka PTV — keičiama tik ta dalis, kurios jis nemoka.
- *
- * Pasiūlymai iškart turi koordinates, tad antro žingsnio nereikia.
- *
- * Tuščias sąrašas grąžinamas tyliai: pasiūlymai yra pagalba, ne veiksmas.
- */
-export async function suggestPlaces(query: string): Promise<PhotonPlace[]> {
-  if (query.trim().length < MIN_PAIESKA) return [];
-  if (!(await signedIn())) return [];
-
-  try {
-    const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=10`;
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) return [];
-    return parsePhotonPlaces(await response.json());
-  } catch {
-    return [];
-  }
 }
 
 /**

@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { placeLabel, type PhotonPlace } from "@/lib/photon";
-
-import { suggestPlaces } from "./route-lookup";
+import { parsePhotonPlaces, placeLabel, PHOTON_URL, type PhotonPlace } from "@/lib/photon";
 
 /** Kiek laukti po paskutinio klavišo, kad nesiųstume užklausos kas simbolį. */
 const DELSA_MS = 400;
@@ -44,10 +42,19 @@ export function AddressField({
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
+
     const timer = setTimeout(async () => {
       try {
-        const found = await suggestPlaces(query);
+        // Kreipiamasi tiesiai, ne per serverį: Photon rakto nereikalauja, tad
+        // slėpti nėra ko, o kelias per Vercel su prisijungimo patikra pridėdavo
+        // apie sekundę prie ir taip lėto atsakymo (#69).
+        const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=10`;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) return;
+
+        const found = parsePhotonPlaces(await response.json());
         if (!cancelled) {
           setPlaces(found);
           setOpen(found.length > 0);
@@ -60,6 +67,9 @@ export function AddressField({
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      // Senesnė užklausa nutraukiama: kitaip lėtas atsakymas galėtų grįžti
+      // vėliau už naujesnį ir perrašyti sąrašą pasenusiais variantais.
+      controller.abort();
     };
   }, [query, enabled]);
 

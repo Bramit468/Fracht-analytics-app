@@ -12,6 +12,8 @@
  * ta dalis, kurios jis nemoka.
  */
 
+import { countryLt } from "./countries-lt";
+
 export const PHOTON_URL = "https://photon.komoot.io/api/";
 
 export interface PhotonPlace {
@@ -62,7 +64,13 @@ export function parsePhotonPlaces(payload: unknown, limit = 8): PhotonPlace[] {
     if (street === null) continue;
 
     const label = house === null ? street : `${street} ${house}`;
-    const sublabel = [text(props.city) ?? text(props.county), text(props.postcode), text(props.country)]
+    const sublabel = [
+      text(props.city) ?? text(props.county),
+      text(props.postcode),
+      // Šalis lietuviškai, o gatvė ir miestas – vietine kalba: vairuotojas
+      // Lenkijoje ieško „Warszawa", ir taip pat rašoma važtaraštyje.
+      countryLt(text(props.countrycode), text(props.country)),
+    ]
       .filter(Boolean)
       .join(", ");
 

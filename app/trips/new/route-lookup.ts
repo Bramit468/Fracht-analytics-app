@@ -2,14 +2,16 @@
 
 import {
   firstPlace,
-  placeSuggestions,
+  parseSuggestions,
   routeEstimate,
   routeFill,
   suggestedDays,
   PTV_GEOCODING_URL,
   PTV_ROUTING_URL,
+  PTV_SUGGESTIONS_URL,
   PTV_TRUCK_PROFILE,
   type GeocodedPlace,
+  type PlaceSuggestion,
   type RouteFill,
 } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -60,24 +62,52 @@ async function geocode(query: string, key: string) {
 /** Kiek simbolių būtina, kad užklausa apskritai turėtų prasmę. */
 const MIN_PAIESKA = 3;
 
-/**
- * Adreso variantai pasirinkimui (#65).
- *
- * Grąžina tuščią sąrašą tyliai: siūlymai yra pagalba, o ne veiksmas, todėl
- * jų nebuvimas neturi virsti klaidos žinute po lauku.
- */
-export async function suggestPlaces(query: string): Promise<GeocodedPlace[]> {
-  const key = process.env.PTV_API_KEY?.trim();
-  if (!key || query.trim().length < MIN_PAIESKA) return [];
-
+async function signedIn(): Promise<boolean> {
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims) return [];
+  return Boolean(data?.claims);
+}
+
+/**
+ * Adreso pasiūlymai rašant (#65).
+ *
+ * Naudojamas PTV autocomplete, o ne geokoderis: geokoderis neužbaigtam tekstui
+ * grąžina artimiausią panašumą, ir „klaipėdos g" virsta G. D. Kuverto gatve
+ * Neringoje su 64 balais iš 100.
+ *
+ * Tuščias sąrašas grąžinamas tyliai: pasiūlymai yra pagalba, ne veiksmas.
+ */
+export async function suggestPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key || query.trim().length < MIN_PAIESKA) return [];
+  if (!(await signedIn())) return [];
 
   try {
-    return placeSuggestions(await geocodePayload(query, key));
+    const url = `${PTV_SUGGESTIONS_URL}?searchText=${encodeURIComponent(query)}`;
+    return parseSuggestions(await ptvJson(url, key));
   } catch {
     return [];
+  }
+}
+
+/**
+ * Pasirinktą pasiūlymą paverčia tašku.
+ *
+ * PTV pasiūlymas koordinačių neturi — jis duoda sunormintą tekstą, kurį reikia
+ * paduoti geokoderiui. Toks dviejų žingsnių kelias yra jų numatytas.
+ */
+export async function resolveSuggestion(
+  searchText: string,
+): Promise<{ ok: true; place: GeocodedPlace } | { ok: false }> {
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key || !searchText.trim()) return { ok: false };
+  if (!(await signedIn())) return { ok: false };
+
+  try {
+    const place = firstPlace(await geocodePayload(searchText, key));
+    return place ? { ok: true, place } : { ok: false };
+  } catch {
+    return { ok: false };
   }
 }
 

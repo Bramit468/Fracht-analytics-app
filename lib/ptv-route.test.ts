@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   firstPlace,
+  parseSuggestions,
   placeSuggestions,
   routeEstimate,
   routeFill,
@@ -55,6 +56,45 @@ describe("firstPlace", () => {
     expect(firstPlace({})).toBeNull();
     expect(firstPlace(null)).toBeNull();
     expect(firstPlace({ locations: [{ formattedAddress: "be taško" }] })).toBeNull();
+  });
+});
+
+describe("parseSuggestions", () => {
+  /** Sutrumpinta tikro autocomplete atsakymo kopija: „klaipedos g“. */
+  const ATSAKYMAS = {
+    suggestions: [
+      { caption: "Gargždai Klaipėdos Apskritis", subCaption: "Lietuva Klaipėdos rajono savivaldybė", searchText: "Lietuva Klaipėdos Apskritis Gargždai" },
+      { caption: "Gardamas Klaipėdos Apskritis", subCaption: "Lietuva Šilutės rajono savivaldybė", searchText: "Lietuva Klaipėdos Apskritis Gardamas" },
+      { caption: "Gardamas Klaipėdos Apskritis", subCaption: "Lietuva Šilutės rajono savivaldybė", searchText: "kartojasi" },
+    ],
+  };
+
+  it("paima pavadinimą, paaiškinimą ir paieškos tekstą", () => {
+    expect(parseSuggestions(ATSAKYMAS)[0]).toEqual({
+      caption: "Gargždai Klaipėdos Apskritis",
+      subCaption: "Lietuva Klaipėdos rajono savivaldybė",
+      searchText: "Lietuva Klaipėdos Apskritis Gargždai",
+    });
+  });
+
+  it("vienodai atrodančių eilučių nekartoja", () => {
+    // PTV grąžina dešimt Gardamų skirtingose seniūnijose; sąraše jie
+    // neatskiriami, tad rodyti visus reikštų tik trukdyti.
+    expect(parseSuggestions(ATSAKYMAS)).toHaveLength(2);
+  });
+
+  it("riboja sąrašo ilgį", () => {
+    expect(parseSuggestions(ATSAKYMAS, 1)).toHaveLength(1);
+  });
+
+  it("praleidžia eilutes be paieškos teksto", () => {
+    // Be jo pasirinkimo nepaversi koordinatėmis, tad rodyti nėra prasmės.
+    expect(parseSuggestions({ suggestions: [{ caption: "be teksto" }] })).toEqual([]);
+  });
+
+  it("netinkamas atsakymas duoda tuščią sąrašą", () => {
+    expect(parseSuggestions({})).toEqual([]);
+    expect(parseSuggestions(null)).toEqual([]);
   });
 });
 

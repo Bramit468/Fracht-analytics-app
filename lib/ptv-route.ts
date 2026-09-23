@@ -10,6 +10,7 @@
  */
 
 export const PTV_GEOCODING_URL = "https://api.myptv.com/geocoding/v1/locations/by-text";
+export const PTV_SUGGESTIONS_URL = "https://api.myptv.com/geocoding/v1/suggestions/by-text";
 export const PTV_ROUTING_URL = "https://api.myptv.com/routing/v1/routes";
 
 /** 40 t vilkikas. Kiti profiliai duotų kitus mokesčius ir kitus draudimus. */
@@ -50,6 +51,48 @@ function decimal(value: unknown): number | null {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * Vienas pasiūlymas iš PTV autocomplete.
+ *
+ * PTV paieška hierarchinė: šalis -> apskritis -> miestas -> gatvė -> namas.
+ * Todėl „klaipedos g" jam reiškia ne Klaipėdos gatvę, o Klaipėdos apskritį ir
+ * vietovę iš G raidės. Dėl to rodyti reikia ne tik pavadinimą, bet ir
+ * `subCaption` su rajonu — kitaip dešimt Gardamų atrodo vienodai.
+ */
+export interface PlaceSuggestion {
+  caption: string;
+  subCaption: string;
+  /** PTV sunormintas tekstas, kurį paduodi geokoderiui koordinatėms gauti. */
+  searchText: string;
+}
+
+export function parseSuggestions(payload: unknown, limit = 8): PlaceSuggestion[] {
+  if (typeof payload !== "object" || payload === null) return [];
+  const rows = (payload as { suggestions?: unknown }).suggestions;
+  if (!Array.isArray(rows)) return [];
+
+  const found: PlaceSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null) continue;
+    const suggestion = row as Record<string, unknown>;
+    const caption = text(suggestion.caption);
+    const searchText = text(suggestion.searchText);
+    if (caption === null || searchText === null) continue;
+
+    const subCaption = text(suggestion.subCaption) ?? "";
+    const key = `${caption}|${subCaption}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    found.push({ caption, subCaption, searchText });
+    if (found.length >= limit) break;
+  }
+
+  return found;
 }
 
 function toPlace(row: unknown): GeocodedPlace | null {

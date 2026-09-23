@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
+import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { truckRowToCalc } from "../../../lib/truck";
 import { getTripWithLegs, saveTrip } from "../../../lib/trips";
 import { fetchTelematicsFill } from "./telematics";
@@ -69,6 +70,10 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [skaiciuoja, setSkaiciuoja] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
+  /** Apmokami km skaičiavimo metu — reikia įkainiui už km pasiūlyme. */
+  const [apmokamiKm, setApmokamiKm] = useState(0);
+  /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
+  const [norimaMarza, setNorimaMarza] = useState("15");
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -244,6 +249,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       if (Math.abs(tripLegs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
       const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
+      setApmokamiKm(trip.paid_km);
       if (action !== "save") return;
       busy.current = true;
       setSaving(true);
@@ -344,6 +350,40 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
           {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-slate-500">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
+
+        {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Būtent jo
+            reikia kalbant su užsakovu, o ne ką tik suvestos kainos pelno. */}
+        <div className="mt-4 border-t pt-4">
+          <h3 className="font-semibold">Kiek prašyti</h3>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              Norima marža (%)
+              <input
+                type="number"
+                step="0.5"
+                value={norimaMarza}
+                onChange={(event) => setNorimaMarza(event.target.value)}
+                className={`${inputClass} w-32`}
+              />
+            </label>
+            {(() => {
+              const kaina = priceForMargin(result.totalCostCents, Number(norimaMarza));
+              if (kaina === null) {
+                return <p className="text-sm text-slate-600">Tokia marža nepasiekiama — 100 % reikštų pajamas be kaštų.</p>;
+              }
+              const uzKm = pricePerKm(kaina, apmokamiKm);
+              return (
+                <p className="text-lg font-semibold tabular-nums">
+                  {formatCents(kaina)}
+                  {uzKm !== null && <span className="ml-2 text-sm font-normal text-slate-600">({uzKm.toFixed(2)} €/km)</span>}
+                </p>
+              );
+            })()}
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Marža skaičiuojama nuo sąskaitos sumos, ne nuo kaštų: 20 % prie 800 € kaštų yra 1 000 €, ne 960 €.
+          </p>
+        </div>
       </section>}
     </fieldset>
   </form>;

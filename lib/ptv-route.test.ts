@@ -197,6 +197,16 @@ describe("routeFill", () => {
     // paros kaštus, o su jais ir pelną.
     expect(Object.keys(routeFill(estimate))).not.toContain("days");
   });
+
+  it("aptikto kelto be kainos nerodo kaip nulio", () => {
+    const estimate = routeEstimate({
+      distance: 100000,
+      events: [{ combinedTransport: { name: "Rostock - Gedser", type: "BOAT", accessType: "ENTER" } }],
+    });
+    if (!estimate) throw new Error("įvertis turėjo būti");
+
+    expect(routeFill(estimate).ferries_cents).toBe("");
+  });
 });
 
 describe("routeRequestUrl", () => {

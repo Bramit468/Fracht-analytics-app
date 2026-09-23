@@ -253,7 +253,12 @@ export function routeFill(estimate: RouteEstimate): RouteFill {
   return {
     paid_km: estimate.km.toFixed(2),
     bridges_cents: (estimate.bridgesCents / 100).toFixed(2),
-    ferries_cents: (estimate.ferriesCents / 100).toFixed(2),
+    // Aptiktas keltas be kainos nėra nemokamas. Tuščias laukas priverčia
+    // įvesti kainą arba pritaikyti konkretaus operatoriaus tarifą.
+    ferries_cents:
+      estimate.ferryDetected && estimate.ferriesCents === 0
+        ? ""
+        : (estimate.ferriesCents / 100).toFixed(2),
     tunnels_cents: (estimate.tunnelsCents / 100).toFixed(2),
     legKm: estimate.km.toFixed(2),
   };

@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
-import { parsePhotonPlaces, placeLabel, PHOTON_URL, type PhotonPlace } from "@/lib/photon";
+import { addressLabel, type FoundAddress } from "@/lib/nominatim";
 
-/** Kiek laukti po paskutinio klavišo, kad nesiųstume užklausos kas simbolį. */
-const DELSA_MS = 400;
-const MIN_SIMBOLIU = 3;
+import { searchAddress } from "./route-lookup";
 
 /**
- * Adreso laukas su PTV pasiūlymais (#65).
+ * Adreso laukas su paieška lietuviškai (#73).
  *
- * „Klaipėdos g. 4" PTV grąžina 42 adresus keturiuose miestuose, visus vienodo
- * tikslumo. Imti pirmą reiškia spėti už vartotoją, todėl sąrašas rodomas, o
- * pasirinkus įsimenamos koordinatės.
+ * Paieška vyksta paspaudus mygtuką, o ne rašant: Nominatim viešo serverio
+ * taisyklės neleidžia siųsti užklausos po kiekvieno klavišo. Mainais gaunama
+ * visa Europa lietuviškai — „Oslas, Norvegija", „Hamburgas, Vokietija" — be
+ * rakto, be serverio ir be mokesčio.
  *
- * Nepasirinkus laukas veikia kaip paprastas tekstas — maršrutas tada
- * geokoduojamas iš teksto, kaip anksčiau.
+ * Pasirinkus įsimenamos koordinatės, ir maršrutas skaičiuojamas nuo jų.
+ * Nepasirinkus laukas veikia kaip paprastas tekstas.
  */
 export function AddressField({
   name,
@@ -32,94 +31,97 @@ export function AddressField({
   inputClass: string;
 }) {
   const [query, setQuery] = useState(defaultValue);
-  const [places, setPlaces] = useState<PhotonPlace[]>([]);
-  const [open, setOpen] = useState(false);
+  const [found, setFound] = useState<FoundAddress[]>([]);
   const [point, setPoint] = useState("");
-  const paskutine = useRef("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (!enabled || query.trim().length < MIN_SIMBOLIU || query === paskutine.current) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let cancelled = false;
-
-    const timer = setTimeout(async () => {
-      try {
-        // Kreipiamasi tiesiai, ne per serverį: Photon rakto nereikalauja, tad
-        // slėpti nėra ko, o kelias per Vercel su prisijungimo patikra pridėdavo
-        // apie sekundę prie ir taip lėto atsakymo (#69).
-        const url = `${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=10`;
-        const response = await fetch(url, { signal: controller.signal });
-        if (!response.ok) return;
-
-        const found = parsePhotonPlaces(await response.json());
-        if (!cancelled) {
-          setPlaces(found);
-          setOpen(found.length > 0);
-        }
-      } catch {
-        // Pasiūlymai yra pagalba, ne veiksmas: jų nebuvimas neturi virsti klaida.
+  async function search() {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const results = await searchAddress(query);
+      setFound(results);
+      if (results.length === 0) {
+        setMessage("Tokio adreso rasti nepavyko. Pabandykite trumpiau arba pridėkite miestą.");
       }
-    }, DELSA_MS);
+    } catch {
+      setMessage("Nepavyko pasiekti adresų paieškos.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      // Senesnė užklausa nutraukiama: kitaip lėtas atsakymas galėtų grįžti
-      // vėliau už naujesnį ir perrašyti sąrašą pasenusiais variantais.
-      controller.abort();
-    };
-  }, [query, enabled]);
-
-  function choose(place: PhotonPlace) {
-    const label = placeLabel(place);
-    paskutine.current = label;
-    setQuery(label);
-    // Photon koordinates duoda iškart, tad antro žingsnio nereikia.
-    setPoint(`${place.latitude},${place.longitude}`);
-    setOpen(false);
+  function choose(address: FoundAddress) {
+    setQuery(addressLabel(address));
+    setPoint(`${address.latitude},${address.longitude}`);
+    setFound([]);
+    setMessage("");
   }
 
   return (
-    <label className="relative block">
-      {label}
-      <input
-        name={name}
-        type="text"
-        value={query}
-        autoComplete="off"
-        onChange={(event) => {
-          setQuery(event.target.value);
-          // Pakeitus tekstą pasirinkimas nebegalioja – kitaip maršrutas eitų
-          // į seną tašką, o laukelyje būtų matyti naujas adresas.
-          setPoint("");
-        }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className={inputClass}
-      />
-      <input type="hidden" name={`${name}_point`} value={point} />
+    <div className="flex flex-col gap-2">
+      <label className="block">
+        {label}
+        <input
+          name={name}
+          type="text"
+          value={query}
+          autoComplete="off"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            // Pakeitus tekstą pasirinkimas nebegalioja – kitaip maršrutas eitų
+            // į seną tašką, o laukelyje būtų matyti naujas adresas.
+            setPoint("");
+            setFound([]);
+          }}
+          onKeyDown={(event) => {
+            // Enter laukelyje reikštų formos pateikimą; čia jis reiškia paiešką.
+            if (enabled && event.key === "Enter") {
+              event.preventDefault();
+              void search();
+            }
+          }}
+          className={inputClass}
+        />
+      </label>
 
-      {open && places.length > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border bg-white shadow-lg">
-          {places.map((place) => (
-            <li key={`${place.latitude},${place.longitude},${place.label}`}>
+      {enabled && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={busy || query.trim().length < 3}
+            onClick={() => void search()}
+            className="rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-50"
+          >
+            {busy ? "Ieškoma…" : "Ieškoti adreso"}
+          </button>
+          {point && <span className="text-sm text-green-700">Adresas patvirtintas</span>}
+          {message && <span className="text-sm text-slate-600">{message}</span>}
+        </div>
+      )}
+
+      {found.length > 0 && (
+        <ul className="overflow-hidden rounded-lg border bg-white">
+          {found.map((address) => (
+            <li key={`${address.latitude},${address.longitude}`}>
               <button
                 type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(place)}
+                onClick={() => choose(address)}
                 className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
               >
-                <span className="block">{place.label}</span>
-                {place.sublabel && (
-                  <span className="block text-xs text-slate-500">{place.sublabel}</span>
+                <span className="block">{address.label}</span>
+                {address.sublabel && (
+                  <span className="block text-xs text-slate-500">{address.sublabel}</span>
                 )}
               </button>
             </li>
           ))}
         </ul>
       )}
-    </label>
+
+      <input type="hidden" name={`${name}_point`} value={point} />
+    </div>
   );
 }

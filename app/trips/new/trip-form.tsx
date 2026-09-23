@@ -14,10 +14,20 @@ import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
 
-const fields = [
+/**
+ * Skaitiniai laukai, suskirstyti pagal skiltis.
+ *
+ * Grupės surašytos, o ne atrenkamos pagal pavadinimo fragmentą: naujas laukas
+ * turi būti sąmoningai priskirtas, o ne nusėsti bet kur pagal atsitiktinį
+ * pavadinimo panašumą.
+ */
+const apimtiesFields = [
   ["days", "Reiso trukmė (paros)", "1"],
   ["paid_km", "Apmokami km", "0.01"],
   ["empty_km", "Tušti km", "0.01"],
+] as const;
+
+const kastuFields = [
   ["fuel_l_per_100km", "Kuro sąnaudos (l/100 km)", "0.0001"],
   ["fuel_price", "Kuro kaina (€/l)", "0.0001"],
   ["adblue_l_per_100km", "AdBlue sąnaudos (l/100 km)", "0.0001"],
@@ -251,47 +261,103 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
 
   return <form ref={formRef} onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
-      <section className="rounded-xl bg-slate-50 p-4">
-        <h2 className="font-semibold">Užpildyti iš telematikos</h2>
-        <p className="text-sm text-slate-600">Pasirinkite furą ir laikotarpį – km, kuras ir sumokėti keliai bus paimti iš tikrų duomenų.</p>
+      <Skiltis numeris={1} antraste="Kas ir kur veža">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+          <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
+          <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
+          <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
+        </div>
+        {/* Mygtukas šalia laukų, kuriuos jis užpildo, o ne atskiroje dėžutėje viršuje. */}
+        {routeLookup && <div className="mt-3">
+          <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+            {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
+          </button>
+          <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
+          {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
+        </div>}
+      </Skiltis>
+
+      <Skiltis numeris={2} antraste="Kada ir kiek">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
+          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} /></label>)}
+        </div>
+        <p className="mt-2 text-sm text-slate-600">Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
+      </Skiltis>
+
+      <Skiltis numeris={3} antraste="Kiek išleis">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} /></label>)}
+          {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
+        </div>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm">Nuo<input name="tele_from" type="date" className={inputClass} /></label>
           <label className="text-sm">Iki<input name="tele_to" type="date" className={inputClass} /></label>
           <button type="button" disabled={pildoma} onClick={() => void fillFromTelematics()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
-            {pildoma ? "Imama…" : "Užpildyti"}
+            {pildoma ? "Imama…" : "Užpildyti iš telematikos"}
           </button>
         </div>
-        {telematika && <p role="status" className="mt-3 text-sm text-slate-700">{telematika}</p>}
-      </section>
+        <p className="mt-2 text-sm text-slate-600">Paims tikrus tos furos km, kurą ir sumokėtus kelius per nurodytą laikotarpį.</p>
+        {telematika && <p role="status" className="mt-2 text-sm text-slate-700">{telematika}</p>}
+        <p className="mt-3 text-sm text-slate-600">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš furos paros savikainos — atskirai vesti nereikia.</p>
+      </Skiltis>
 
-      {routeLookup && <section className="rounded-xl bg-slate-50 p-4">
-        <h2 className="font-semibold">Skaičiuoti maršrutą</h2>
-        <p className="text-sm text-slate-600">Užpildykite laukus „Iš“ ir „Į“ – kilometrai ir kelių mokesčiai bus suskaičiuoti vilkikui, o ne lengvajam.</p>
-        <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="mt-3 rounded-lg border bg-white p-3 disabled:opacity-50">
-          {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą"}
-        </button>
-        {marsrutas && <p role="status" className="mt-3 text-sm text-slate-700">{marsrutas}</p>}
-      </section>}
+      <Skiltis numeris={4} antraste="Kiek gaus">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
+          <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>
+        </div>
+      </Skiltis>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-        {[["trip_number", "Reiso nr."], ["trip_date", "Data"]].map(([name, label]) => <label key={name}>{label}<input name={name} type={name === "trip_date" ? "date" : "text"} defaultValue={defaults[name] ?? ""} className={inputClass} /></label>)}
-        <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
-        <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
-        {fields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") || name === "empty_km" ? "0" : undefined)} /></label>)}
-        <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
-        <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>
-      </div>
-      <section className="space-y-3"><h2 className="font-semibold">Atkarpos pagal šalis</h2><p className="text-sm text-slate-600">Surašykite visus kilometrus. Neapmokestintiems keliams pasirinkite „Nemokami“.</p>
-        {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
-        <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
-      </section>
-      <div className="grid gap-4 sm:grid-cols-2">{extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}</div>
-      <p className="text-sm text-slate-600">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš pasirinktos furos paros savikainos.</p>
+      {/* Atkarpos reikalingos tik tada, kai kelių kaina skaičiuojama pagal
+          įkainius. Su PTV ar telematika ten lieka viena „Nemokami" eilutė,
+          todėl skiltis suskleista ir nebeblaško. */}
+      <details className="rounded-xl border p-4">
+        <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis</summary>
+        <p className="mt-2 text-sm text-slate-600">Reikalinga tik tada, kai kelių kaina skaičiuojama pagal šalių įkainius. Suvedus tikrus mokesčius, čia lieka viena „Nemokami“ eilutė su visais kilometrais.</p>
+        <div className="mt-3 space-y-3">
+          {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
+          <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
+        </div>
+      </details>
+
       <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
+
+      {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
+          paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
+      {result && <section aria-label="Reiso rezultatai" className="rounded-xl border-2 border-slate-300 bg-white p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-semibold">Reiso rezultatai</h2>
+          <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-green-700" : "text-red-700"}`}>
+            {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
+          </p>
+        </div>
+        <p className="mt-1 text-sm text-slate-600">
+          Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
+          {" · "}
+          {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
+        </p>
+        <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
+          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-slate-500">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
+        </dl>
+      </section>}
     </fieldset>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
-    {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
-    {result && <section aria-label="Reiso rezultatai" className="rounded-xl bg-slate-50 p-4"><h2 className="font-semibold">Reiso rezultatai</h2><dl className="mt-3 grid gap-3 sm:grid-cols-2">{[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Pajamos", result.revenueCents], ["Kaštai iš viso", result.totalCostCents], ["Pelnas", result.profitCents]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatCents(Number(value))}</dd></div>)}<div><dt>Marža</dt><dd>{result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}</dd></div><div><dt>Pelnas už apmokamą km</dt><dd>{result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}</dd></div></dl></section>}
   </form>;
+}
+
+/** Sunumeruota skiltis: vartotojas mato, kiek žingsnių liko. */
+function Skiltis({ numeris, antraste, children }: { numeris: number; antraste: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border p-4">
+      <h2 className="mb-3 flex items-center gap-2 font-semibold">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-sm">{numeris}</span>
+        {antraste}
+      </h2>
+      {children}
+    </section>
+  );
 }

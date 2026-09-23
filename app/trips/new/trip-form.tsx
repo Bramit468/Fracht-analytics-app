@@ -8,6 +8,7 @@ import { calculateSavedTrip } from "../../../lib/trip-input";
 import { truckRowToCalc } from "../../../lib/truck";
 import { getTripWithLegs, saveTrip } from "../../../lib/trips";
 import { fetchTelematicsFill } from "./telematics";
+import { lookupRoute } from "./route-lookup";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -40,7 +41,7 @@ function tripDefaults(trip: TripWithLegs): Record<string, string> {
   };
 }
 
-export function TripForm({ tripId }: { tripId?: string }) {
+export function TripForm({ tripId, routeLookup = false }: { tripId?: string; routeLookup?: boolean }) {
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [defaults, setDefaults] = useState<Record<string, string>>({});
   const [tariffs, setTariffs] = useState<CountryTariff[]>([]);
@@ -53,6 +54,8 @@ export function TripForm({ tripId }: { tripId?: string }) {
   const [saving, setSaving] = useState(false);
   const [telematika, setTelematika] = useState("");
   const [pildoma, setPildoma] = useState(false);
+  const [marsrutas, setMarsrutas] = useState("");
+  const [skaiciuoja, setSkaiciuoja] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
   const [saved, setSaved] = useState("");
@@ -134,6 +137,54 @@ export function TripForm({ tripId }: { tripId?: string }) {
     }
   }
 
+  /** Užpildo km ir kelių mokesčius iš vilkiko maršruto. Reikšmės taisomos (#61). */
+  async function fillFromRoute() {
+    const form = formRef.current;
+    if (!form || skaiciuoja) return;
+
+    const value = (name: string) => {
+      const field = form.elements.namedItem(name);
+      return field instanceof HTMLInputElement ? field.value : "";
+    };
+
+    setSkaiciuoja(true);
+    setMarsrutas("");
+    try {
+      const result = await lookupRoute(value("origin"), value("destination"));
+      if (!result.ok) {
+        setMarsrutas(result.message);
+        return;
+      }
+
+      for (const [name, filled] of Object.entries(result.fill)) {
+        if (name === "legKm") continue;
+        const field = form.elements.namedItem(name);
+        if (field instanceof HTMLInputElement) field.value = filled;
+      }
+
+      // Tikri mokesčiai pakeičia įkainio pagal šalis spėjimą, todėl atkarpa
+      // paliekama „Nemokami" – kitaip kaštai būtų suskaičiuoti dukart.
+      setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
+      setResult(null);
+      setSaved("");
+
+      const ispejimai = [
+        result.violated ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
+        result.approximate ? "Adresas rastas tik iki miesto, tad km apytiksliai." : "",
+      ].filter(Boolean).join(" ");
+
+      setMarsrutas(
+        `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km)} km, `
+        + `keliai ${formatCents(result.tollCents)}. Siūloma trukmė ${result.days} par. – `
+        + `įrašykite patys, jei sutinkate. ${ispejimai}`.trim(),
+      );
+    } catch {
+      setMarsrutas("Nepavyko suskaičiuoti maršruto.");
+    } finally {
+      setSkaiciuoja(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy.current) return;
@@ -206,6 +257,15 @@ export function TripForm({ tripId }: { tripId?: string }) {
         </div>
         {telematika && <p role="status" className="mt-3 text-sm text-slate-700">{telematika}</p>}
       </section>
+
+      {routeLookup && <section className="rounded-xl bg-slate-50 p-4">
+        <h2 className="font-semibold">Skaičiuoti maršrutą</h2>
+        <p className="text-sm text-slate-600">Užpildykite laukus „Iš“ ir „Į“ – kilometrai ir kelių mokesčiai bus suskaičiuoti vilkikui, o ne lengvajam.</p>
+        <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="mt-3 rounded-lg border bg-white p-3 disabled:opacity-50">
+          {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą"}
+        </button>
+        {marsrutas && <p role="status" className="mt-3 text-sm text-slate-700">{marsrutas}</p>}
+      </section>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>

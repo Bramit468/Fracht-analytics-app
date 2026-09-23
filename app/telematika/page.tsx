@@ -12,6 +12,8 @@ import {
   type SupplyIssues,
 } from "@/lib/telematics-costs";
 
+import { ArchiveButton } from "./archive-button";
+
 export const metadata: Metadata = {
   title: "Faktiniai kaštai | Fracht Analytics",
 };
@@ -151,6 +153,14 @@ export default async function TelematikaPage({
           Rodyti
         </button>
       </form>
+
+      <section className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+        <p className="text-sm text-neutral-500">
+          Telematika laiko tik paskutinius ~3 mėnesius. Išsaugoti duomenys lieka pas jus
+          ir tada, kai tiekėjas juos pamirš.
+        </p>
+        <ArchiveButton />
+      </section>
 
       {klaida && (
         <p role="alert" className="text-sm text-red-600">

@@ -1,5 +1,6 @@
 "use server";
 
+import { parseRouteLine, thinRouteLine, type LineCoordinate } from "@/lib/route-line";
 import {
   parseNominatim,
   NOMINATIM_URL,
@@ -33,6 +34,8 @@ export type RouteLookupResult =
       approximate: boolean;
       /** PTV nerado vilkikui tinkamo kelio arba jis pažeidžia ribojimus. */
       violated: boolean;
+      /** Maršruto linija žemėlapiui, jau praretinta (#74). */
+      line: LineCoordinate[];
     }
   | { ok: false; message: string };
 
@@ -152,7 +155,7 @@ export async function lookupRoute(
     const url =
       `${PTV_ROUTING_URL}?waypoints=${from.latitude},${from.longitude}` +
       `&waypoints=${to.latitude},${to.longitude}` +
-      `&profile=${PTV_TRUCK_PROFILE}&results=TOLL_COSTS`;
+      `&profile=${PTV_TRUCK_PROFILE}&results=TOLL_COSTS,POLYLINE`;
 
     // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
     // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.
@@ -162,10 +165,17 @@ export async function lookupRoute(
       `${to.formattedAddress} [${to.latitude},${to.longitude}]`,
     );
 
-    const estimate = routeEstimate(await ptvJson(url, key));
+    const payload = await ptvJson(url, key);
+    const estimate = routeEstimate(payload);
     if (!estimate) {
       return { ok: false, message: "Nepavyko suskaičiuoti maršruto." };
     }
+
+    // Linija retinama serveryje: pilna Panevėžys–Oslas yra apie 418 KB, o
+    // ekrane skirtumo nesimato.
+    const line = thinRouteLine(
+      parseRouteLine((payload as { polyline?: unknown }).polyline),
+    );
 
     return {
       ok: true,
@@ -180,6 +190,7 @@ export async function lookupRoute(
         (place) => place.locationType !== "EXACT_ADDRESS" && place.locationType !== "PICKED",
       ),
       violated: estimate.violated,
+      line,
     };
   } catch (cause) {
     if (cause instanceof PtvError) {

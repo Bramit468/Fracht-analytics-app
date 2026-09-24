@@ -3,10 +3,70 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatCents } from "../../lib/money";
+import {
+  EMPTY_FILTER,
+  filterTrips,
+  SORTS,
+  sortTrips,
+  tripPlates,
+  type SortKey,
+  type TripFilter,
+} from "../../lib/trip-filter";
+import { PERIODS, type PeriodKey } from "../../lib/trip-period";
 import { deleteTrip, listTrips, type TripSummary } from "../../lib/trips";
 
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("lt-LT").format(new Date(`${date}T00:00:00`));
+}
+
+/** Paieška, atranka ir rikiavimas. Šimte reisų slinkti žemyn nebeišeina (#105). */
+function Controls({
+  filter,
+  onFilter,
+  sort,
+  onSort,
+  plates,
+  shown,
+  total,
+}: {
+  filter: TripFilter;
+  onFilter: (next: TripFilter) => void;
+  sort: SortKey;
+  onSort: (next: SortKey) => void;
+  plates: string[];
+  shown: number;
+  total: number;
+}) {
+  const select = "rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm";
+
+  return <div className="rounded-2xl border bg-white p-4 shadow-sm">
+    <div className="flex flex-wrap gap-3">
+      <label className="flex-1 text-sm">
+        <span className="sr-only">Paieška</span>
+        <input type="search" value={filter.query} onChange={(event) => onFilter({ ...filter, query: event.target.value })} placeholder="Reiso numeris, miestas arba fura" className="w-full min-w-48 rounded-xl border border-slate-300 px-3 py-2" />
+      </label>
+      <label className="text-sm">
+        <span className="sr-only">Fura</span>
+        <select value={filter.plate} onChange={(event) => onFilter({ ...filter, plate: event.target.value })} className={select}>
+          <option value="">Visos furos</option>
+          {plates.map((plate) => <option key={plate} value={plate}>{plate}</option>)}
+        </select>
+      </label>
+      <label className="text-sm">
+        <span className="sr-only">Laikotarpis</span>
+        <select value={filter.period} onChange={(event) => onFilter({ ...filter, period: event.target.value as PeriodKey })} className={select}>
+          {PERIODS.map((period) => <option key={period.key} value={period.key}>{period.label}</option>)}
+        </select>
+      </label>
+      <label className="text-sm">
+        <span className="sr-only">Rikiavimas</span>
+        <select value={sort} onChange={(event) => onSort(event.target.value as SortKey)} className={select}>
+          {SORTS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+        </select>
+      </label>
+    </div>
+    <p className="mt-3 text-sm text-slate-500">Rodoma {shown} iš {total} reisų.</p>
+  </div>;
 }
 
 export function TripList() {
@@ -15,6 +75,8 @@ export function TripList() {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [removing, setRemoving] = useState("");
+  const [filter, setFilter] = useState<TripFilter>(EMPTY_FILTER);
+  const [sort, setSort] = useState<SortKey>("date");
 
   async function remove(trip: TripSummary) {
     if (!confirm(`Ištrinti reisą ${trip.tripNumber}? Atstatyti nebus galima.`)) return;
@@ -67,8 +129,18 @@ export function TripList() {
     </p>;
   }
 
-  return <ul className="space-y-4">
-    {trips.map((trip) => {
+  const shown = sortTrips(
+    filterTrips(trips, filter, new Date().toISOString().slice(0, 10)),
+    sort,
+  );
+
+  return <div className="space-y-4">
+    <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} />
+
+    {shown.length === 0 ? <p className="rounded-2xl border border-dashed bg-white p-8 text-center text-slate-600">
+      Pagal šią paiešką reisų nėra.
+    </p> : <ul className="space-y-4">
+    {shown.map((trip) => {
       const profitable = trip.profitCents >= 0;
       return <li key={trip.id} className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -100,5 +172,6 @@ export function TripList() {
         </div>
       </li>;
     })}
-  </ul>;
+    </ul>}
+  </div>;
 }

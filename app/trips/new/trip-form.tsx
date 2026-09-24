@@ -47,6 +47,29 @@ const kastuFields = [
 const extras = [["bridges_cents", "Tiltai / vinjetės (€)"], ["ferries_cents", "Keltai (€)"], ["tunnels_cents", "Tuneliai (€)"], ["parking_cents", "Parkingas (€)"]] as const;
 const inputClass = "mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3";
 
+/** Naršyklės vietinę datą ir laiką paverčia nedviprasmišku UTC laiku PTV. */
+function departureIso(date: string, time: string): string | undefined {
+  if (!date) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const clock = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match || !clock) return undefined;
+
+  const departure = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(clock[1]),
+    Number(clock[2]),
+  );
+  return Number.isNaN(departure.getTime()) ? undefined : departure.toISOString();
+}
+
+function durationText(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? `${hours} val. ${rest} min.` : `${rest} min.`;
+}
+
 /** Išsaugotas reisas -> formos laukų reikšmės. Sumos verčiamos atgal į eurus. */
 function tripDefaults(trip: TripWithLegs): Record<string, string> {
   return {
@@ -201,12 +224,20 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     setNeivertintasKeltas(null);
     setKeltoIvertis(null);
     try {
+      const tripDate = value("trip_date");
+      const departureTime = value("departure_time");
+      if (tripDate && !departureTime) {
+        setMarsrutas("Įveskite išvykimo laiką.");
+        return;
+      }
+
       const result = await lookupRoute(
         value("origin"),
         value("destination"),
         value("origin_point"),
         value("destination_point"),
         vengtiKeltu,
+        departureIso(tripDate, departureTime),
       );
       if (!result.ok) {
         setMarsrutas(result.message);
@@ -256,6 +287,8 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
 
       setMarsrutas(
         `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km)} km, `
+        + `kelionė ${durationText(result.travelMinutes)} (${result.trafficMode === "REALISTIC" ? "gyvas eismas" : "tipinis eismas"}), `
+        + `eismo vėlavimas ${result.trafficDelayMinutes} min., `
         + `keliai / tiltai ${formatCents(result.bridgesCents)}, `
         + `keltai ${needsFerryPrice && !publicFare ? "kaina nežinoma" : formatCents(shownFerryCents)}, tuneliai ${formatCents(result.tunnelsCents)}. `
         + `Iš viso ${needsFerryPrice && !publicFare ? "bus aišku įvedus kelto kainą" : formatCents(shownTollCents)}. Siūloma trukmė ${result.days} par. – `
@@ -360,9 +393,10 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       <Skiltis numeris={2} antraste="Kada ir kiek">
         <div className="grid gap-4 sm:grid-cols-2">
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
+          <label>Išvykimo laikas maršrutui<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
           {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} /></label>)}
         </div>
-        <p className="mt-2 text-sm text-slate-600">Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
+        <p className="mt-2 text-sm text-slate-600">Išvykimo laikas naudojamas PTV eismui ir kelių apribojimams. Be datos PTV skaičiuoja išvykstant dabar. Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
       </Skiltis>
 
       <Skiltis numeris={3} antraste="Kiek išleis">

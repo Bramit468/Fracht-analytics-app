@@ -243,7 +243,8 @@ describe("routeRequestUrl", () => {
 
     const url = new URL(routeRequestUrl(from, to, false, timing));
 
-    expect(url.searchParams.get("startTime")).toBe("2026-09-24T10:00:00.000Z");
+    expect(url.searchParams.get("options[startTime]")).toBe("2026-09-24T10:00:00.000Z");
+    expect(url.searchParams.has("startTime")).toBe(false);
     expect(url.searchParams.get("options[trafficMode]")).toBe("REALISTIC");
   });
 });

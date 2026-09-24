@@ -134,7 +134,7 @@ export function routeRequestUrl(
   );
   url.searchParams.set("options[currency]", "EUR");
   if (timing?.startTime) {
-    url.searchParams.set("startTime", timing.startTime);
+    url.searchParams.set("options[startTime]", timing.startTime);
     url.searchParams.set("options[trafficMode]", timing.trafficMode);
   }
   if (avoidFerries) url.searchParams.set("options[avoid]", "FERRIES");

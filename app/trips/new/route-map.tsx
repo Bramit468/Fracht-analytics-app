@@ -1,16 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
+import type { PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 
 // MapLibre 6 worker turi importuoti greta esantį shared modulį. Next.js
 // sugeneruotas worker URL Vercel aplinkoje to modulio neturėjo, todėl
 // bazinis žemėlapis pasirodydavo, o GeoJSON maršruto linija – ne.
 setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
+
+const MAP_LAYERS: { layer: PtvMapLayer; label: string; opacity: number }[] = [
+  { layer: "trafficIncidents", label: "Eismo įvykiai ir uždarymai", opacity: 0.8 },
+  { layer: "restrictions", label: "Vilkikų apribojimai", opacity: 0.65 },
+  { layer: "toll", label: "Mokami keliai", opacity: 0.55 },
+  { layer: "lowEmissionZones", label: "Mažos taršos zonos", opacity: 0.45 },
+];
+
+const DEFAULT_VISIBLE_LAYERS: Record<PtvMapLayer, boolean> = {
+  trafficIncidents: true,
+  restrictions: true,
+  toll: false,
+  lowEmissionZones: false,
+};
+
+function mapLayerId(layer: PtvMapLayer): string {
+  return `ptv-${layer}`;
+}
 
 /**
  * Maršrutas žemėlapyje (#74).
@@ -21,6 +40,9 @@ setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
  */
 export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; violations?: RouteViolation[] }) {
   const container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS);
+  const visibleLayersRef = useRef(visibleLayers);
 
   useEffect(() => {
     if (!container.current || line.length < 2) return;
@@ -45,10 +67,29 @@ export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; vi
       center: line[0],
       zoom: 4,
     });
+    mapRef.current = map;
 
     map.addControl(new NavigationControl(), "top-right");
 
     map.on("load", () => {
+      for (const { layer, opacity } of MAP_LAYERS) {
+        const id = mapLayerId(layer);
+        map.addSource(id, {
+          type: "raster",
+          tiles: [`/api/ptv-map/${layer}/{z}/{x}/{y}`],
+          tileSize: 256,
+          maxzoom: 22,
+          attribution: "&copy; 2026 PTV Logistics, HERE",
+        });
+        map.addLayer({
+          id,
+          type: "raster",
+          source: id,
+          layout: { visibility: visibleLayersRef.current[layer] ? "visible" : "none" },
+          paint: { "raster-opacity": opacity },
+        });
+      }
+
       map.addSource("route", {
         type: "geojson",
         data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } },
@@ -76,16 +117,43 @@ export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; vi
       if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0 });
     });
 
-    return () => map.remove();
+    return () => {
+      mapRef.current = null;
+      map.remove();
+    };
   }, [line, violations]);
+
+  useEffect(() => {
+    visibleLayersRef.current = visibleLayers;
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const { layer } of MAP_LAYERS) {
+      const id = mapLayerId(layer);
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, "visibility", visibleLayers[layer] ? "visible" : "none");
+      }
+    }
+  }, [visibleLayers]);
 
   if (line.length < 2) return null;
 
-  return (
+  return <div className="mt-3">
+    <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+      <legend className="px-1 font-medium text-slate-700">Žemėlapio sluoksniai</legend>
+      {MAP_LAYERS.map(({ layer, label }) => <label key={layer} className="flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={visibleLayers[layer]}
+          onChange={() => setVisibleLayers((current) => ({ ...current, [layer]: !current[layer] }))}
+        />
+        {label}
+      </label>)}
+    </fieldset>
     <div
       ref={container}
-      className="mt-3 h-80 w-full overflow-hidden rounded-lg border"
+      className="h-80 w-full overflow-hidden rounded-lg border"
       aria-label="Maršrutas žemėlapyje"
     />
-  );
+  </div>;
 }

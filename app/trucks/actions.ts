@@ -9,6 +9,12 @@ import {
   type TruckFormErrors,
   type TruckFormValues,
 } from "@/lib/truck";
+import {
+  parseBulkCosts,
+  readBulkCostValues,
+  type BulkCostValues,
+} from "@/lib/truck-costs-bulk";
+import type { Truck } from "@/types/truck";
 
 export interface SaveTruckState {
   status: "idle" | "error" | "success";
@@ -21,6 +27,15 @@ export interface SaveTruckState {
 export interface DeleteTruckState {
   status: "idle" | "error";
   message?: string;
+}
+
+export interface SaveTruckCostsState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  /** Klaidos pagal furos `id`. */
+  errors?: Record<string, TruckFormErrors>;
+  /** Įvestos reikšmės grąžinamos, kad klaidos atveju lentelė neišsivalytų. */
+  values?: BulkCostValues;
 }
 
 /** Postgres klaidos kodas, kai pažeidžiamas `unique` apribojimas. */
@@ -108,6 +123,76 @@ export async function saveTruck(
     message: truckId
       ? `Furos ${parsed.value.plate} pakeitimai išsaugoti.`
       : `Fura ${parsed.value.plate} pridėta.`,
+  };
+}
+
+/**
+ * Išsaugo visų furų paros kaštus vienu kartu (#99).
+ *
+ * Esamos reikšmės imamos iš duomenų bazės, o ne iš formos: taip matyti, kurios
+ * eilutės iš tikrųjų pasikeitė, ir nepaliestos furos lieka nepaliestos net tada,
+ * kai kas nors jas pakeitė kitame lange.
+ */
+export async function saveTruckCosts(
+  _previous: SaveTruckCostsState,
+  formData: FormData,
+): Promise<SaveTruckCostsState> {
+  const supabase = await createServerSupabaseClient();
+  const { data: trucks, error: readError } = await supabase
+    .from("trucks")
+    .select("*")
+    .order("plate")
+    .overrideTypes<Truck[], { merge: false }>();
+
+  if (readError) {
+    console.error("Nepavyko nuskaityti furų prieš įrašymą", readError);
+    return { status: "error", message: "Nepavyko nuskaityti furų. Bandykite dar kartą." };
+  }
+
+  const values = readBulkCostValues(formData, trucks);
+  const { updates, errors } = parseBulkCosts(values, trucks);
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      status: "error",
+      message: "Patikrinkite pažymėtus laukus. Kitos furos neišsaugotos.",
+      errors,
+      values,
+    };
+  }
+
+  if (updates.length === 0) {
+    return { status: "success", message: "Pakeitimų nebuvo." };
+  }
+
+  const results = await Promise.all(
+    updates.map(async (update) => ({
+      plate: update.plate,
+      error: (await supabase.from("trucks").update(update.value).eq("id", update.id)).error,
+    })),
+  );
+
+  const failed = results.filter((result) => result.error !== null);
+
+  if (failed.length > 0) {
+    for (const result of failed) {
+      console.error(`Nepavyko įrašyti furos ${result.plate} kaštų`, result.error);
+    }
+
+    refresh();
+
+    return {
+      status: "error",
+      message: `Nepavyko įrašyti šių furų: ${failed.map((result) => result.plate).join(", ")}.`,
+      values,
+    };
+  }
+
+  refresh();
+
+  return {
+    status: "success",
+    message: `Išsaugota furų: ${updates.length}.`,
   };
 }
 

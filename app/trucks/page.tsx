@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { connection } from "next/server";
 
 import { calcDailyRate } from "@/lib/calc";
@@ -36,7 +37,12 @@ export default async function TrucksPage() {
       </header>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">Sąrašas</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-medium">Sąrašas</h2>
+          <Link href="/trucks/kastai" className="text-sm underline">
+            Taisyti visų kaštus vienoje lentelėje
+          </Link>
+        </div>
         {error ? (
           <p role="alert" className="text-sm text-red-600">
             Nepavyko nuskaityti furų: {error.message}

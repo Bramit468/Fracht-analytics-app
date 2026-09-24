@@ -12,6 +12,7 @@ import {
   routeEstimate,
   routeFill,
   routeRequestUrl,
+  routeTiming,
   suggestedDays,
   PTV_GEOCODING_URL,
   type GeocodedPlace,
@@ -24,6 +25,9 @@ export type RouteLookupResult =
       ok: true;
       fill: RouteFill;
       km: number;
+      travelMinutes: number;
+      trafficDelayMinutes: number;
+      trafficMode: "REALISTIC" | "AVERAGE";
       tollCents: number;
       bridgesCents: number;
       ferriesCents: number;
@@ -129,6 +133,7 @@ export async function lookupRoute(
   fromPoint?: string,
   toPoint?: string,
   avoidFerries = false,
+  departureAt?: string,
 ): Promise<RouteLookupResult> {
   // Įklijuojant į Vercel lengvai prilimpa tarpas ar eilutės pabaiga, o PTV
   // tada atmeta raktą kaip neteisingą.
@@ -147,6 +152,11 @@ export async function lookupRoute(
     return { ok: false, message: "Užpildykite laukus „Iš“ ir „Į“." };
   }
 
+  const timing = routeTiming(departureAt);
+  if (!timing) {
+    return { ok: false, message: "Neteisinga išvykimo data arba laikas." };
+  }
+
   try {
     // Pasirinktas variantas naudojamas kaip yra: tada tiksliai žinoma, kurį
     // tašką žmogus turėjo omenyje, ir spėlioti nebereikia (#65).
@@ -158,7 +168,7 @@ export async function lookupRoute(
     if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
     if (!to) return { ok: false, message: `Nepavyko rasti adreso „${destination}“.` };
 
-    const url = routeRequestUrl(from, to, avoidFerries);
+    const url = routeRequestUrl(from, to, avoidFerries, timing);
 
     // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
     // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.
@@ -184,6 +194,9 @@ export async function lookupRoute(
       ok: true,
       fill: routeFill(estimate),
       km: estimate.km,
+      travelMinutes: estimate.travelMinutes,
+      trafficDelayMinutes: estimate.trafficDelayMinutes,
+      trafficMode: timing.trafficMode,
       tollCents: estimate.tollCents,
       bridgesCents: estimate.bridgesCents,
       ferriesCents: estimate.ferriesCents,

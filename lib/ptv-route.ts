@@ -15,6 +15,14 @@ export const PTV_ROUTING_URL = "https://api.myptv.com/routing/v1/routes";
 /** 40 t vilkikas. Kiti profiliai duotų kitus mokesčius ir kitus draudimus. */
 export const PTV_TRUCK_PROFILE = "EUR_TRUCK_40T";
 
+export type PtvTrafficMode = "REALISTIC" | "AVERAGE";
+
+export interface RouteTiming {
+  /** ISO 8601 UTC laikas. Be jo PTV skaičiuoja išvykstant dabar. */
+  startTime?: string;
+  trafficMode: PtvTrafficMode;
+}
+
 export interface GeocodedPlace {
   latitude: number;
   longitude: number;
@@ -33,6 +41,9 @@ export interface RouteEstimate {
   km: number;
   /** Kelio laikas be poilsio ir laukimo. Reiso trukmė visada ilgesnė. */
   travelHours: number;
+  travelMinutes: number;
+  /** Tik gyvo eismo pridėtas vėlavimas. PTV grąžina sekundėmis. */
+  trafficDelayMinutes: number;
   tollCents: number;
   /** Bendri keliai, miestų rinkliavos, vinjetės, tiltai ir kalnų perėjos. */
   bridgesCents: number;
@@ -57,6 +68,32 @@ function decimal(value: unknown): number | null {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
+ * Gyvas eismas prasmingas tik išvykstant dabar arba per kelias valandas.
+ * Tolimesnei datai PTV naudoja tipinius tos savaitės dienos srautus.
+ */
+export function routeTiming(
+  startTime?: string,
+  now = new Date(),
+): RouteTiming | null {
+  if (!startTime) return { trafficMode: "REALISTIC" };
+
+  const departure = new Date(startTime);
+  if (Number.isNaN(departure.getTime())) return null;
+
+  const difference = departure.getTime() - now.getTime();
+  const liveWindow = 6 * 60 * 60 * 1000;
+  const recentlyPassed = -5 * 60 * 1000;
+
+  return {
+    startTime: departure.toISOString(),
+    trafficMode:
+      difference >= recentlyPassed && difference <= liveWindow
+        ? "REALISTIC"
+        : "AVERAGE",
+  };
 }
 
 function euroCents(value: unknown): number | null {
@@ -85,6 +122,7 @@ export function routeRequestUrl(
   from: Pick<GeocodedPlace, "latitude" | "longitude">,
   to: Pick<GeocodedPlace, "latitude" | "longitude">,
   avoidFerries: boolean,
+  timing?: RouteTiming,
 ): string {
   const url = new URL(PTV_ROUTING_URL);
   url.searchParams.append("waypoints", `${from.latitude},${from.longitude}`);
@@ -95,6 +133,10 @@ export function routeRequestUrl(
     "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,POLYLINE",
   );
   url.searchParams.set("options[currency]", "EUR");
+  if (timing?.startTime) {
+    url.searchParams.set("startTime", timing.startTime);
+    url.searchParams.set("options[trafficMode]", timing.trafficMode);
+  }
   if (avoidFerries) url.searchParams.set("options[avoid]", "FERRIES");
   return url.toString();
 }
@@ -166,6 +208,7 @@ export function routeEstimate(payload: unknown): RouteEstimate | null {
   if (metres === null) return null;
 
   const seconds = decimal(source.travelTime) ?? 0;
+  const trafficDelaySeconds = Math.max(0, decimal(source.trafficDelay) ?? 0);
 
   const toll = source.toll as Record<string, unknown> | undefined;
   const costs = toll?.costs as Record<string, unknown> | undefined;
@@ -221,6 +264,8 @@ export function routeEstimate(payload: unknown): RouteEstimate | null {
   return {
     km: Math.round((metres / 1000) * 100) / 100,
     travelHours: Math.round((seconds / 3600) * 10) / 10,
+    travelMinutes: Math.round(seconds / 60),
+    trafficDelayMinutes: Math.round(trafficDelaySeconds / 60),
     tollCents,
     bridgesCents,
     ferriesCents,

@@ -6,6 +6,7 @@ import {
   routeEstimate,
   routeFill,
   routeRequestUrl,
+  routeTiming,
   suggestedDays,
 } from "./ptv-route";
 
@@ -24,6 +25,7 @@ const GEOCODING = {
 const ROUTE = {
   distance: 2060355,
   travelTime: 107623,
+  trafficDelay: 754,
   violated: false,
   toll: {
     costs: {
@@ -113,6 +115,8 @@ describe("routeEstimate", () => {
     expect(estimate).toMatchObject({
       km: 2060.36,
       travelHours: 29.9,
+      travelMinutes: 1794,
+      trafficDelayMinutes: 13,
       tollCents: 48549,
       bridgesCents: 47053,
       ferriesCents: 1416,
@@ -146,6 +150,7 @@ describe("routeEstimate", () => {
       ferriesCents: 0,
       tunnelsCents: 0,
       ferryDetected: false,
+      trafficDelayMinutes: 0,
       byCountry: [],
     });
   });
@@ -227,6 +232,42 @@ describe("routeRequestUrl", () => {
     const url = new URL(routeRequestUrl(from, to, true));
 
     expect(url.searchParams.get("options[avoid]")).toBe("FERRIES");
+  });
+
+  it("perduoda išvykimo laiką ir eismo režimą", () => {
+    const timing = routeTiming(
+      "2026-09-24T10:00:00.000Z",
+      new Date("2026-09-24T08:00:00.000Z"),
+    );
+    if (!timing) throw new Error("laikas turėjo būti teisingas");
+
+    const url = new URL(routeRequestUrl(from, to, false, timing));
+
+    expect(url.searchParams.get("startTime")).toBe("2026-09-24T10:00:00.000Z");
+    expect(url.searchParams.get("options[trafficMode]")).toBe("REALISTIC");
+  });
+});
+
+describe("routeTiming", () => {
+  const now = new Date("2026-09-24T08:00:00.000Z");
+
+  it("artimam išvykimui naudoja gyvą eismą", () => {
+    expect(routeTiming("2026-09-24T12:00:00+02:00", now)).toEqual({
+      startTime: "2026-09-24T10:00:00.000Z",
+      trafficMode: "REALISTIC",
+    });
+  });
+
+  it("tolimesniam išvykimui naudoja tipinį eismą", () => {
+    expect(routeTiming("2026-09-25T08:00:00.000Z", now)?.trafficMode).toBe("AVERAGE");
+  });
+
+  it("be datos palieka PTV numatytą išvykimą dabar", () => {
+    expect(routeTiming(undefined, now)).toEqual({ trafficMode: "REALISTIC" });
+  });
+
+  it("atmeta neteisingą laiką", () => {
+    expect(routeTiming("ne data", now)).toBeNull();
   });
 });
 

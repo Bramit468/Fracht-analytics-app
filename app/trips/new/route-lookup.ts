@@ -16,6 +16,7 @@ import {
   suggestedDays,
   PTV_GEOCODING_URL,
   type GeocodedPlace,
+  type RouteViolation,
   type RouteFill,
 } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -43,6 +44,7 @@ export type RouteLookupResult =
       approximate: boolean;
       /** PTV nerado vilkikui tinkamo kelio arba jis pažeidžia ribojimus. */
       violated: boolean;
+      violations: RouteViolation[];
       /** Maršruto linija žemėlapiui, jau praretinta (#74). */
       line: LineCoordinate[];
     }
@@ -212,6 +214,7 @@ export async function lookupRoute(
         (place) => place.locationType !== "EXACT_ADDRESS" && place.locationType !== "PICKED",
       ),
       violated: estimate.violated,
+      violations: estimate.violations,
       line,
     };
   } catch (cause) {

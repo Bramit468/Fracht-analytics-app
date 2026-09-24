@@ -37,6 +37,18 @@ export interface CountryToll {
   euroCents: number;
 }
 
+export interface RouteViolation {
+  type: string;
+  property?: string;
+  message: string;
+  countryCode?: string;
+  distanceKm: number;
+  latitude?: number;
+  longitude?: number;
+  temporary: boolean;
+  timeRestricted: boolean;
+}
+
 export interface RouteEstimate {
   km: number;
   /** Kelio laikas be poilsio ir laukimo. Reiso trukmė visada ilgesnė. */
@@ -55,6 +67,7 @@ export interface RouteEstimate {
   byCountry: CountryToll[];
   /** PTV neranda vilkikui tinkamo kelio arba jis pažeidžia ribojimus. */
   violated: boolean;
+  violations: RouteViolation[];
 }
 
 function decimal(value: unknown): number | null {
@@ -117,6 +130,147 @@ function sectionCents(section: Record<string, unknown>): number | null {
   return cost.currency === "EUR" ? euroCents(cost) : null;
 }
 
+function ltNumber(value: number): string {
+  return String(Math.round(value * 100) / 100).replace(".", ",");
+}
+
+function vehiclePropertyMessage(property: string, limit: number | null, value: string | null): string {
+  const tonnes = limit === null ? null : `${ltNumber(limit / 1000)} t`;
+  const metres = limit === null ? null : `${ltNumber(limit / 100)} m`;
+
+  switch (property) {
+    case "WEIGHT":
+      return tonnes ? `Vilkiko svoris viršija ${tonnes} ribą.` : "Viršyta vilkiko svorio riba.";
+    case "TOTAL_PERMITTED_WEIGHT":
+      return tonnes ? `Leistina bendra masė viršija ${tonnes} ribą.` : "Viršyta leistinos bendros masės riba.";
+    case "AXLE_WEIGHT":
+      return tonnes ? `Ašies svoris viršija ${tonnes} ribą.` : "Viršyta ašies svorio riba.";
+    case "HEIGHT":
+      return metres ? `Vilkiko aukštis viršija ${metres} ribą.` : "Viršyta vilkiko aukščio riba.";
+    case "LENGTH":
+    case "KPRA_LENGTH":
+      return metres ? `Vilkiko ilgis viršija ${metres} ribą.` : "Viršyta vilkiko ilgio riba.";
+    case "WIDTH":
+      return metres ? `Vilkiko plotis viršija ${metres} ribą.` : "Viršyta vilkiko pločio riba.";
+    case "NUMBER_OF_AXLES":
+      return limit === null ? "Netinkamas ašių skaičius." : `Ašių skaičius viršija ${limit} ribą.`;
+    case "LOW_EMISSION_ZONE":
+      return value ? `Vilkikas neatitinka mažos taršos zonos „${value}“ reikalavimų.` : "Vilkikas neatitinka mažos taršos zonos reikalavimų.";
+    case "TRUCK_ROUTE":
+      return value ? `Vilkikui neleidžiamas sunkvežimių maršrutas „${value}“.` : "Vilkikui neleidžiamas šis sunkvežimių maršrutas.";
+    case "HAZARDOUS_MATERIALS":
+      return value ? `Šiame kelyje draudžiamos pavojingos medžiagos: ${value}.` : "Šiame kelyje draudžiamas pavojingas krovinys.";
+    case "TUNNEL_RESTRICTION":
+      return value ? `Tunelyje leidžiamas tik apribojimo kodas ${value}.` : "Vilkikas neatitinka tunelio apribojimo.";
+    case "TRAILER":
+      return "Priekaba šiame kelyje neleidžiama.";
+    default:
+      return `PTV grąžino neatpažintą vilkiko apribojimą „${property}“${value ? ` (${value})` : ""}.`;
+  }
+}
+
+function violationMessage(
+  type: string,
+  scheduleTypes: string[],
+): string {
+  switch (type) {
+    case "PROHIBITED":
+      return "Kelias draudžiamas šiam vilkikui.";
+    case "DELIVERY_ONLY":
+      return "Keliu leidžiama važiuoti tik pristatymo transportui.";
+    case "URBAN":
+      return "Šiam vilkikui draudžiamas miesto kelias.";
+    case "RESIDENTS_ONLY":
+      return "Keliu leidžiama važiuoti tik gyventojams.";
+    case "RESTRICTED_ACCESS":
+      return "Ribotas patekimas: vartai, užtvaras arba reikalingas leidimas.";
+    case "VEHICLE_PROPERTY":
+      return "Vilkiko parametrai neatitinka kelio apribojimo.";
+    case "COMBINED_TRANSPORT":
+      return "Keltas arba traukinio jungtis neveža šio tipo vilkiko.";
+    case "SCHEDULE":
+      return scheduleTypes.length
+        ? `Pažeistas darbo laiko arba aptarnavimo grafikas: ${scheduleTypes.join(", ")}.`
+        : "Pažeistas darbo laiko arba aptarnavimo grafikas.";
+    case "BLOCKED_ROAD_BY_INTERSECTION":
+      return "Maršrutas kerta užblokuotą kelią.";
+    default:
+      return `PTV grąžino neatpažintą apribojimą „${type}“.`;
+  }
+}
+
+function routeViolations(events: unknown[]): RouteViolation[] {
+  const violations: RouteViolation[] = [];
+  const seen = new Set<string>();
+
+  for (const row of events) {
+    if (typeof row !== "object" || row === null) continue;
+    const event = row as Record<string, unknown>;
+    if (typeof event.violation !== "object" || event.violation === null) continue;
+    const violation = event.violation as Record<string, unknown>;
+    if (violation.accessType === "EXIT") continue;
+
+    const type = text(violation.type) ?? "UNKNOWN";
+    const countryCode = text(event.countryCode) ?? undefined;
+    const distanceKm = Math.max(
+      0,
+      Math.round(((decimal(event.distanceFromStart) ?? 0) / 1000) * 10) / 10,
+    );
+    const rawLatitude = decimal(event.latitude);
+    const rawLongitude = decimal(event.longitude);
+    const latitude = rawLatitude !== null && rawLatitude >= -90 && rawLatitude <= 90
+      ? rawLatitude
+      : undefined;
+    const longitude = rawLongitude !== null && rawLongitude >= -180 && rawLongitude <= 180
+      ? rawLongitude
+      : undefined;
+    const temporary = violation.temporary === true;
+    const timeRestricted = text(violation.timeDomain) !== null;
+    const scheduleTypes = Array.isArray(violation.scheduleViolationTypes)
+      ? violation.scheduleViolationTypes.filter((item): item is string => typeof item === "string")
+      : [];
+    const properties = Array.isArray(violation.violatedVehicleProperties)
+      ? violation.violatedVehicleProperties
+      : [];
+    const parsedProperties = properties.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const propertyRow = item as Record<string, unknown>;
+      const property = text(propertyRow.property) ?? text(propertyRow.name);
+      if (!property) return [];
+      return [{
+        property,
+        message: vehiclePropertyMessage(
+          property,
+          decimal(propertyRow.limit),
+          text(propertyRow.value),
+        ),
+      }];
+    });
+    const reasons = parsedProperties.length > 0
+      ? parsedProperties
+      : [{ property: undefined, message: violationMessage(type, scheduleTypes) }];
+
+    for (const reason of reasons) {
+      const key = [type, reason.property, countryCode, distanceKm, reason.message].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      violations.push({
+        type,
+        property: reason.property,
+        message: reason.message,
+        countryCode,
+        distanceKm,
+        latitude,
+        longitude,
+        temporary,
+        timeRestricted,
+      });
+    }
+  }
+
+  return violations;
+}
+
 /** PTV URL vienoje vietoje, kad `avoid` sintaksė nebūtų spėjama formoje. */
 export function routeRequestUrl(
   from: Pick<GeocodedPlace, "latitude" | "longitude">,
@@ -130,7 +284,7 @@ export function routeRequestUrl(
   url.searchParams.set("profile", PTV_TRUCK_PROFILE);
   url.searchParams.set(
     "results",
-    "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,POLYLINE",
+    "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE",
   );
   url.searchParams.set("options[currency]", "EUR");
   if (timing?.startTime) {
@@ -251,6 +405,7 @@ export function routeEstimate(payload: unknown): RouteEstimate | null {
   const bridgesCents = Math.max(0, tollCents - ferriesCents - tunnelsCents);
 
   const events = Array.isArray(source.events) ? source.events : [];
+  const violations = routeViolations(events);
   const ferryNames: string[] = [];
   for (const row of events) {
     if (typeof row !== "object" || row === null) continue;
@@ -274,6 +429,7 @@ export function routeEstimate(payload: unknown): RouteEstimate | null {
     ferryNames,
     byCountry,
     violated: source.violated === true,
+    violations,
   };
 }
 

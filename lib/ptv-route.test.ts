@@ -174,6 +174,67 @@ describe("routeEstimate", () => {
     expect(routeEstimate({ ...ROUTE, violated: true })?.violated).toBe(true);
   });
 
+  it("paaiškina konkrečius vilkiko apribojimus ir jų vietą", () => {
+    const estimate = routeEstimate({
+      ...ROUTE,
+      violated: true,
+      events: [{
+        latitude: 52.1,
+        longitude: 13.2,
+        distanceFromStart: 12340,
+        countryCode: "DE",
+        violation: {
+          type: "VEHICLE_PROPERTY",
+          accessType: "PASS",
+          temporary: true,
+          timeDomain: "[(y2026){d30}]",
+          violatedVehicleProperties: [
+            { property: "HEIGHT", limit: 380 },
+            { property: "HAZARDOUS_MATERIALS", value: "EXPLOSIVE" },
+          ],
+        },
+      }],
+    });
+
+    expect(estimate?.violations).toEqual([
+      {
+        type: "VEHICLE_PROPERTY",
+        property: "HEIGHT",
+        message: "Vilkiko aukštis viršija 3,8 m ribą.",
+        countryCode: "DE",
+        distanceKm: 12.3,
+        latitude: 52.1,
+        longitude: 13.2,
+        temporary: true,
+        timeRestricted: true,
+      },
+      {
+        type: "VEHICLE_PROPERTY",
+        property: "HAZARDOUS_MATERIALS",
+        message: "Šiame kelyje draudžiamos pavojingos medžiagos: EXPLOSIVE.",
+        countryCode: "DE",
+        distanceKm: 12.3,
+        latitude: 52.1,
+        longitude: 13.2,
+        temporary: true,
+        timeRestricted: true,
+      },
+    ]);
+  });
+
+  it("nežinomo apribojimo neslepia ir nedubliuoja EXIT įvykio", () => {
+    const estimate = routeEstimate({
+      distance: 1000,
+      events: [
+        { distanceFromStart: 100, violation: { type: "NEW_PTV_TYPE", accessType: "ENTER" } },
+        { distanceFromStart: 200, violation: { type: "NEW_PTV_TYPE", accessType: "EXIT" } },
+      ],
+    });
+
+    expect(estimate?.violations).toHaveLength(1);
+    expect(estimate?.violations[0].message).toContain("NEW_PTV_TYPE");
+  });
+
   it("atsakymas be atstumo grąžina null", () => {
     expect(routeEstimate({ travelTime: 100 })).toBeNull();
     expect(routeEstimate(null)).toBeNull();
@@ -222,7 +283,7 @@ describe("routeRequestUrl", () => {
     const url = new URL(routeRequestUrl(from, to, false));
 
     expect(url.searchParams.get("results")).toBe(
-      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,POLYLINE",
+      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE",
     );
     expect(url.searchParams.get("options[currency]")).toBe("EUR");
     expect(url.searchParams.has("options[avoid]")).toBe(false);

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
 import { listTrips, type TripSummary } from "../lib/trips";
+import { summarizeByTruck } from "../lib/truck-profit";
 
 const emptyStats = calculateDashboardStats([]);
 
@@ -82,6 +83,31 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
+/** Kuri fura neša pinigus. Su dvidešimt dviem furomis iš reisų sąrašo to nesuskaičiuosi (#101). */
+function TruckProfit({ trips }: { trips: TripSummary[] }) {
+  const rows = summarizeByTruck(trips);
+
+  return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Furų pelningumas</h3><p className="mt-1 text-sm text-slate-500">Visų išsaugotų reisų sumos, pelningiausia viršuje</p></div><Link href="/trucks/kastai" className="text-sm font-semibold text-blue-600 hover:text-blue-700">Tikslinti kaštus</Link></div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((row) => <tr key={row.plate}>
+            <td className="px-5 py-3 font-mono sm:px-6">{row.plate}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-500">{row.tripCount}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCents(row.revenueCents)}</td>
+            <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.profitCents >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCents(row.profitCents)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatPercent(row.marginPercent)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-slate-600 sm:px-6">{formatPerKm(row.profitPerKm)}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos.</p>
+  </div>;
+}
+
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [trips, setTrips] = useState<TripSummary[]>([]);
@@ -120,5 +146,6 @@ export function Dashboard() {
       <div className="space-y-5"><ProfitabilityBars stats={stats} /><RecentTrips trips={trips} /></div>
       <LossAlerts trips={trips} />
     </div>
+    <TruckProfit trips={trips} />
   </div>;
 }

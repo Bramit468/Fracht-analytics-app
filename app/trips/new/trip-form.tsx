@@ -21,6 +21,7 @@ import { lookupRoute } from "./route-lookup";
 import { AddressField } from "./address-field";
 import { RouteMap } from "./route-map";
 import type { LineCoordinate } from "../../../lib/route-line";
+import type { RouteViolation } from "../../../lib/ptv-route";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -108,6 +109,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [keltoKrovinys, setKeltoKrovinys] = useState<FreightLoad>("loaded");
   const [keltoIvertis, setKeltoIvertis] = useState<FerryFareEstimate | null>(null);
   const [marsrutoLinija, setMarsrutoLinija] = useState<LineCoordinate[]>([]);
+  const [marsrutoPazeidimai, setMarsrutoPazeidimai] = useState<RouteViolation[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const [result, setResult] = useState<TripResult | null>(null);
   /** Apmokami km skaičiavimo metu — reikia įkainiui už km pasiūlyme. */
@@ -221,6 +223,8 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
 
     setSkaiciuoja(true);
     setMarsrutas("");
+    setMarsrutoLinija([]);
+    setMarsrutoPazeidimai([]);
     setNeivertintasKeltas(null);
     setKeltoIvertis(null);
     try {
@@ -245,6 +249,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         return;
       }
       setMarsrutoLinija(result.line);
+      setMarsrutoPazeidimai(result.violations);
 
       for (const [name, filled] of Object.entries(result.fill)) {
         if (name === "legKm") continue;
@@ -266,7 +271,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       setSaved("");
 
       const ispejimai = [
-        result.violated ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
+        result.violated && result.violations.length === 0 ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
         result.approximate ? "Adresas rastas tik iki miesto, tad km apytiksliai." : "",
         needsFerryPrice && publicFare
           ? `Kelto ${publicFare.route} viešo tarifo įvertis ${formatCents(publicFare.totalCents)} įtrauktas (${publicFare.billedMetres} m, ${publicFare.load === "loaded" ? "pakrauta" : "tuščia"}).`
@@ -386,7 +391,20 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           </div>
           <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
           {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
-          <RouteMap line={marsrutoLinija} />
+          {marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 rounded-lg border border-amber-400 bg-amber-50 p-4 text-sm text-slate-800">
+            <p className="font-semibold">PTV aptiko maršruto apribojimų:</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {marsrutoPazeidimai.map((violation, index) => <li key={`${violation.type}-${violation.property ?? ""}-${violation.distanceKm}-${index}`}>
+                {violation.message}
+                {violation.countryCode ? ` Šalis: ${violation.countryCode}.` : ""}
+                {violation.distanceKm > 0 ? ` Apie ${violation.distanceKm} km nuo starto.` : " Ties maršruto pradžia."}
+                {violation.temporary ? " Apribojimas laikinas." : ""}
+                {violation.timeRestricted ? " Galioja tik nustatytu laiku." : ""}
+              </li>)}
+            </ul>
+            <p className="mt-2">Prieš išsaugodami patikrinkite pakrovimo ir iškrovimo taškus bei vilkiko parametrus.</p>
+          </div>}
+          <RouteMap line={marsrutoLinija} violations={marsrutoPazeidimai} />
         </div>}
       </Skiltis>
 

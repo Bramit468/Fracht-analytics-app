@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from "maplibre-gl";
+import { Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
+import type { RouteViolation } from "@/lib/ptv-route";
 
 // MapLibre 6 worker turi importuoti greta esantį shared modulį. Next.js
 // sugeneruotas worker URL Vercel aplinkoje to modulio neturėjo, todėl
@@ -18,7 +19,7 @@ setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
  * iš PTV, tad rodomas tas pats kelias, pagal kurį suskaičiuoti kilometrai ir
  * mokesčiai, o ne panašus lengvojo automobilio maršrutas.
  */
-export function RouteMap({ line }: { line: LineCoordinate[] }) {
+export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; violations?: RouteViolation[] }) {
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,11 +65,19 @@ export function RouteMap({ line }: { line: LineCoordinate[] }) {
         new Marker({ color }).setLngLat(point).addTo(map);
       }
 
+      for (const violation of violations) {
+        if (violation.latitude === undefined || violation.longitude === undefined) continue;
+        new Marker({ color: "#f59e0b" })
+          .setLngLat([violation.longitude, violation.latitude])
+          .setPopup(new Popup({ offset: 25 }).setText(violation.message))
+          .addTo(map);
+      }
+
       if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0 });
     });
 
     return () => map.remove();
-  }, [line]);
+  }, [line, violations]);
 
   if (line.length < 2) return null;
 

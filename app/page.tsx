@@ -47,6 +47,7 @@ export default function Home() {
             <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Suvestinė</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Reisų pelningumas</h1><p className="mt-2 text-slate-500">Pajamos, kaštai ir reisai, į kuriuos verta atkreipti dėmesį.</p></div>
             <div className="flex gap-3">
               <Link className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50" href="/trips/import">Importas iš Excel</Link>
+              <Link className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50" href="/trips/vyksta">Vyksta dabar</Link>
               <Link className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50" href="/trips">Visi reisai</Link>
             </div>
           </div>

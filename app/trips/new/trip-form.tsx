@@ -15,6 +15,7 @@ import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money"
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { truckRowToCalc } from "../../../lib/truck";
+import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
@@ -120,6 +121,8 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
   const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
+  /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
+  const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -365,6 +368,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       setResult(calculation);
       setApmokamiKm(trip.paid_km);
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
+      setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
       if (action !== "save") return;
       busy.current = true;
       setSaving(true);
@@ -537,6 +541,14 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           {" · "}
           {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
         </p>
+        {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
+            nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
+        {nepatikslinta && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+          Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura — greičiausiai
+          nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
+          <Link href="/trucks/kastai" className="font-semibold underline">Patikslinti kaštus</Link>
+        </p>}
+
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
           {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-slate-500">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>

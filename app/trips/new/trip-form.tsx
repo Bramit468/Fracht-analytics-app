@@ -19,7 +19,12 @@ import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
-import { lookupRoute } from "./route-lookup";
+import { lookupRoute, lookupSchedule } from "./route-lookup";
+import {
+  DRIVER_SCENARIOS,
+  type DriverScenario,
+  type RouteSchedule,
+} from "../../../lib/ptv-schedule";
 import { AddressField } from "./address-field";
 import { RouteMap } from "./route-map";
 import type { LineCoordinate } from "../../../lib/route-line";
@@ -128,6 +133,12 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [krovinioSvoris, setKrovinioSvoris] = useState("");
   const [emisijos, setEmisijos] = useState<RouteEmissions | null>(null);
   const [emisijuSvoriai, setEmisijuSvoriai] = useState(false);
+  /** Vairavimo laiko planas: pertraukos, poilsis ir teisėtas atvykimas (#87). */
+  const [tvarkarastis, setTvarkarastis] = useState<RouteSchedule | null>(null);
+  const [tvarkarascioKlaida, setTvarkarascioKlaida] = useState("");
+  const [planuoja, setPlanuoja] = useState(false);
+  const [scenarijus, setScenarijus] = useState<DriverScenario>("multipleDays");
+  const [jauVairavo, setJauVairavo] = useState("0");
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -174,6 +185,53 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       .catch(() => { /* Patarimas yra priedas – be jo forma lieka pilnavertė. */ });
     return () => { cancelled = true; };
   }, [attempt]);
+
+  /**
+   * Vairuotojo pertraukos ir teisėtas atvykimas (#87).
+   *
+   * Atskiras mygtukas: PTV tvarkaraštis eina per POST ir yra dar viena
+   * užklausa, o kilometrai bei mokesčiai reikalingi kur kas dažniau.
+   */
+  async function planDriverHours() {
+    const form = formRef.current;
+    if (!form || planuoja) return;
+
+    const value = (name: string) => {
+      const field = form.elements.namedItem(name);
+      return field instanceof HTMLInputElement ? field.value : "";
+    };
+
+    setPlanuoja(true);
+    setTvarkarascioKlaida("");
+    setTvarkarastis(null);
+    try {
+      const departure = departureIso(value("trip_date"), value("departure_time"));
+      if (!departure) {
+        setTvarkarascioKlaida("Įveskite reiso datą ir išvykimo laiką.");
+        return;
+      }
+
+      const result = await lookupSchedule(
+        value("origin"),
+        value("destination"),
+        value("origin_point"),
+        value("destination_point"),
+        departure,
+        scenarijus,
+        Number(jauVairavo.replace(",", ".")) || 0,
+      );
+
+      if (!result.ok) {
+        setTvarkarascioKlaida(result.message);
+        return;
+      }
+      setTvarkarastis(result.schedule);
+    } catch {
+      setTvarkarascioKlaida("Nepavyko suplanuoti vairavimo laiko.");
+    } finally {
+      setPlanuoja(false);
+    }
+  }
 
   /** Įrašo viešo tarifo įvertį į tą patį lauką, kurį galima pataisyti ranka. */
   function applyFerryEstimate(names: readonly string[], length: string, load: FreightLoad) {
@@ -487,6 +545,74 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
             </ul>
             <p className="mt-2">Prieš išsaugodami patikrinkite pakrovimo ir iškrovimo taškus bei vilkiko parametrus.</p>
           </div>}
+          {/* Trukmė iki šiol buvo spėjimas – kelio valandos iš devynių. Paros
+              yra 58 % kaštų, tad klaida parose yra klaida pelne (#87). */}
+          <div className="mt-4 border-t pt-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-sm">
+                Scenarijus
+                <select
+                  value={scenarijus}
+                  onChange={(event) => setScenarijus(event.target.value as DriverScenario)}
+                  className={`${inputClass} w-52`}
+                >
+                  {DRIVER_SCENARIOS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                </select>
+              </label>
+              <label className="text-sm">
+                Jau vairavo, val.
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={jauVairavo}
+                  onChange={(event) => setJauVairavo(event.target.value)}
+                  className={`${inputClass} w-24`}
+                />
+              </label>
+              <button type="button" disabled={planuoja} onClick={() => void planDriverHours()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+                {planuoja ? "Planuojama…" : "Vairavimo laikas ir atvykimas"}
+              </button>
+            </div>
+
+            {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-red-700">{tvarkarascioKlaida}</p>}
+
+            {tvarkarastis && <div className="mt-3 rounded-lg border bg-white p-3 text-sm">
+              <p className="font-semibold">Su privalomomis pertraukomis ir poilsiu</p>
+              <p className="mt-1 tabular-nums">
+                Vairavimas {durationText(tvarkarastis.drivingMinutes)} ·
+                {" "}pertraukos {durationText(tvarkarastis.breakMinutes)} ·
+                {" "}poilsis {durationText(tvarkarastis.restMinutes)}
+                {tvarkarastis.waitingMinutes > 0 && ` · laukimas ${durationText(tvarkarastis.waitingMinutes)}`}
+              </p>
+              <p className="mt-1">
+                Atvykimas <strong>{tvarkarastis.endTime.replace("T", " ").slice(0, 16)}</strong> UTC ·
+                {" "}reisas apima <strong>{tvarkarastis.days} par.</strong>
+              </p>
+              {tvarkarastis.stops.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-700">
+                {tvarkarastis.stops.slice(0, 6).map((stop, index) => <li key={`${stop.startsAt}-${index}`}>
+                  {stop.type === "BREAK" ? "Pertrauka" : stop.type === "DAILY_REST" ? "Paros poilsis" : stop.type === "WEEKLY_REST" ? "Savaitės poilsis" : "Laukimas"}
+                  {" "}{durationText(stop.minutes)} ties {stop.distanceKm} km
+                  {stop.countryCode && ` (${stop.countryCode})`}, {stop.startsAt.replace("T", " ").slice(0, 16)}
+                </li>)}
+              </ul>}
+              <button
+                type="button"
+                onClick={() => {
+                  const field = formRef.current?.elements.namedItem("days");
+                  if (field instanceof HTMLInputElement) {
+                    field.value = String(tvarkarastis.days);
+                    setResult(null);
+                    setSaved("");
+                  }
+                }}
+                className="mt-2 underline"
+              >
+                Įrašyti {tvarkarastis.days} par. į trukmę
+              </button>
+              <span className="ml-2 text-slate-500">Kol neįrašysite, kaštai skaičiuojami pagal formoje esančią trukmę.</span>
+            </div>}
+          </div>
+
           <RouteMap line={marsrutoLinija} violations={marsrutoPazeidimai} />
         </div>}
       </Skiltis>

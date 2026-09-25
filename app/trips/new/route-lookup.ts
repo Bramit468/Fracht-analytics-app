@@ -15,6 +15,8 @@ import {
   routeTiming,
   suggestedDays,
   PTV_GEOCODING_URL,
+  PTV_ROUTING_URL,
+  PTV_TRUCK_PROFILE,
   type GeocodedPlace,
   type RouteViolation,
   type RouteFill,
@@ -25,6 +27,13 @@ import {
   type RouteEmissions,
   type VehicleWeights,
 } from "@/lib/ptv-emissions";
+import {
+  routeSchedule,
+  scheduleRequestBody,
+  PTV_SCHEDULE_RESULTS,
+  type DriverScenario,
+  type RouteSchedule,
+} from "@/lib/ptv-schedule";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export type RouteLookupResult =
@@ -256,6 +265,83 @@ export async function lookupRoute(
     }
 
     console.error("Nepavyko pasiekti PTV", cause);
+    return { ok: false, message: "Nepavyko susisiekti su maršrutų paslauga." };
+  }
+}
+
+export type ScheduleLookupResult =
+  | { ok: true; schedule: RouteSchedule }
+  | { ok: false; message: string };
+
+/**
+ * Vairuotojo pertraukos, poilsis ir teisėtas atvykimas (#87).
+ *
+ * Atskira užklausa nuo maršruto sąmoningai: tvarkaraštis prieinamas tik per
+ * POST, jo reikia ne kiekvienam skaičiavimui, o kiekvienas kreipimasis į PTV
+ * kainuoja laiką ir mėnesio limitą.
+ */
+export async function lookupSchedule(
+  origin: string,
+  destination: string,
+  fromPoint: string | undefined,
+  toPoint: string | undefined,
+  departureAt: string,
+  scenario: DriverScenario,
+  alreadyDrivenHours = 0,
+): Promise<ScheduleLookupResult> {
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key) return { ok: false, message: "Maršrutų skaičiavimas neįjungtas." };
+
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
+
+  // Be išvykimo laiko tvarkaraščio nėra prasmės: pertraukos ir poilsis
+  // skaičiuojami nuo konkretaus momento.
+  if (!departureAt) {
+    return { ok: false, message: "Įveskite reiso datą ir išvykimo laiką." };
+  }
+
+  try {
+    const [from, to] = await Promise.all([
+      pickedPoint(fromPoint, origin) ?? geocode(origin, key),
+      pickedPoint(toPoint, destination) ?? geocode(destination, key),
+    ]);
+
+    if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
+    if (!to) return { ok: false, message: `Nepavyko rasti adreso „${destination}“.` };
+
+    const url = new URL(PTV_ROUTING_URL);
+    url.searchParams.set("profile", PTV_TRUCK_PROFILE);
+    url.searchParams.set("results", PTV_SCHEDULE_RESULTS);
+    url.searchParams.set("options[startTime]", departureAt);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { apiKey: key, "Content-Type": "application/json" },
+      body: JSON.stringify(
+        scheduleRequestBody(from, to, scenario, departureAt, alreadyDrivenHours),
+      ),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new PtvError(response.status, (await response.text()).slice(0, 500));
+    }
+
+    const schedule = routeSchedule(await response.json());
+    if (!schedule) {
+      return { ok: false, message: "PTV negrąžino vairavimo laiko ataskaitos." };
+    }
+
+    return { ok: true, schedule };
+  } catch (cause) {
+    if (cause instanceof PtvError) {
+      console.error("PTV atmetė tvarkaraščio užklausą", cause.status, cause.body);
+      return { ok: false, message: `Vairavimo laiko paslauga grąžino klaidą ${cause.status}.` };
+    }
+
+    console.error("Nepavyko pasiekti PTV tvarkaraščio", cause);
     return { ok: false, message: "Nepavyko susisiekti su maršrutų paslauga." };
   }
 }

@@ -15,7 +15,8 @@ import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money"
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { truckRowToCalc } from "../../../lib/truck";
-import { getTripWithLegs, saveTrip } from "../../../lib/trips";
+import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
+import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
 import { lookupRoute } from "./route-lookup";
 import { AddressField } from "./address-field";
@@ -116,6 +117,9 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [apmokamiKm, setApmokamiKm] = useState(0);
   /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
   const [norimaMarza, setNorimaMarza] = useState("15");
+  /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
+  const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
+  const [istorija, setIstorija] = useState<RouteHistory | null>(null);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -152,6 +156,16 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     void load();
     return () => { cancelled = true; };
   }, [attempt, tripId]);
+
+  // Istorija kraunama atskirai ir formos nesulaiko: be jos skaičiuoklė veikia
+  // kaip anksčiau, o laukti dėl patarimo nereikėtų (#109).
+  useEffect(() => {
+    let cancelled = false;
+    listTrips()
+      .then((loaded) => { if (!cancelled) setAnkstesni(loaded); })
+      .catch(() => { /* Patarimas yra priedas – be jo forma lieka pilnavertė. */ });
+    return () => { cancelled = true; };
+  }, [attempt]);
 
   /** Įrašo viešo tarifo įvertį į tą patį lauką, kurį galima pataisyti ranka. */
   function applyFerryEstimate(names: readonly string[], length: string, load: FreightLoad) {
@@ -350,6 +364,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
       setApmokamiKm(trip.paid_km);
+      setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
       if (action !== "save") return;
       busy.current = true;
       setSaving(true);
@@ -558,6 +573,31 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           <p className="mt-2 text-sm text-slate-600">
             Marža skaičiuojama nuo sąskaitos sumos, ne nuo kaštų: 20 % prie 800 € kaštų yra 1 000 €, ne 960 €.
           </p>
+
+          {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
+              kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
+              dabar prašoma daugiau, ar mažiau nei anksčiau (#109). */}
+          {istorija && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
+            <p className="font-semibold">
+              {istorija.matchType === "route" ? "Ta pati kryptis anksčiau" : "Į tą pačią vietą anksčiau"}
+              <span className="ml-2 font-normal text-slate-500">
+                {istorija.tripCount} reis. · paskutinis {istorija.lastTripDate}
+              </span>
+            </p>
+            <p className="mt-1 tabular-nums">
+              Mediana <strong>{formatCents(istorija.medianRevenueCents)}</strong>
+              {istorija.medianPricePerKm !== null && <span> ({istorija.medianPricePerKm.toFixed(2)} €/km)</span>}
+              <span className="text-slate-500">
+                {" "}· nuo {formatCents(istorija.lowestRevenueCents)} iki {formatCents(istorija.highestRevenueCents)}
+              </span>
+              {istorija.medianMarginPercent !== null && <span className="text-slate-500"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
+            </p>
+            <p className="mt-1 text-slate-600">
+              {istorija.matchType === "route"
+                ? "Mediana, ne vidurkis: vienas keistas reisas jos nepatraukia."
+                : "Tiksliai šios krypties dar nebuvo — tai kitų reisų į tą pačią vietą kainos, tad tik atskaitos taškas."}
+            </p>
+          </div>}
         </div>
       </section>}
     </fieldset>

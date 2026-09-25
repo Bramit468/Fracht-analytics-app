@@ -7,6 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
 import type { PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
+import type { ViaPoint } from "@/lib/via-points";
 
 // MapLibre 6 worker turi importuoti greta esantį shared modulį. Next.js
 // sugeneruotas worker URL Vercel aplinkoje to modulio neturėjo, todėl
@@ -38,11 +39,33 @@ function mapLayerId(layer: PtvMapLayer): string {
  * iš PTV, tad rodomas tas pats kelias, pagal kurį suskaičiuoti kilometrai ir
  * mokesčiai, o ne panašus lengvojo automobilio maršrutas.
  */
-export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; violations?: RouteViolation[] }) {
+export function RouteMap({
+  line,
+  violations = [],
+  via = [],
+  onAddVia,
+  onMoveVia,
+  onRemoveVia,
+}: {
+  line: LineCoordinate[];
+  violations?: RouteViolation[];
+  /** Tarpiniai taškai, per kuriuos vedamas maršrutas (#85). */
+  via?: ViaPoint[];
+  onAddVia?: (point: ViaPoint) => void;
+  onMoveVia?: (index: number, point: ViaPoint) => void;
+  onRemoveVia?: (index: number) => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS);
   const visibleLayersRef = useRef(visibleLayers);
+  // Atgaliniai iškvietimai laikomi `ref`, kad žemėlapio įvykiai visada kviestų
+  // naujausią funkciją, o pats žemėlapis nebūtų kuriamas iš naujo.
+  const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia });
+
+  useEffect(() => {
+    callbacks.current = { onAddVia, onMoveVia, onRemoveVia };
+  }, [onAddVia, onMoveVia, onRemoveVia]);
 
   useEffect(() => {
     if (!container.current || line.length < 2) return;
@@ -114,14 +137,42 @@ export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; vi
           .addTo(map);
       }
 
+      // Tarpiniai taškai: tempiami, o paspaudus – pašalinami. Maršrutas
+      // perskaičiuojamas tik paleidus pelę, todėl užklausų audros nėra (#85).
+      for (const [index, point] of via.entries()) {
+        const marker = new Marker({ color: "#7c3aed", draggable: Boolean(onMoveVia) })
+          .setLngLat([point.longitude, point.latitude])
+          .addTo(map);
+
+        marker.on("dragend", () => {
+          const { lng, lat } = marker.getLngLat();
+          callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
+        });
+
+        marker.getElement().addEventListener("click", (event) => {
+          event.stopPropagation();
+          callbacks.current.onRemoveVia?.(index);
+        });
+        marker.getElement().title = "Tarpinis taškas. Tempkite arba spustelėkite, kad pašalintumėte.";
+      }
+
       if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0 });
     });
+
+    if (onAddVia) {
+      map.on("click", (event) => {
+        callbacks.current.onAddVia?.({
+          latitude: event.lngLat.lat,
+          longitude: event.lngLat.lng,
+        });
+      });
+    }
 
     return () => {
       mapRef.current = null;
       map.remove();
     };
-  }, [line, violations]);
+  }, [line, violations, via, onAddVia, onMoveVia]);
 
   useEffect(() => {
     visibleLayersRef.current = visibleLayers;
@@ -155,5 +206,9 @@ export function RouteMap({ line, violations = [] }: { line: LineCoordinate[]; vi
       className="h-80 w-full overflow-hidden rounded-lg border"
       aria-label="Maršrutas žemėlapyje"
     />
+    {onAddVia && <p className="mt-2 text-sm text-slate-600">
+      Spustelėkite žemėlapį, kad maršrutas eitų per tą vietą. Tarpinį tašką galima tempti, o
+      spustelėjus – pašalinti. {via.length > 0 && `Dabar tarpinių taškų: ${via.length}.`}
+    </p>}
   </div>;
 }

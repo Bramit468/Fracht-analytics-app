@@ -35,6 +35,13 @@ import { RouteMap } from "./route-map";
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
 import type { RouteEmissions } from "../../../lib/ptv-emissions";
+import {
+  addViaPoint,
+  moveViaPoint,
+  orderViaPoints,
+  removeViaPoint,
+  type ViaPoint,
+} from "../../../lib/via-points";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -149,6 +156,8 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [variantuKlaida, setVariantuKlaida] = useState("");
   const [lyginama, setLyginama] = useState(false);
   const [pasirinktas, setPasirinktas] = useState<string | null>(null);
+  /** Tarpiniai taškai, per kuriuos vedamas maršrutas (#85). */
+  const [tarpiniai, setTarpiniai] = useState<ViaPoint[]>([]);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -195,6 +204,29 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       .catch(() => { /* Patarimas yra priedas – be jo forma lieka pilnavertė. */ });
     return () => { cancelled = true; };
   }, [attempt]);
+
+  /** Žemėlapio veiksmai: pridėti, perkelti ir pašalinti tarpinį tašką (#85). */
+  function addVia(point: ViaPoint) {
+    const change = addViaPoint(tarpiniai, point);
+    if (!change.ok) {
+      setMarsrutas(change.message);
+      return;
+    }
+    setTarpiniai(change.points);
+    void fillFromRoute(change.points);
+  }
+
+  function moveVia(index: number, point: ViaPoint) {
+    const points = moveViaPoint(tarpiniai, index, point);
+    setTarpiniai(points);
+    void fillFromRoute(points);
+  }
+
+  function removeVia(index: number) {
+    const points = removeViaPoint(tarpiniai, index);
+    setTarpiniai(points);
+    void fillFromRoute(points);
+  }
 
   /**
    * Keli PTV keliai su kaštais (#84).
@@ -367,7 +399,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   }
 
   /** Užpildo km ir kelių mokesčius iš vilkiko maršruto. Reikšmės taisomos (#61). */
-  async function fillFromRoute() {
+  async function fillFromRoute(via: ViaPoint[] = tarpiniai) {
     const form = formRef.current;
     if (!form || skaiciuoja) return;
 
@@ -408,12 +440,17 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           totalPermittedWeightKg: selected?.total_permitted_weight_kg ?? null,
           loadWeightKg: Number.isFinite(loadTonnes) && loadTonnes > 0 ? loadTonnes * 1000 : null,
         },
+        via,
       );
       if (!result.ok) {
         setMarsrutas(result.message);
-        setMarsrutoLinija([]);
+        // Su tarpiniais taškais paskutinis galiojantis maršrutas paliekamas
+        // ekrane: kitaip nepavykęs paspaudimas nutrintų ir tai, kas veikė (#85).
+        if (via.length === 0) setMarsrutoLinija([]);
         return;
       }
+
+      setTarpiniai(orderViaPoints(via, result.line));
       setMarsrutoLinija(result.line);
       setMarsrutoPazeidimai(result.violations);
       setEmisijos(result.emissions);
@@ -728,7 +765,14 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
             </div>}
           </div>
 
-          <RouteMap line={marsrutoLinija} violations={marsrutoPazeidimai} />
+          <RouteMap
+            line={marsrutoLinija}
+            violations={marsrutoPazeidimai}
+            via={tarpiniai}
+            onAddVia={addVia}
+            onMoveVia={moveVia}
+            onRemoveVia={removeVia}
+          />
         </div>}
       </Skiltis>
 

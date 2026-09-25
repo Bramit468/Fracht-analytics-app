@@ -40,6 +40,7 @@ import {
   type FuelBasis,
   type RouteOption,
 } from "@/lib/route-options";
+import type { ViaPoint } from "@/lib/via-points";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export type RouteLookupResult =
@@ -162,6 +163,7 @@ export async function lookupRoute(
   avoidFerries = false,
   departureAt?: string,
   weights: VehicleWeights = {},
+  via: ViaPoint[] = [],
 ): Promise<RouteLookupResult> {
   // Įklijuojant į Vercel lengvai prilimpa tarpas ar eilutės pabaiga, o PTV
   // tada atmeta raktą kaip neteisingą.
@@ -196,7 +198,7 @@ export async function lookupRoute(
     if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
     if (!to) return { ok: false, message: `Nepavyko rasti adreso „${destination}“.` };
 
-    const url = routeRequestUrl(from, to, avoidFerries, timing, weights);
+    const url = routeRequestUrl(from, to, avoidFerries, timing, weights, via);
 
     // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
     // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.

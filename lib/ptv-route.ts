@@ -10,6 +10,7 @@
  */
 
 import { PTV_EMISSIONS_RESULT, weightParams, type VehicleWeights } from "./ptv-emissions";
+import type { ViaPoint } from "./via-points";
 
 export const PTV_GEOCODING_URL = "https://api.myptv.com/geocoding/v1/locations/by-text";
 export const PTV_ROUTING_URL = "https://api.myptv.com/routing/v1/routes";
@@ -280,9 +281,15 @@ export function routeRequestUrl(
   avoidFerries: boolean,
   timing?: RouteTiming,
   weights?: VehicleWeights,
+  via: ViaPoint[] = [],
 ): string {
   const url = new URL(PTV_ROUTING_URL);
   url.searchParams.append("waypoints", `${from.latitude},${from.longitude}`);
+  // Tarpiniai taškai eina tarp pradžios ir pabaigos: PTV maršrutą veda per juos
+  // ta tvarka, kuria jie surašyti (#85).
+  for (const point of via) {
+    url.searchParams.append("waypoints", `${point.latitude},${point.longitude}`);
+  }
   url.searchParams.append("waypoints", `${to.latitude},${to.longitude}`);
   url.searchParams.set("profile", PTV_TRUCK_PROFILE);
   // Emisijos prašomos visada: jos nekainuoja atskiros užklausos, o be svorių

@@ -283,10 +283,25 @@ describe("routeRequestUrl", () => {
     const url = new URL(routeRequestUrl(from, to, false));
 
     expect(url.searchParams.get("results")).toBe(
-      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE",
+      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE,EMISSIONS_EN16258_2012_HBEFA",
     );
     expect(url.searchParams.get("options[currency]")).toBe("EUR");
     expect(url.searchParams.has("options[avoid]")).toBe(false);
+  });
+
+  it("perduoda svorius, kai jie žinomi", () => {
+    const url = new URL(
+      routeRequestUrl(from, to, false, undefined, { emptyWeightKg: 15000, loadWeightKg: 20000 }),
+    );
+
+    expect(url.searchParams.get("vehicle[emptyWeight]")).toBe("15000");
+    expect(url.searchParams.get("vehicle[loadWeight]")).toBe("20000");
+  });
+
+  it("nežinomų svorių nesiunčia", () => {
+    // PTV tada ima savo numatytuosius, ir tai matyti vartotojui (#86).
+    const url = new URL(routeRequestUrl(from, to, false));
+    expect(url.searchParams.has("vehicle[emptyWeight]")).toBe(false);
   });
 
   it("naudoja oficialų FERRIES vengimo parametrą", () => {

@@ -13,6 +13,10 @@ export interface Truck {
   management_cents: number;
   trailer_monthly_cents: number;
   working_days_per_month: number;
+  /** Svoris be krovinio, kg. `null` – nenurodyta, spėti negalima (#86). */
+  empty_weight_kg: number | null;
+  /** Leistina bendra masė, kg. `null` – nenurodyta. */
+  total_permitted_weight_kg: number | null;
 }
 
 /** Nauja fura prieš duomenų bazės sugeneruojamą `id`. */

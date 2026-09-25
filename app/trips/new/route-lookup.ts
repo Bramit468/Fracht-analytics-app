@@ -19,6 +19,12 @@ import {
   type RouteViolation,
   type RouteFill,
 } from "@/lib/ptv-route";
+import {
+  hasWeights,
+  routeEmissions,
+  type RouteEmissions,
+  type VehicleWeights,
+} from "@/lib/ptv-emissions";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export type RouteLookupResult =
@@ -47,6 +53,10 @@ export type RouteLookupResult =
       violations: RouteViolation[];
       /** Maršruto linija žemėlapiui, jau praretinta (#74). */
       line: LineCoordinate[];
+      /** PTV kuro ir CO2e įvertis pagal maršrutą ir masę (#86). */
+      emissions: RouteEmissions | null;
+      /** Ar buvo perduoti svoriai — nuo to priklauso įverčio tikslumas. */
+      weightsUsed: boolean;
     }
   | { ok: false; message: string };
 
@@ -136,6 +146,7 @@ export async function lookupRoute(
   toPoint?: string,
   avoidFerries = false,
   departureAt?: string,
+  weights: VehicleWeights = {},
 ): Promise<RouteLookupResult> {
   // Įklijuojant į Vercel lengvai prilimpa tarpas ar eilutės pabaiga, o PTV
   // tada atmeta raktą kaip neteisingą.
@@ -170,7 +181,7 @@ export async function lookupRoute(
     if (!from) return { ok: false, message: `Nepavyko rasti adreso „${origin}“.` };
     if (!to) return { ok: false, message: `Nepavyko rasti adreso „${destination}“.` };
 
-    const url = routeRequestUrl(from, to, avoidFerries, timing);
+    const url = routeRequestUrl(from, to, avoidFerries, timing, weights);
 
     // Kur PTV pastatė taškus: be to, nepavykus maršrutui, lieka spėlioti,
     // ar kaltas adreso tekstas, ar vieta, į kurią jis buvo suprastas.
@@ -216,6 +227,8 @@ export async function lookupRoute(
       violated: estimate.violated,
       violations: estimate.violations,
       line,
+      emissions: routeEmissions(payload, estimate.km),
+      weightsUsed: hasWeights(weights),
     };
   } catch (cause) {
     if (cause instanceof PtvError) {

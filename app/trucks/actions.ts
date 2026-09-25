@@ -14,6 +14,7 @@ import {
   readBulkCostValues,
   type BulkCostValues,
 } from "@/lib/truck-costs-bulk";
+import { parseBulkWeights, readBulkWeightValues } from "@/lib/truck-weights-bulk";
 import type { Truck } from "@/types/truck";
 
 export interface SaveTruckState {
@@ -194,6 +195,73 @@ export async function saveTruckCosts(
     status: "success",
     message: `Išsaugota furų: ${updates.length}.`,
   };
+}
+
+/**
+ * Išsaugo visų furų svorius vienu kartu (#121).
+ *
+ * Tie patys principai kaip kaštų lentelėje: esamos reikšmės imamos iš duomenų
+ * bazės, įrašomos tik pasikeitusios eilutės, o klaida vienoje eilutėje nesustabdo
+ * kitų.
+ */
+export async function saveTruckWeights(
+  _previous: SaveTruckCostsState,
+  formData: FormData,
+): Promise<SaveTruckCostsState> {
+  const supabase = await createServerSupabaseClient();
+  const { data: trucks, error: readError } = await supabase
+    .from("trucks")
+    .select("*")
+    .order("plate")
+    .overrideTypes<Truck[], { merge: false }>();
+
+  if (readError) {
+    console.error("Nepavyko nuskaityti furų prieš svorių įrašymą", readError);
+    return { status: "error", message: "Nepavyko nuskaityti furų. Bandykite dar kartą." };
+  }
+
+  const values = readBulkWeightValues(formData, trucks);
+  const { updates, errors } = parseBulkWeights(values, trucks);
+
+  if (Object.keys(errors).length > 0) {
+    return {
+      status: "error",
+      message: "Patikrinkite pažymėtus laukus. Kitos furos neišsaugotos.",
+      errors,
+      values,
+    };
+  }
+
+  if (updates.length === 0) {
+    return { status: "success", message: "Pakeitimų nebuvo." };
+  }
+
+  const results = await Promise.all(
+    updates.map(async (update) => ({
+      plate: update.plate,
+      error: (await supabase.from("trucks").update(update.value).eq("id", update.id)).error,
+    })),
+  );
+
+  const failed = results.filter((result) => result.error !== null);
+
+  if (failed.length > 0) {
+    for (const result of failed) {
+      console.error(`Nepavyko įrašyti furos ${result.plate} svorių`, result.error);
+    }
+
+    refresh();
+
+    return {
+      status: "error",
+      message: `Nepavyko įrašyti šių furų: ${failed.map((result) => result.plate).join(", ")}.`,
+      values,
+    };
+  }
+
+  refresh();
+
+  return { status: "success", message: `Išsaugota furų: ${updates.length}.` };
 }
 
 /**

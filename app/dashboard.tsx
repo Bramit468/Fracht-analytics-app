@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
 import type { ProfitGroup } from "../lib/group-profit";
+import { comparePeriod } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
 import { filterByPeriod, PERIODS, type PeriodKey } from "../lib/trip-period";
 import { listTrips, type TripSummary } from "../lib/trips";
@@ -27,9 +28,11 @@ interface StatCardProps {
   value: string;
   detail: string;
   tone?: "neutral" | "positive" | "negative";
+  /** Pokytis prieš tokį pat ankstesnį laikotarpį (#113). */
+  change?: { text: string; better: boolean } | null;
 }
 
-function StatCard({ label, value, detail, tone = "neutral" }: StatCardProps) {
+function StatCard({ label, value, detail, tone = "neutral", change }: StatCardProps) {
   const accent = tone === "positive" ? "bg-emerald-500" : tone === "negative" ? "bg-red-500" : "bg-blue-500";
   const valueColor = tone === "positive" ? "text-emerald-700" : tone === "negative" ? "text-red-700" : "text-slate-950";
 
@@ -37,8 +40,16 @@ function StatCard({ label, value, detail, tone = "neutral" }: StatCardProps) {
     <span className={`absolute inset-y-0 left-0 w-1 ${accent}`} />
     <dt className="text-sm font-medium text-slate-500">{label}</dt>
     <dd className={`mt-2 text-2xl font-bold tracking-tight xl:text-3xl ${valueColor}`}>{value}</dd>
+    {change && <p className={`mt-2 text-xs font-semibold ${change.better ? "text-emerald-700" : "text-red-700"}`}>{change.text}</p>}
     <p className="mt-2 text-xs text-slate-400">{detail}</p>
   </div>;
+}
+
+/** Pokytis žodžiais: „+12,4 % nei anksčiau“. Be atskaitos taško nerodoma nieko. */
+function changeText(percent: number | null, better: boolean): { text: string; better: boolean } | null {
+  if (percent === null || !Number.isFinite(percent)) return null;
+  const sign = percent >= 0 ? "+" : "−";
+  return { text: `${sign}${Math.abs(percent).toFixed(1)} % nei anksčiau`, better };
 }
 
 function ProfitabilityBars({ stats, periodLabel }: { stats: DashboardStats; periodLabel: string }) {
@@ -152,7 +163,8 @@ export function Dashboard() {
 
   // Šiandiena imama piešimo metu: reisai užkraunami vieną kartą, o laikotarpis
   // keičiamas vietoje, be naujos užklausos.
-  const trips = filterByPeriod(allTrips, period, new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  const trips = filterByPeriod(allTrips, period, today);
   const stats = calculateDashboardStats(trips);
 
   if (loading) return <div role="status" className="space-y-5"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white" />)}</div><div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]"><div className="h-72 animate-pulse rounded-2xl bg-white" /><div className="h-72 animate-pulse rounded-2xl bg-white" /></div><span className="sr-only">Kraunama suvestinė…</span></div>;
@@ -170,15 +182,21 @@ export function Dashboard() {
 
   const profitTone = stats.profitCents >= 0 ? "positive" : "negative";
   const periodLabel = PERIODS.find((item) => item.key === period)?.label ?? "";
+  const comparison = comparePeriod(allTrips, period, today, stats);
 
   return <div className="space-y-5">
     <PeriodPicker value={period} onChange={setPeriod} />
     <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard label="Pajamos iš viso" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${periodLabel.toLowerCase()}`} />
+      <StatCard label="Pajamos iš viso" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${periodLabel.toLowerCase()}`} change={comparison && changeText(comparison.revenue.percent, comparison.revenue.difference >= 0)} />
       <StatCard label="Kaštai iš viso" value={formatCents(stats.totalCostCents)} detail="Kuras, keliai ir furos paros kaštai" />
-      <StatCard label="Pelnas iš viso" value={formatCents(stats.profitCents)} detail="Pajamos minus kaštai" tone={profitTone} />
-      <StatCard label="Pelnas už km" value={formatPerKm(stats.profitPerKm)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={stats.profitPerKm !== null && stats.profitPerKm < 0 ? "negative" : "neutral"} />
+      <StatCard label="Pelnas iš viso" value={formatCents(stats.profitCents)} detail="Pajamos minus kaštai" tone={profitTone} change={comparison && changeText(comparison.profit.percent, comparison.profit.difference >= 0)} />
+      <StatCard label="Pelnas už km" value={formatPerKm(stats.profitPerKm)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={stats.profitPerKm !== null && stats.profitPerKm < 0 ? "negative" : "neutral"} change={comparison?.profitPerKm == null ? null : { text: `${comparison.profitPerKm >= 0 ? "+" : "−"}${Math.abs(comparison.profitPerKm).toFixed(2)} €/km nei anksčiau`, better: comparison.profitPerKm >= 0 }} />
     </dl>
+    {comparison && <p className="text-xs text-slate-500">
+      Lyginama su tokiu pat ankstesniu laikotarpiu: tada {comparison.previous.tripCount} reis.,
+      pelnas {formatCents(comparison.previous.profitCents)}, marža {formatPercent(comparison.previous.marginPercent)}.
+      {comparison.marginPoints !== null && ` Marža ${comparison.marginPoints >= 0 ? "pakilo" : "nukrito"} ${Math.abs(comparison.marginPoints).toFixed(1)} punkto.`}
+    </p>}
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
       <div className="space-y-5"><ProfitabilityBars stats={stats} periodLabel={periodLabel} /><RecentTrips trips={trips} /></div>
       <LossAlerts trips={trips} />

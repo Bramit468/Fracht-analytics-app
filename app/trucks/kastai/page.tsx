@@ -6,7 +6,10 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { copiedTruckIds } from "@/lib/truck-costs-bulk";
 import type { Truck } from "@/types/truck";
 
+import { trucksMissingWeights } from "@/lib/truck-weights-bulk";
+
 import { CostTable } from "./cost-table";
+import { WeightTable } from "./weight-table";
 
 export const metadata: Metadata = {
   title: "Furų kaštai | Fracht Analytics",
@@ -57,6 +60,15 @@ export default async function TruckCostsPage() {
             </p>
           )}
           <CostTable trucks={trucks} copied={[...copied]} />
+
+          <section className="mt-4 flex flex-col gap-3 border-t pt-8">
+            <h2 className="text-lg font-medium">Svoriai maršruto skaičiavimui</h2>
+            <p className="text-sm text-neutral-500">
+              Pagal juos PTV skaičiuoja kurą ir CO₂ konkrečiam maršrutui. Nežinant palikite
+              tuščią — spėtas svoris duotų tikslų atrodantį, bet neteisingą skaičių.
+            </p>
+            <WeightTable trucks={trucks} missing={trucksMissingWeights(trucks).length} />
+          </section>
         </>
       )}
     </main>

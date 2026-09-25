@@ -13,6 +13,7 @@ import {
   type TripFilter,
 } from "../../lib/trip-filter";
 import { PERIODS, type PeriodKey } from "../../lib/trip-period";
+import { csvFileName, tripsToCsv, CSV_BOM } from "../../lib/trip-export";
 import { deleteTrip, listTrips, type TripSummary } from "../../lib/trips";
 
 function formatDate(date: string): string {
@@ -28,6 +29,7 @@ function Controls({
   plates,
   shown,
   total,
+  onExport,
 }: {
   filter: TripFilter;
   onFilter: (next: TripFilter) => void;
@@ -36,6 +38,7 @@ function Controls({
   plates: string[];
   shown: number;
   total: number;
+  onExport: () => void;
 }) {
   const select = "rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm";
 
@@ -65,8 +68,31 @@ function Controls({
         </select>
       </label>
     </div>
-    <p className="mt-3 text-sm text-slate-500">Rodoma {shown} iš {total} reisų.</p>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-slate-500">Rodoma {shown} iš {total} reisų.</p>
+      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-blue-600 underline disabled:opacity-50">
+        Atsisiųsti Excel lentelei ({shown})
+      </button>
+    </div>
   </div>;
+}
+
+/**
+ * Atsiunčia tai, kas matoma ekrane (#115).
+ *
+ * Iškeliamas ne visas sąrašas, o atrinktas: jei ieškojai vienos furos rugsėjį,
+ * to ir reikia — kitaip failą tektų karpyti Excel'yje.
+ */
+function downloadCsv(trips: TripSummary[], today: string) {
+  const blob = new Blob([CSV_BOM, tripsToCsv(trips)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = csvFileName(today);
+  link.click();
+
+  URL.revokeObjectURL(url);
 }
 
 export function TripList() {
@@ -135,7 +161,7 @@ export function TripList() {
   );
 
   return <div className="space-y-4">
-    <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} />
+    <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadCsv(shown, new Date().toISOString().slice(0, 10))} />
 
     {shown.length === 0 ? <p className="rounded-2xl border border-dashed bg-white p-8 text-center text-slate-600">
       Pagal šią paiešką reisų nėra.

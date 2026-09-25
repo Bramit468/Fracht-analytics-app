@@ -19,7 +19,12 @@ import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
-import { lookupRoute, lookupSchedule } from "./route-lookup";
+import {
+  lookupRoute,
+  lookupRouteOptions,
+  lookupSchedule,
+  type RouteOptionResult,
+} from "./route-lookup";
 import {
   DRIVER_SCENARIOS,
   type DriverScenario,
@@ -139,6 +144,11 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [planuoja, setPlanuoja] = useState(false);
   const [scenarijus, setScenarijus] = useState<DriverScenario>("multipleDays");
   const [jauVairavo, setJauVairavo] = useState("0");
+  /** Maršruto variantai su kaštais (#84). */
+  const [variantai, setVariantai] = useState<RouteOptionResult[]>([]);
+  const [variantuKlaida, setVariantuKlaida] = useState("");
+  const [lyginama, setLyginama] = useState(false);
+  const [pasirinktas, setPasirinktas] = useState<string | null>(null);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -185,6 +195,71 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       .catch(() => { /* Patarimas yra priedas – be jo forma lieka pilnavertė. */ });
     return () => { cancelled = true; };
   }, [attempt]);
+
+  /**
+   * Keli PTV keliai su kaštais (#84).
+   *
+   * Kuro norma ir kaina imamos iš formos: be jų liktų vien mokesčiai, o
+   * trumpesnis kelias dažnai laimi būtent kuru.
+   */
+  async function compareRoutes() {
+    const form = formRef.current;
+    if (!form || lyginama) return;
+
+    const value = (name: string) => {
+      const field = form.elements.namedItem(name);
+      return field instanceof HTMLInputElement ? field.value : "";
+    };
+
+    setLyginama(true);
+    setVariantuKlaida("");
+    setVariantai([]);
+    setPasirinktas(null);
+    try {
+      const result = await lookupRouteOptions(
+        value("origin"),
+        value("destination"),
+        value("origin_point"),
+        value("destination_point"),
+        vengtiKeltu,
+        departureIso(value("trip_date"), value("departure_time")),
+        {
+          litresPer100Km: Number(value("fuel_l_per_100km").replace(",", ".")) || 0,
+          priceCentsPerLitre: parseEuroToCents(value("fuel_price")) ?? 0,
+        },
+      );
+
+      if (!result.ok) {
+        setVariantuKlaida(result.message);
+        return;
+      }
+      setVariantai(result.options);
+    } catch {
+      setVariantuKlaida("Nepavyko palyginti maršruto variantų.");
+    } finally {
+      setLyginama(false);
+    }
+  }
+
+  /** Pasirinktas variantas užpildo formą ir žemėlapį – kiti tik rodomi. */
+  function applyRouteOption(option: RouteOptionResult) {
+    const form = formRef.current;
+    if (!form) return;
+
+    for (const [name, filled] of Object.entries(option.fill)) {
+      if (name === "legKm") continue;
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement) field.value = filled;
+    }
+
+    setLegs([{ id: nextId.current++, country: "Nemokami", km: option.fill.legKm }]);
+    setMarsrutoLinija(option.line);
+    setMarsrutoPazeidimai(option.violations);
+    setNeivertintasKeltas(option.ferryPriceUnknown ? option.ferryNames : null);
+    setPasirinktas(option.routeId ?? "pagrindinis");
+    setResult(null);
+    setSaved("");
+  }
 
   /**
    * Vairuotojo pertraukos ir teisėtas atvykimas (#87).
@@ -545,6 +620,46 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
             </ul>
             <p className="mt-2">Prieš išsaugodami patikrinkite pakrovimo ir iškrovimo taškus bei vilkiko parametrus.</p>
           </div>}
+          {/* Skirtumas tarp PTV siūlomų kelių yra pinigai: tas pats Panevėžys–
+              Oslas gali skirtis 133 € vien mokesčiais (#84). */}
+          <div className="mt-4 border-t pt-3">
+            <button type="button" disabled={lyginama} onClick={() => void compareRoutes()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+              {lyginama ? "Lyginama…" : "Palyginti maršruto variantus"}
+            </button>
+            {variantuKlaida && <p role="alert" className="mt-2 text-sm text-red-700">{variantuKlaida}</p>}
+
+            {variantai.length > 0 && <ul className="mt-3 space-y-2">
+              {variantai.map((option) => {
+                const key = option.routeId ?? "pagrindinis";
+                const chosen = pasirinktas === key;
+
+                return <li key={key} className={`rounded-lg border p-3 text-sm ${chosen ? "border-blue-600 bg-blue-50" : "bg-white"}`}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-semibold tabular-nums">
+                      {Math.round(option.km)} km · {durationText(option.travelMinutes)}
+                      {option.cheapest && <span className="ml-2 rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">pigiausias</span>}
+                      {option.fastest && <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">greičiausias</span>}
+                    </span>
+                    <button type="button" onClick={() => applyRouteOption(option)} className="underline">
+                      {chosen ? "Pasirinktas" : "Rinktis šį"}
+                    </button>
+                  </div>
+                  <p className="mt-1 tabular-nums text-slate-700">
+                    Keliai {formatCents(option.tollCents)} · kuras {formatCents(option.fuelCents)} ·{" "}
+                    {option.totalCents === null
+                      ? <strong>iš viso neaišku, kol nežinoma kelto kaina</strong>
+                      : <>iš viso <strong>{formatCents(option.totalCents)}</strong></>}
+                  </p>
+                  {option.ferryNames.length > 0 && <p className="mt-1 text-slate-600">
+                    Keltas: {option.ferryNames.join(", ")}
+                    {option.ferryPriceUnknown && " — PTV neturi jo bilieto kainos, todėl į sumą neįskaičiuota."}
+                  </p>}
+                  {option.violated && <p className="mt-1 text-amber-800">PTV pažymėjo šio kelio apribojimų.</p>}
+                </li>;
+              })}
+            </ul>}
+          </div>
+
           {/* Trukmė iki šiol buvo spėjimas – kelio valandos iš devynių. Paros
               yra 58 % kaštų, tad klaida parose yra klaida pelne (#87). */}
           <div className="mt-4 border-t pt-3">

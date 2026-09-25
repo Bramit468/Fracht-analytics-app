@@ -17,6 +17,8 @@ const truck: Truck = {
   management_cents: 0,
   trailer_monthly_cents: 0,
   working_days_per_month: 22,
+  empty_weight_kg: null,
+  total_permitted_weight_kg: null,
 };
 const tariffs: CountryTariff[] = [{ country: "Nemokami", rate: 0, rateType: "per_km" }];
 const headers = ["Trip number", "Truck", "Origin", "Destination", "Date", "Distance", "Revenue"];

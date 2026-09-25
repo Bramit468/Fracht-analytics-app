@@ -26,6 +26,9 @@ const OMNIVA_FORM: TruckFormValues = {
   management_cents: "",
   trailer_monthly_cents: "550",
   working_days_per_month: "22",
+  // Svoriai nežinomi: forma turi juos priimti tuščius (#86).
+  empty_weight_kg: "",
+  total_permitted_weight_kg: "",
 };
 
 describe("parseTruckForm", () => {
@@ -47,8 +50,45 @@ describe("parseTruckForm", () => {
         management_cents: 0,
         trailer_monthly_cents: 55000,
         working_days_per_month: 22,
+        empty_weight_kg: null,
+        total_permitted_weight_kg: null,
       },
     });
+  });
+
+  it("nežinomas svoris lieka null, o ne nulis", () => {
+    // Nulinis svoris PTV duotų tikslų atrodantį, bet prasimanytą kuro skaičių.
+    const result = parseTruckForm(OMNIVA_FORM);
+    expect(result.ok && result.value.empty_weight_kg).toBeNull();
+  });
+
+  it("priima svorius kilogramais", () => {
+    const result = parseTruckForm({
+      ...OMNIVA_FORM,
+      empty_weight_kg: "15000",
+      total_permitted_weight_kg: "40000",
+    });
+
+    expect(result.ok && result.value).toMatchObject({
+      empty_weight_kg: 15000,
+      total_permitted_weight_kg: 40000,
+    });
+  });
+
+  it("neleidžia tuščiam vilkikui sverti daugiau už leistiną masę", () => {
+    const result = parseTruckForm({
+      ...OMNIVA_FORM,
+      empty_weight_kg: "45000",
+      total_permitted_weight_kg: "40000",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.errors.empty_weight_kg).toBeTruthy();
+  });
+
+  it("neleidžia neįtikėtino svorio", () => {
+    const result = parseTruckForm({ ...OMNIVA_FORM, empty_weight_kg: "15" });
+    expect(!result.ok && result.errors.empty_weight_kg).toBeTruthy();
   });
 
   it("tuščios darbo dienos reiškia 22", () => {

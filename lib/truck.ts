@@ -36,11 +36,30 @@ const DAILY_COST_KEYS = Object.keys(DAILY_COSTS) as (keyof TruckDailyCosts)[];
 /** Formos laukų vardai. Sutampa su `trucks` stulpeliais. */
 export type TruckFormField = keyof TruckInsert;
 
+/**
+ * Svoriai PTV kuro ir CO2e skaičiavimui (#86).
+ *
+ * Laikomi atskirai nuo kaštų: tai vilkiko savybė, o ne pinigai, ir į kaštų
+ * lentelę jie patekti neturi.
+ */
+export const WEIGHT_FIELDS = ["empty_weight_kg", "total_permitted_weight_kg"] as const;
+
+export type TruckWeightField = (typeof WEIGHT_FIELDS)[number];
+
+export const WEIGHT_LABELS: Record<TruckWeightField, string> = {
+  empty_weight_kg: "Svoris be krovinio, kg",
+  total_permitted_weight_kg: "Leistina bendra masė, kg",
+};
+
+const WEIGHT_MIN_KG = 1000;
+const WEIGHT_MAX_KG = 100000;
+
 export const TRUCK_FORM_FIELDS: readonly TruckFormField[] = [
   "plate",
   ...DAILY_COST_KEYS.map((key) => DAILY_COSTS[key].column),
   "trailer_monthly_cents",
   "working_days_per_month",
+  ...WEIGHT_FIELDS,
 ];
 
 export const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
@@ -114,6 +133,31 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
     errors.working_days_per_month = `Įveskite sveiką skaičių nuo 1 iki ${WORKING_DAYS_MAX}.`;
   }
 
+  /** Tuščias svoris reiškia „nežinoma“, o ne nulį: spėti masės negalima (#86). */
+  const weight = (field: TruckWeightField): number | null => {
+    const raw = (values[field] ?? "").trim().replace(/\s/g, "");
+    if (raw === "") return null;
+    const kilograms = Number(raw);
+    if (!Number.isInteger(kilograms) || kilograms < WEIGHT_MIN_KG || kilograms > WEIGHT_MAX_KG) {
+      errors[field] = `Įveskite kilogramus, sveiką skaičių nuo ${WEIGHT_MIN_KG} iki ${WEIGHT_MAX_KG}.`;
+      return null;
+    }
+    return kilograms;
+  };
+
+  const weights = {
+    empty_weight_kg: weight("empty_weight_kg"),
+    total_permitted_weight_kg: weight("total_permitted_weight_kg"),
+  };
+
+  if (
+    weights.empty_weight_kg !== null &&
+    weights.total_permitted_weight_kg !== null &&
+    weights.empty_weight_kg > weights.total_permitted_weight_kg
+  ) {
+    errors.empty_weight_kg = "Tuščias vilkikas negali sverti daugiau už leistiną bendrą masę.";
+  }
+
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
@@ -125,6 +169,7 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
       ...daily,
       trailer_monthly_cents: trailerMonthly,
       working_days_per_month: workingDays,
+      ...weights,
     },
   };
 }
@@ -143,6 +188,9 @@ export function truckRowToFormValues(row: TruckInsert): TruckFormValues {
       values[field] = row.plate;
     } else if (field === "working_days_per_month") {
       values[field] = String(row.working_days_per_month);
+    } else if (field === "empty_weight_kg" || field === "total_permitted_weight_kg") {
+      // Nežinomas svoris lieka tuščias laukas, o ne „0“ — nulis būtų netiesa.
+      values[field] = row[field] === null ? "" : String(row[field]);
     } else {
       values[field] = centsToInput(row[field]);
     }

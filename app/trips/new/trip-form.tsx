@@ -24,6 +24,7 @@ import { AddressField } from "./address-field";
 import { RouteMap } from "./route-map";
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
+import type { RouteEmissions } from "../../../lib/ptv-emissions";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 import type { TripInsert, TripWithLegs } from "../../../types/trip";
@@ -123,6 +124,10 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
   /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
   const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
+  /** Krovinio svoris tonomis – tik PTV užklausai, reise nesaugomas (#86). */
+  const [krovinioSvoris, setKrovinioSvoris] = useState("");
+  const [emisijos, setEmisijos] = useState<RouteEmissions | null>(null);
+  const [emisijuSvoriai, setEmisijuSvoriai] = useState(false);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
 
@@ -244,6 +249,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     setMarsrutoPazeidimai([]);
     setNeivertintasKeltas(null);
     setKeltoIvertis(null);
+    setEmisijos(null);
     try {
       const tripDate = value("trip_date");
       const departureTime = value("departure_time");
@@ -252,6 +258,11 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         return;
       }
 
+      // Svoriai keičia PTV kuro įvertį trečdaliu, todėl siunčiami kartu:
+      // furos — iš duomenų bazės, krovinio — iš šio reiso lauko (#86).
+      const selected = trucks.find((truck) => truck.id === value("truck_id"));
+      const loadTonnes = Number(krovinioSvoris.replace(",", "."));
+
       const result = await lookupRoute(
         value("origin"),
         value("destination"),
@@ -259,6 +270,11 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
         value("destination_point"),
         vengtiKeltu,
         departureIso(tripDate, departureTime),
+        {
+          emptyWeightKg: selected?.empty_weight_kg ?? null,
+          totalPermittedWeightKg: selected?.total_permitted_weight_kg ?? null,
+          loadWeightKg: Number.isFinite(loadTonnes) && loadTonnes > 0 ? loadTonnes * 1000 : null,
+        },
       );
       if (!result.ok) {
         setMarsrutas(result.message);
@@ -267,6 +283,8 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
       }
       setMarsrutoLinija(result.line);
       setMarsrutoPazeidimai(result.violations);
+      setEmisijos(result.emissions);
+      setEmisijuSvoriai(result.weightsUsed);
 
       for (const [name, filled] of Object.entries(result.fill)) {
         if (name === "legKm") continue;
@@ -407,9 +425,55 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
               />
               Vengti keltų
             </label>
+            {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis
+                svarbus: 20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
+            <label className="flex items-center gap-2 text-sm">
+              Krovinio svoris, t
+              <input
+                type="text"
+                inputMode="decimal"
+                value={krovinioSvoris}
+                onChange={(event) => setKrovinioSvoris(event.target.value)}
+                placeholder="20"
+                className={`${inputClass} w-24`}
+              />
+            </label>
           </div>
           <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
           {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
+
+          {emisijos && <div className="mt-3 rounded-lg border bg-white p-3 text-sm">
+            <p className="font-semibold">PTV kuro įvertis pagal maršrutą</p>
+            <p className="mt-1 tabular-nums">
+              {emisijos.fuelLitres.toFixed(0)} l
+              {emisijos.litresPer100Km !== null && ` (${emisijos.litresPer100Km.toFixed(1)} l/100 km)`}
+              {" · CO₂e "}{emisijos.co2eWellToWheelTonnes.toFixed(2)} t
+              <span className="text-slate-500"> (iš jų važiuojant {emisijos.co2eTankToWheelTonnes.toFixed(2)} t)</span>
+            </p>
+            <p className="mt-1 text-slate-600">
+              {emisijuSvoriai
+                ? "Skaičiuota pagal nurodytus svorius ir kelio profilį."
+                : "Svoriai nenurodyti, tad PTV ėmė numatytuosius. Įrašykite furos svorius ir krovinį — įvertis pasikeis."}
+            </p>
+            {/* Pelnas ir toliau skaičiuojamas pagal įvestą normą. PTV skaičių
+                galima perimti tik sąmoningai, kad formulė nepasikeistų tyliai. */}
+            <button
+              type="button"
+              onClick={() => {
+                const field = formRef.current?.elements.namedItem("fuel_l_per_100km");
+                if (field instanceof HTMLInputElement && emisijos.litresPer100Km !== null) {
+                  field.value = emisijos.litresPer100Km.toFixed(2);
+                  setResult(null);
+                  setSaved("");
+                }
+              }}
+              disabled={emisijos.litresPer100Km === null}
+              className="mt-2 underline disabled:opacity-50"
+            >
+              Įrašyti į „Kuro sąnaudos“
+            </button>
+            <span className="ml-2 text-slate-500">Pelnas skaičiuojamas pagal įvestą normą, kol jos nepakeisite.</span>
+          </div>}
           {marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 rounded-lg border border-amber-400 bg-amber-50 p-4 text-sm text-slate-800">
             <p className="font-semibold">PTV aptiko maršruto apribojimų:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">

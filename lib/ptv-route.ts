@@ -9,6 +9,8 @@
  * tvarkingas. PTV mokesčius pasako tiesiogiai, tad spėti nebereikia.
  */
 
+import { PTV_EMISSIONS_RESULT, weightParams, type VehicleWeights } from "./ptv-emissions";
+
 export const PTV_GEOCODING_URL = "https://api.myptv.com/geocoding/v1/locations/by-text";
 export const PTV_ROUTING_URL = "https://api.myptv.com/routing/v1/routes";
 
@@ -277,14 +279,17 @@ export function routeRequestUrl(
   to: Pick<GeocodedPlace, "latitude" | "longitude">,
   avoidFerries: boolean,
   timing?: RouteTiming,
+  weights?: VehicleWeights,
 ): string {
   const url = new URL(PTV_ROUTING_URL);
   url.searchParams.append("waypoints", `${from.latitude},${from.longitude}`);
   url.searchParams.append("waypoints", `${to.latitude},${to.longitude}`);
   url.searchParams.set("profile", PTV_TRUCK_PROFILE);
+  // Emisijos prašomos visada: jos nekainuoja atskiros užklausos, o be svorių
+  // PTV tiesiog ima savo numatytąsias reikšmes (#86).
   url.searchParams.set(
     "results",
-    "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE",
+    `TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE,${PTV_EMISSIONS_RESULT}`,
   );
   url.searchParams.set("options[currency]", "EUR");
   if (timing?.startTime) {
@@ -292,6 +297,9 @@ export function routeRequestUrl(
     url.searchParams.set("options[trafficMode]", timing.trafficMode);
   }
   if (avoidFerries) url.searchParams.set("options[avoid]", "FERRIES");
+  for (const [name, value] of Object.entries(weightParams(weights ?? {}))) {
+    url.searchParams.set(name, value);
+  }
   return url.toString();
 }
 

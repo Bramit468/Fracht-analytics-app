@@ -6,6 +6,8 @@ import {
   DAILY_COSTS,
   DEFAULT_WORKING_DAYS_PER_MONTH,
   truckRowToFormValues,
+  WEIGHT_FIELDS,
+  WEIGHT_LABELS,
   type TruckFormField,
   type TruckFormValues,
 } from "@/lib/truck";
@@ -68,6 +70,24 @@ export function TruckForm({ truck }: { truck?: Truck }) {
           state={state}
           defaults={defaults}
         />
+      </fieldset>
+
+      {/* Svoriai reikalingi PTV kuro ir CO2e skaičiavimui (#86): tos pačios
+          kelionės kuras su 20 t kroviniu ir su 5 t skiriasi trečdaliu. */}
+      <fieldset className="grid gap-3 sm:grid-cols-2">
+        <legend className="mb-2 text-sm font-medium">Svoriai maršruto skaičiavimui</legend>
+        {WEIGHT_FIELDS.map((field) => (
+          <Field
+            key={field}
+            name={field}
+            label={WEIGHT_LABELS[field]}
+            placeholder={field === "total_permitted_weight_kg" ? "40000" : "15000"}
+            hint="Nežinant palikite tuščią — PTV tada ims savo numatytąsias reikšmes."
+            inputMode="numeric"
+            state={state}
+            defaults={defaults}
+          />
+        ))}
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-4">

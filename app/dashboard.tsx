@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
+import type { ProfitGroup } from "../lib/group-profit";
+import { summarizeByRoute } from "../lib/route-profit";
 import { filterByPeriod, PERIODS, type PeriodKey } from "../lib/trip-period";
 import { listTrips, type TripSummary } from "../lib/trips";
 import { summarizeByTruck } from "../lib/truck-profit";
@@ -89,18 +91,32 @@ function PeriodPicker({ value, onChange }: { value: PeriodKey; onChange: (key: P
   </div>;
 }
 
-/** Kuri fura neša pinigus. Su dvidešimt dviem furomis iš reisų sąrašo to nesuskaičiuosi (#101). */
-function TruckProfit({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
-  const rows = summarizeByTruck(trips);
+interface ProfitRow extends Omit<ProfitGroup, "key"> {
+  /** Ką rodo pirmas stulpelis: furos numeris arba kryptis. */
+  label: string;
+  mono?: boolean;
+}
 
+/**
+ * Pelningumo pjūvis. Ta pati lentelė furoms ir kryptims (#101, #107):
+ * skiriasi tik antraštė ir pirmas stulpelis.
+ */
+function ProfitTable({ title, subtitle, column, rows, note, action }: {
+  title: string;
+  subtitle: string;
+  column: string;
+  rows: ProfitRow[];
+  note: string;
+  action?: { href: string; label: string };
+}) {
   return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Furų pelningumas</h3><p className="mt-1 text-sm text-slate-500">{periodLabel}, pelningiausia viršuje</p></div><Link href="/trucks/kastai" className="text-sm font-semibold text-blue-600 hover:text-blue-700">Tikslinti kaštus</Link></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{action && <Link href={action.href} className="text-sm font-semibold text-blue-600 hover:text-blue-700">{action.label}</Link>}</div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
         <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => <tr key={row.plate}>
-            <td className="px-5 py-3 font-mono sm:px-6">{row.plate}</td>
+          {rows.map((row) => <tr key={row.label}>
+            <td className={`px-5 py-3 sm:px-6 ${row.mono ? "font-mono" : ""}`}>{row.label}</td>
             <td className="px-3 py-3 text-right tabular-nums text-slate-500">{row.tripCount}</td>
             <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCents(row.revenueCents)}</td>
             <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.profitCents >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCents(row.profitCents)}</td>
@@ -110,7 +126,7 @@ function TruckProfit({ trips, periodLabel }: { trips: TripSummary[]; periodLabel
         </tbody>
       </table>
     </div>
-    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos.</p>
+    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">{note}</p>
   </div>;
 }
 
@@ -167,6 +183,20 @@ export function Dashboard() {
       <div className="space-y-5"><ProfitabilityBars stats={stats} periodLabel={periodLabel} /><RecentTrips trips={trips} /></div>
       <LossAlerts trips={trips} />
     </div>
-    <TruckProfit trips={trips} periodLabel={periodLabel} />
+    <ProfitTable
+      title="Furų pelningumas"
+      subtitle={`${periodLabel}, pelningiausia viršuje`}
+      column="Fura"
+      rows={summarizeByTruck(trips).map(({ plate, ...totals }) => ({ label: plate, mono: true, ...totals }))}
+      note="Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos."
+      action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
+    />
+    <ProfitTable
+      title="Krypčių pelningumas"
+      subtitle={`${periodLabel}, pelningiausia viršuje`}
+      column="Kryptis"
+      rows={summarizeByRoute(trips).map(({ origin, destination, ...totals }) => ({ label: `${origin} → ${destination}`, ...totals }))}
+      note="Priešingos kryptys skaičiuojamos atskirai: atgalinis reisas paprastai kainuoja visai kitaip, ir būtent tas skirtumas čia įdomiausias."
+    />
   </div>;
 }

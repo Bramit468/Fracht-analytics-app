@@ -62,6 +62,43 @@ export function periodRange(key: PeriodKey, today: string): PeriodRange | null {
   }
 }
 
+/**
+ * Prieš tai ėjęs toks pat laikotarpis — palyginimui (#113).
+ *
+ * „Visiems“ jo nėra: prieš visą istoriją nieko nebuvo.
+ */
+export function previousPeriodRange(key: PeriodKey, today: string): PeriodRange | null {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  // Mėnuo skaičiuojamas per bendrą numeraciją, kad nereikėtų atskirai gaudyti
+  // sausio ir vasario persivertimo į praėjusius metus.
+  const shiftMonths = (back: number): PeriodRange => {
+    const total = year * 12 + (month - 1) - back;
+    return monthRange(Math.floor(total / 12), (total % 12) + 1);
+  };
+
+  switch (key) {
+    case "month":
+      return shiftMonths(1);
+    case "previousMonth":
+      return shiftMonths(2);
+    case "year":
+      return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
+    case "all":
+      return null;
+  }
+}
+
+/** Reisai, patenkantys į ribas. Ribos imtinės. */
+export function filterByRange(trips: TripSummary[], range: PeriodRange): TripSummary[] {
+  return trips.filter((trip) => trip.tripDate >= range.from && trip.tripDate <= range.to);
+}
+
 /** Reisai, patenkantys į laikotarpį. Ribos imtinės. */
 export function filterByPeriod(
   trips: TripSummary[],
@@ -69,7 +106,5 @@ export function filterByPeriod(
   today: string,
 ): TripSummary[] {
   const range = periodRange(key, today);
-  if (range === null) return trips;
-
-  return trips.filter((trip) => trip.tripDate >= range.from && trip.tripDate <= range.to);
+  return range === null ? trips : filterByRange(trips, range);
 }

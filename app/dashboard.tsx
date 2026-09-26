@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
+import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
 import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
@@ -99,6 +100,43 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
 function PeriodPicker({ value, onChange }: { value: PeriodKey; onChange: (key: PeriodKey) => void }) {
   return <div role="group" aria-label="Laikotarpis" className="flex flex-wrap gap-2">
     {PERIODS.map((period) => <button key={period.key} type="button" aria-pressed={period.key === value} onClick={() => onChange(period.key)} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${period.key === value ? "bg-slate-950 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"}`}>{period.label}</button>)}
+  </div>;
+}
+
+/**
+ * Tuščia rida (#123).
+ *
+ * Tuščias kilometras degina kurą ir naudoja tą pačią parą, bet neuždirba nieko.
+ * Blogiausia fura viršuje, nes būtent ją verta derinti pirmiausia.
+ */
+function EmptyKm({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
+  const total = summarizeEmptyKm(trips);
+  const byTruck = emptyKmByTruck(trips).filter((row) => row.emptyKm > 0);
+
+  if (total.emptyKm === 0) return null;
+
+  return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="border-b border-slate-100 px-5 py-4 sm:px-6"><h3 className="font-semibold">Tuščia rida</h3><p className="mt-1 text-sm text-slate-500">{periodLabel}</p></div>
+    <dl className="grid grid-cols-2 gap-4 px-5 py-4 sm:grid-cols-3 sm:px-6">
+      <div><dt className="text-xs uppercase tracking-wide text-slate-400">Tuščia</dt><dd className="mt-1 text-lg font-bold tabular-nums">{Math.round(total.emptyKm).toLocaleString("lt-LT")} km</dd></div>
+      <div><dt className="text-xs uppercase tracking-wide text-slate-400">Visos ridos dalis</dt><dd className="mt-1 text-lg font-bold tabular-nums">{formatPercent(total.emptyShare)}</dd></div>
+      <div><dt className="text-xs uppercase tracking-wide text-slate-400">Kuras tuščiai ridai</dt><dd className="mt-1 text-lg font-bold tabular-nums text-red-700">{formatCents(total.emptyFuelCents)}</dd></div>
+    </dl>
+    {byTruck.length > 0 && <div className="overflow-x-auto border-t border-slate-100">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Tuščia</th><th className="px-3 py-3 text-right font-medium">Dalis</th><th className="px-5 py-3 text-right font-medium sm:px-6">Kuras</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {byTruck.slice(0, 8).map((row) => <tr key={row.plate}>
+            <td className="px-5 py-3 font-mono sm:px-6">{row.plate}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-500">{row.tripCount}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{Math.round(row.emptyKm).toLocaleString("lt-LT")} km</td>
+            <td className="px-3 py-3 text-right font-semibold tabular-nums">{formatPercent(row.emptyShare)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-slate-600 sm:px-6">{formatCents(row.emptyFuelCents)}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
+    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Skaičiuojamas tik kuras: paros kaštai tenka reisui vis tiek, o keliai sumokami nepriklausomai nuo to, ar fura pakrauta.</p>
   </div>;
 }
 
@@ -209,6 +247,7 @@ export function Dashboard() {
       note="Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos."
       action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
     />
+    <EmptyKm trips={trips} periodLabel={periodLabel} />
     <ProfitTable
       title="Krypčių pelningumas"
       subtitle={`${periodLabel}, pelningiausia viršuje`}

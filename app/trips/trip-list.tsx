@@ -191,6 +191,8 @@ export function TripList() {
           </dl>
           <div className="flex gap-4 text-sm">
             <Link href={`/trips/${trip.id}/edit`} className="underline">Redaguoti</Link>
+            {/* Tas pats maršrutas kartojasi kas savaitę (#129). */}
+            <Link href={`/trips/new?copy=${trip.id}`} className="underline">Kopijuoti</Link>
             <button type="button" disabled={removing === trip.id} onClick={() => void remove(trip)} className="text-red-700 underline disabled:opacity-50">
               {removing === trip.id ? "Trinama…" : "Ištrinti"}
             </button>

@@ -17,6 +17,7 @@ import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { truckRowToCalc } from "../../../lib/truck";
 import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
+import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
 import {
@@ -44,7 +45,7 @@ import {
 } from "../../../lib/via-points";
 import type { CountryTariff, TripResult } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
-import type { TripInsert, TripWithLegs } from "../../../types/trip";
+import type { TripInsert } from "../../../types/trip";
 
 /**
  * Skaitiniai laukai, suskirstyti pagal skiltis.
@@ -91,23 +92,16 @@ function durationText(minutes: number): string {
   return hours > 0 ? `${hours} val. ${rest} min.` : `${rest} min.`;
 }
 
-/** Išsaugotas reisas -> formos laukų reikšmės. Sumos verčiamos atgal į eurus. */
-function tripDefaults(trip: TripWithLegs): Record<string, string> {
-  return {
-    truck_id: trip.truck_id, trip_number: trip.trip_number, origin: trip.origin,
-    destination: trip.destination, trip_date: trip.trip_date,
-    days: String(trip.days), paid_km: String(trip.paid_km), empty_km: String(trip.empty_km),
-    fuel_l_per_100km: String(trip.fuel_l_per_100km), fuel_price: String(trip.fuel_price),
-    adblue_l_per_100km: String(trip.adblue_l_per_100km), adblue_price: String(trip.adblue_price),
-    bridges_cents: centsToInput(trip.bridges_cents), ferries_cents: centsToInput(trip.ferries_cents),
-    tunnels_cents: centsToInput(trip.tunnels_cents), parking_cents: centsToInput(trip.parking_cents),
-    revenue: trip.revenue_mode === "freight"
-      ? centsToInput(trip.freight_price_cents ?? 0)
-      : String(trip.rate_per_km ?? 0),
-  };
-}
-
-export function TripForm({ tripId, routeLookup = false }: { tripId?: string; routeLookup?: boolean }) {
+export function TripForm({
+  tripId,
+  copyFromId,
+  routeLookup = false,
+}: {
+  tripId?: string;
+  /** Reisas, iš kurio kopijuojama į naują (#129). */
+  copyFromId?: string;
+  routeLookup?: boolean;
+}) {
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [defaults, setDefaults] = useState<Record<string, string>>({});
   const [tariffs, setTariffs] = useState<CountryTariff[]>([]);
@@ -166,10 +160,11 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     async function load() {
       try {
         const client = getSupabaseClient();
+        const source = tripId ?? copyFromId;
         const [t, c, existing] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
-          tripId ? getTripWithLegs(tripId) : null,
+          source ? getTripWithLegs(source) : null,
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
@@ -177,11 +172,17 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
           setTrucks(t.data as Truck[]);
           setTariffs(c.data.map(row => ({ country: row.country, rate: Number(row.rate), rateType: row.rate_type })));
           if (existing) {
-            setDefaults(tripDefaults(existing));
-            setMode(existing.revenue_mode);
-            if (existing.legs.length) {
-              setLegs(existing.legs.map((leg, index) => ({ id: index, country: leg.country, km: String(leg.km) })));
-              nextId.current = existing.legs.length;
+            // Kopijuojant numeris ir data neperkeliami: numeris turi būti
+            // naujas, o sena data priskirtų reisą ne tam mėnesiui (#129).
+            const copy = tripId
+              ? { defaults: tripDefaults(existing), legs: existing.legs.map((leg) => ({ country: leg.country, km: String(leg.km) })), revenueMode: existing.revenue_mode }
+              : copyForNewTrip(existing, new Date().toISOString().slice(0, 10));
+
+            setDefaults(copy.defaults);
+            setMode(copy.revenueMode);
+            if (copy.legs.length) {
+              setLegs(copy.legs.map((leg, index) => ({ id: index, ...leg })));
+              nextId.current = copy.legs.length;
             }
           }
         }
@@ -193,7 +194,7 @@ export function TripForm({ tripId, routeLookup = false }: { tripId?: string; rou
     }
     void load();
     return () => { cancelled = true; };
-  }, [attempt, tripId]);
+  }, [attempt, tripId, copyFromId]);
 
   // Istorija kraunama atskirai ir formos nesulaiko: be jos skaičiuoklė veikia
   // kaip anksčiau, o laukti dėl patarimo nereikėtų (#109).

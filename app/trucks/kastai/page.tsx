@@ -8,6 +8,7 @@ import type { Truck } from "@/types/truck";
 
 import { trucksMissingWeights } from "@/lib/truck-weights-bulk";
 
+import { AppNav } from "../../app-nav";
 import { CostTable } from "./cost-table";
 import { WeightTable } from "./weight-table";
 
@@ -31,6 +32,7 @@ export default async function TruckCostsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-[110rem] flex-col gap-6 px-4 py-10">
+      <AppNav />
       <header className="flex flex-col gap-1">
         <Link href="/trucks" className="text-sm underline">
           Atgal į furas

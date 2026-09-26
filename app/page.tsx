@@ -1,14 +1,9 @@
 import Link from "next/link";
-import { Dashboard } from "./dashboard";
 
-const navigation = [
-  { href: "/", label: "Suvestinė", active: true },
-  { href: "/trips", label: "Reisai" },
-  { href: "/trips/new", label: "Naujas reisas" },
-  { href: "/trips/import", label: "Importas iš Excel" },
-  { href: "/telematika", label: "Faktiniai kaštai" },
-  { href: "/imone", label: "Įmonė" },
-];
+import { NAV_ITEMS, activeNavHref } from "@/lib/navigation";
+
+import { AppNav } from "./app-nav";
+import { Dashboard } from "./dashboard";
 
 function BrandMark() {
   return <span aria-hidden="true" className="grid size-10 place-items-center rounded-xl bg-blue-500 text-lg font-black text-white shadow-lg shadow-blue-950/30">F</span>;
@@ -22,8 +17,10 @@ export default function Home() {
           <BrandMark />
           <span><strong className="block text-sm text-white">Fracht Analytics</strong><span className="text-xs text-slate-500">Reisų analitika</span></span>
         </Link>
+        {/* Šoninis meniu rodomas tik suvestinėje, todėl pažymėtas punktas
+            žinomas iš anksto ir `usePathname` čia nereikalingas (#135). */}
         <nav aria-label="Pagrindinis meniu" className="mt-10 space-y-1">
-          {navigation.map((item) => <Link key={item.href} href={item.href} aria-current={item.active ? "page" : undefined} className={`block rounded-xl px-4 py-3 text-sm font-semibold transition ${item.active ? "bg-blue-600 text-white shadow-lg shadow-blue-950/20" : "hover:bg-slate-900 hover:text-white"}`}>{item.label}</Link>)}
+          {NAV_ITEMS.map((item) => <Link key={item.href} href={item.href} aria-current={item.href === activeNavHref("/") ? "page" : undefined} className={`block rounded-xl px-4 py-3 text-sm font-semibold transition ${item.href === activeNavHref("/") ? "bg-blue-600 text-white shadow-lg shadow-blue-950/20" : "hover:bg-slate-900 hover:text-white"}`}>{item.label}</Link>)}
         </nav>
         <div className="mt-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
           <p className="flex items-center gap-2 text-xs font-semibold text-emerald-400"><span className="size-2 rounded-full bg-emerald-400" /> Gyvi duomenys</p>
@@ -38,9 +35,7 @@ export default function Home() {
             <div className="hidden lg:block"><p className="text-sm font-medium text-slate-500">Veiklos apžvalga</p><p className="text-xs text-slate-400">Visi išsaugoti reisai</p></div>
             <Link className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700" href="/trips/new">+ Naujas reisas</Link>
           </div>
-          <nav aria-label="Meniu telefone" className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            {navigation.map((item) => <Link key={item.href} href={item.href} aria-current={item.active ? "page" : undefined} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${item.active ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600"}`}>{item.label}</Link>)}
-          </nav>
+          <AppNav className="mt-4 lg:hidden" />
         </header>
 
         <div className="w-full px-4 py-7 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">

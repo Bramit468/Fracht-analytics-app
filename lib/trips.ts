@@ -1,3 +1,4 @@
+import { emptyFuelCents } from "./empty-km";
 import { getSupabaseClient } from "./supabase";
 import { calculateSavedTrip } from "./trip-input";
 import type { CountryTariff } from "./calc";
@@ -13,6 +14,10 @@ export interface TripSummary {
   tripDate: string;
   truckPlate: string;
   paidKm: number;
+  /** Tuščia rida: kaštas be pajamų (#123). */
+  emptyKm: number;
+  /** Kuras, sudegintas tuščiais kilometrais. */
+  emptyFuelCents: number;
   revenueCents: number;
   totalCostCents: number;
   profitCents: number;
@@ -59,6 +64,8 @@ export function buildTripSummaries(
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
       paidKm: trip.paid_km,
+      emptyKm: trip.empty_km,
+      emptyFuelCents: emptyFuelCents(trip.empty_km, trip.fuel_l_per_100km, trip.fuel_price),
       revenueCents: result.revenueCents,
       totalCostCents: result.totalCostCents,
       profitCents: result.profitCents,

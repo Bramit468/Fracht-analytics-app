@@ -12,6 +12,8 @@ function trip(overrides: Partial<TripSummary>): TripSummary {
     tripDate: "2026-09-01",
     truckPlate: "LOV 141",
     paidKm: 1000,
+    emptyKm: 0,
+    emptyFuelCents: 0,
     revenueCents: 200000,
     totalCostCents: 150000,
     profitCents: 50000,

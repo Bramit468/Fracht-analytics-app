@@ -12,6 +12,8 @@ function trip(id: string, tripDate: string): TripSummary {
     tripDate,
     truckPlate: "LOV 141",
     paidKm: 1000,
+    emptyKm: 0,
+    emptyFuelCents: 0,
     revenueCents: 200000,
     totalCostCents: 150000,
     profitCents: 50000,

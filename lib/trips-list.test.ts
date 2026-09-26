@@ -65,6 +65,8 @@ it("builds list values with the shared trip calculation", () => {
     tripDate: "2026-09-20",
     truckPlate: "NNN 888",
     paidKm: 100,
+    emptyKm: 0,
+    emptyFuelCents: 0,
     revenueCents: 25000,
     totalCostCents: 10000,
     profitCents: 15000,

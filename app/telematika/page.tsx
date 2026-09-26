@@ -20,6 +20,7 @@ import {
 
 import { AppNav } from "../app-nav";
 import { ArchiveButton } from "./archive-button";
+import { ExportButtons } from "./export-buttons";
 
 export const metadata: Metadata = {
   title: "Faktiniai kaštai | Fracht Analytics",
@@ -188,6 +189,10 @@ export default async function TelematikaPage({
         <p role="alert" className="text-sm text-red-600">
           {klaida}
         </p>
+      )}
+
+      {eilutes.length > 0 && (
+        <ExportButtons actuals={eilutes} fuelByCountry={kuroSalys} from={from} to={to} />
       )}
 
       {eilutes.length > 0 && (

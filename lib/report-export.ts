@@ -8,6 +8,8 @@
 
 import { buildCsv, centsToCsv, csvField, decimalToCsv } from "./csv";
 import type { CountryRoadSummary } from "./country-roads";
+import type { FuelPriceRow } from "./fuel-prices";
+import type { ActualCosts } from "./telematics-costs";
 import type { MonthStats } from "./monthly";
 import type { RouteProfit } from "./route-profit";
 import type { TruckProfit } from "./truck-profit";
@@ -86,6 +88,63 @@ export function monthsToCsv(rows: MonthStats[]): string {
       centsToCsv(row.profitCents),
       decimalToCsv(row.marginPercent, 1),
       decimalToCsv(row.costPerKm, 2),
+    ]),
+  );
+}
+
+/**
+ * Faktiniai kaštai pagal furą (#141).
+ *
+ * Būtent šitą lentelę prašo buhalterija: kiek fura nuvažiavo ir kiek realiai
+ * išleista kurui, AdBlue ir keliams per laikotarpį.
+ */
+export function actualsToCsv(rows: ActualCosts[]): string {
+  return buildCsv(
+    [
+      "Fura",
+      "Nuo",
+      "Iki",
+      "Dienos",
+      "km",
+      "Litrai",
+      "l/100 km",
+      "EUR/l",
+      "Kuras, EUR",
+      "AdBlue, EUR",
+      "Keliai, EUR",
+      "Kita, EUR",
+      "Iš viso, EUR",
+    ],
+    rows.map((row) => [
+      csvField(row.plate),
+      row.from,
+      row.to,
+      String(row.days),
+      String(Math.round(row.km)),
+      decimalToCsv(row.fuelL, 1),
+      decimalToCsv(row.litresPer100Km, 2),
+      decimalToCsv(row.fuelPricePerL, 3),
+      centsToCsv(row.dieselCents),
+      centsToCsv(row.adblueCents),
+      centsToCsv(row.tollCents),
+      // „Kita“ į bendrą sumą neįeina ir faile: telematikos puslapis ją laiko
+      // atskirai, o dvi skirtingos sumos tame pačiame skaičiuje klaidintų.
+      centsToCsv(row.otherCents),
+      centsToCsv(row.totalCents),
+    ]),
+  );
+}
+
+/** Kuro kainos pagal šalį arba mėnesį (#139). */
+export function fuelPricesToCsv(rows: FuelPriceRow[], firstColumn: string): string {
+  return buildCsv(
+    [firstColumn, "Pylimai", "Litrai", "Suma, EUR", "EUR/l"],
+    rows.map((row) => [
+      csvField(row.key === "" ? "Nenurodyta" : row.key),
+      String(row.purchases),
+      decimalToCsv(row.litres, 1),
+      centsToCsv(row.costCents),
+      decimalToCsv(row.pricePerL, 3),
     ]),
   );
 }

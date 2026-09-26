@@ -18,6 +18,7 @@ const trips: TripSummary[] = [
     profitCents: 87100,
     marginPercent: 36.3,
     profitPerKm: 0.5,
+    roadByCountry: [],
   },
   {
     id: "trip-2",
@@ -34,6 +35,7 @@ const trips: TripSummary[] = [
     profitCents: -10000,
     marginPercent: -10,
     profitPerKm: -0.1,
+    roadByCountry: [],
   },
 ];
 

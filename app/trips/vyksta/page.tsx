@@ -6,7 +6,14 @@ import { calcDailyRate } from "@/lib/calc";
 import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { parseCanDaily, type DailyDistance } from "@/lib/telematics-costs";
-import { addDays, isOnTheRoad, tripProgress, type TripProgress } from "@/lib/trip-progress";
+import {
+  addDays,
+  fuelDrift,
+  isOnTheRoad,
+  tripProgress,
+  type FuelDrift,
+  type TripProgress,
+} from "@/lib/trip-progress";
 import type { Trip } from "@/types/trip";
 import type { Truck } from "@/types/truck";
 
@@ -43,6 +50,8 @@ interface Row {
   trip: Trip;
   plate: string;
   progress: TripProgress;
+  /** Kuro nukrypimas nuo normos. `null`, kai faktinių sąnaudų dar nėra (#137). */
+  drift: FuelDrift | null;
 }
 
 export default async function VykstaPage() {
@@ -69,17 +78,27 @@ export default async function VykstaPage() {
     .filter((trip) => isOnTheRoad(trip.trip_date, trip.days, today))
     .map((trip) => {
       const plate = plates.get(trip.truck_id) ?? "";
+      const plannedKm = trip.paid_km + trip.empty_km;
+      const progress = tripProgress(
+        daily,
+        plate,
+        trip.trip_date,
+        trip.days,
+        plannedKm,
+        calcDailyRate(trip.truck_costs),
+        today,
+      );
+
       return {
         trip,
         plate,
-        progress: tripProgress(
-          daily,
-          plate,
-          trip.trip_date,
-          trip.days,
-          trip.paid_km + trip.empty_km,
-          calcDailyRate(trip.truck_costs),
-          today,
+        progress,
+        drift: fuelDrift(
+          progress.litresPer100Km,
+          trip.fuel_l_per_100km,
+          trip.fuel_price,
+          progress.drivenKm,
+          plannedKm,
         ),
       };
     });
@@ -101,7 +120,7 @@ export default async function VykstaPage() {
         </p>
       ) : (
         <ul className="flex flex-col gap-4">
-          {rows.map(({ trip, plate, progress }) => (
+          {rows.map(({ trip, plate, progress, drift }) => (
             <li key={trip.id} className="rounded-2xl border p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -149,6 +168,24 @@ export default async function VykstaPage() {
                   </dd>
                 </div>
               </dl>
+
+              {/* Pelnas dar nesuskaičiuotas, bet kuro nukrypimas jau žinomas —
+                  ir apie jį verta žinoti dabar, o ne apskaitant po savaitės. */}
+              {drift && drift.litresPer100KmDiff !== 0 && (
+                <p
+                  className={`mt-3 rounded-lg p-3 text-sm ${
+                    drift.projectedCents > 0
+                      ? "bg-amber-50 text-amber-900"
+                      : "bg-emerald-50 text-emerald-900"
+                  }`}
+                >
+                  Kuras {drift.litresPer100KmDiff > 0 ? "viršija normą" : "mažesnis už normą"}{" "}
+                  {Math.abs(drift.litresPer100KmDiff).toFixed(1)} l/100 km: iki šiol{" "}
+                  <strong>{formatCents(Math.abs(drift.soFarCents))}</strong>, o visam reisui —{" "}
+                  <strong>{formatCents(Math.abs(drift.projectedCents))}</strong>
+                  {drift.projectedCents > 0 ? " brangiau" : " pigiau"}, jei sąnaudos nesikeis.
+                </p>
+              )}
 
               <p className="mt-3 text-xs text-neutral-500">
                 {progress.measuredThrough

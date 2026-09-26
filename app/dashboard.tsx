@@ -7,6 +7,14 @@ import { formatCents } from "../lib/money";
 import { summarizeCountryRoads } from "../lib/country-roads";
 import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
 import { monthlyStats, peakProfitCents } from "../lib/monthly";
+import {
+  countriesToCsv,
+  monthsToCsv,
+  reportFileName,
+  routesToCsv,
+  trucksToCsv,
+} from "../lib/report-export";
+import { downloadCsv, todayForFileName } from "./download-csv";
 import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
@@ -142,6 +150,15 @@ function EmptyKm({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: st
   </div>;
 }
 
+/** Lentelės atsisiuntimas Excel'iui (#133). Rodomas tik ten, kur yra ką iškelti. */
+function ExportButton({ onExport }: { onExport?: () => void }) {
+  if (!onExport) return null;
+
+  return <button type="button" onClick={onExport} className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+    Atsisiųsti
+  </button>;
+}
+
 /**
  * Mėnesių eiga (#131).
  *
@@ -155,7 +172,7 @@ function MonthlyTrend({ trips, today }: { trips: TripSummary[]; today: string })
   if (peak === 0) return null;
 
   return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="border-b border-slate-100 px-5 py-4 sm:px-6"><h3 className="font-semibold">Mėnesių eiga</h3><p className="mt-1 text-sm text-slate-500">Paskutiniai 12 mėnesių, nepriklausomai nuo pasirinkto laikotarpio</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Mėnesių eiga</h3><p className="mt-1 text-sm text-slate-500">Paskutiniai 12 mėnesių, nepriklausomai nuo pasirinkto laikotarpio</p></div><ExportButton onExport={() => downloadCsv(reportFileName("menesiai", todayForFileName()), monthsToCsv(months))} /></div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Mėnuo</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 font-medium sm:px-6">Eiga</th></tr></thead>
@@ -195,7 +212,7 @@ function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabe
   if (rows.length === 0) return null;
 
   return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="border-b border-slate-100 px-5 py-4 sm:px-6"><h3 className="font-semibold">Keliai pagal šalį</h3><p className="mt-1 text-sm text-slate-500">{periodLabel}, brangiausia viršuje</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Keliai pagal šalį</h3><p className="mt-1 text-sm text-slate-500">{periodLabel}, brangiausia viršuje</p></div><ExportButton onExport={() => downloadCsv(reportFileName("salys", todayForFileName()), countriesToCsv(rows))} /></div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Šalis</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Km</th><th className="px-3 py-3 text-right font-medium">Keliai</th><th className="px-3 py-3 text-right font-medium">Dalis</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
@@ -225,16 +242,17 @@ interface ProfitRow extends Omit<ProfitGroup, "key"> {
  * Pelningumo pjūvis. Ta pati lentelė furoms ir kryptims (#101, #107):
  * skiriasi tik antraštė ir pirmas stulpelis.
  */
-function ProfitTable({ title, subtitle, column, rows, note, action }: {
+function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: {
   title: string;
   subtitle: string;
   column: string;
   rows: ProfitRow[];
   note: string;
   action?: { href: string; label: string };
+  onExport?: () => void;
 }) {
   return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{action && <Link href={action.href} className="text-sm font-semibold text-blue-600 hover:text-blue-700">{action.label}</Link>}</div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div><div className="flex items-center gap-4">{action && <Link href={action.href} className="text-sm font-semibold text-blue-600 hover:text-blue-700">{action.label}</Link>}<ExportButton onExport={onExport} /></div></div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-5 py-3 text-right font-medium sm:px-6">Pelnas €/km</th></tr></thead>
@@ -324,6 +342,7 @@ export function Dashboard() {
       rows={summarizeByTruck(trips).map(({ plate, ...totals }) => ({ label: plate, mono: true, ...totals }))}
       note="Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos."
       action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
+      onExport={() => downloadCsv(reportFileName("furos", todayForFileName()), trucksToCsv(summarizeByTruck(trips)))}
     />
     <MonthlyTrend trips={allTrips} today={today} />
     <EmptyKm trips={trips} periodLabel={periodLabel} />
@@ -334,6 +353,7 @@ export function Dashboard() {
       column="Kryptis"
       rows={summarizeByRoute(trips).map(({ origin, destination, ...totals }) => ({ label: `${origin} → ${destination}`, ...totals }))}
       note="Priešingos kryptys skaičiuojamos atskirai: atgalinis reisas paprastai kainuoja visai kitaip, ir būtent tas skirtumas čia įdomiausias."
+      onExport={() => downloadCsv(reportFileName("kryptys", todayForFileName()), routesToCsv(summarizeByRoute(trips)))}
     />
   </div>;
 }

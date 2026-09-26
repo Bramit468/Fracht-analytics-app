@@ -195,7 +195,7 @@ function ProfitTable({ title, subtitle, column, rows, note, action }: {
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{subtitle}</p></div>{action && <Link href={action.href} className="text-sm font-semibold text-blue-600 hover:text-blue-700">{action.label}</Link>}</div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-5 py-3 text-right font-medium sm:px-6">Pelnas €/km</th></tr></thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => <tr key={row.label}>
             <td className={`px-5 py-3 sm:px-6 ${row.mono ? "font-mono" : ""}`}>{row.label}</td>
@@ -203,6 +203,7 @@ function ProfitTable({ title, subtitle, column, rows, note, action }: {
             <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCents(row.revenueCents)}</td>
             <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.profitCents >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCents(row.profitCents)}</td>
             <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatPercent(row.marginPercent)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatPerKm(row.costPerKm)}</td>
             <td className="px-5 py-3 text-right tabular-nums text-slate-600 sm:px-6">{formatPerKm(row.profitPerKm)}</td>
           </tr>)}
         </tbody>
@@ -259,7 +260,9 @@ export function Dashboard() {
     <PeriodPicker value={period} onChange={setPeriod} />
     <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Pajamos iš viso" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${periodLabel.toLowerCase()}`} change={comparison && changeText(comparison.revenue.percent, comparison.revenue.difference >= 0)} />
-      <StatCard label="Kaštai iš viso" value={formatCents(stats.totalCostCents)} detail="Kuras, keliai ir furos paros kaštai" />
+      {/* Savikaina už km yra tas skaičius, kuriuo deramasi: siūloma kaina turi
+          prasmę tik žinant, kiek kainuoja kilometras (#127). */}
+      <StatCard label="Kaštai iš viso" value={formatCents(stats.totalCostCents)} detail={`Savikaina ${formatPerKm(stats.costPerKm)}`} />
       <StatCard label="Pelnas iš viso" value={formatCents(stats.profitCents)} detail="Pajamos minus kaštai" tone={profitTone} change={comparison && changeText(comparison.profit.percent, comparison.profit.difference >= 0)} />
       <StatCard label="Pelnas už km" value={formatPerKm(stats.profitPerKm)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={stats.profitPerKm !== null && stats.profitPerKm < 0 ? "negative" : "neutral"} change={comparison?.profitPerKm == null ? null : { text: `${comparison.profitPerKm >= 0 ? "+" : "−"}${Math.abs(comparison.profitPerKm).toFixed(2)} €/km nei anksčiau`, better: comparison.profitPerKm >= 0 }} />
     </dl>

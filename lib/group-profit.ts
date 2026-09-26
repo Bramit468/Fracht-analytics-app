@@ -22,6 +22,8 @@ export interface ProfitGroup {
   marginPercent: number | null;
   /** Pelnas eurais už apmokamą km. `null`, kai km nėra. */
   profitPerKm: number | null;
+  /** Savikaina eurais už apmokamą km — kaina, žemiau kurios dirbama nuostolingai (#127). */
+  costPerKm: number | null;
 }
 
 /** Grupės, pelningiausia viršuje. Vienodo pelno atveju — pagal raktą. */
@@ -42,6 +44,7 @@ export function groupProfit(
       profitCents: 0,
       marginPercent: null,
       profitPerKm: null,
+      costPerKm: null,
     };
 
     group.tripCount += 1;
@@ -57,6 +60,7 @@ export function groupProfit(
     group.marginPercent =
       group.revenueCents > 0 ? (group.profitCents / group.revenueCents) * 100 : null;
     group.profitPerKm = group.paidKm > 0 ? group.profitCents / 100 / group.paidKm : null;
+    group.costPerKm = group.paidKm > 0 ? group.totalCostCents / 100 / group.paidKm : null;
   }
 
   return [...groups.values()].sort(

@@ -75,7 +75,7 @@ describe("tripsToCsv", () => {
 
     expect(rows).toHaveLength(2);
     expect(rows[1]).toBe(
-      "2026-09-10;R-001;LOV 141;Panevėžys;Oslas;2060;2400,00;1825,50;574,50;23,9;0,28",
+      "2026-09-10;R-001;LOV 141;Panevėžys;Oslas;2060;0;2400,00;1825,50;574,50;23,9;0,28",
     );
   });
 

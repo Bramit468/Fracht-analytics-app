@@ -9,8 +9,14 @@ import {
   plateKey,
   summarizeActuals,
   type ActualCosts,
+  type Supply,
   type SupplyIssues,
 } from "@/lib/telematics-costs";
+import {
+  fuelPricesByCountry,
+  fuelPricesByMonth,
+  savingsAtCheapestCents,
+} from "@/lib/fuel-prices";
 
 import { AppNav } from "../app-nav";
 import { ArchiveButton } from "./archive-button";
@@ -46,7 +52,13 @@ async function fetchJson(url: string | undefined): Promise<unknown> {
 async function loadCosts(
   from: string,
   to: string,
-): Promise<{ eilutes: ActualCosts[]; issues?: SupplyIssues; klaida?: string }> {
+): Promise<{
+  eilutes: ActualCosts[];
+  issues?: SupplyIssues;
+  klaida?: string;
+  /** Laikotarpio pirkimai kuro kainoms (#139). */
+  supplies?: Supply[];
+}> {
   try {
     const [canRaw, suppliesRaw, rates] = await Promise.all([
       fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
@@ -75,7 +87,11 @@ async function loadCosts(
       .map((plate) => summarizeActuals(daily, supplies, plate, from, to))
       .filter((row) => row.km > 0 || row.totalCents > 0 || row.otherCents > 0);
 
-    return { eilutes, issues };
+    return {
+      eilutes,
+      issues,
+      supplies: supplies.filter((supply) => supply.date >= from && supply.date <= to),
+    };
   } catch {
     return {
       eilutes: [],
@@ -106,7 +122,11 @@ export default async function TelematikaPage({
   await connection();
 
   const { from, to } = readRange(await searchParams);
-  const { eilutes, issues, klaida } = await loadCosts(from, to);
+  const { eilutes, issues, klaida, supplies } = await loadCosts(from, to);
+
+  const kuroSalys = fuelPricesByCountry(supplies ?? []);
+  const kuroMenesiai = fuelPricesByMonth(supplies ?? []);
+  const galimaSutaupyti = savingsAtCheapestCents(kuroSalys);
 
   const bendra = {
     km: eilutes.reduce((t, r) => t + r.km, 0),
@@ -230,6 +250,67 @@ export default async function TelematikaPage({
             </tr>
           </tfoot>
         </table>
+      )}
+
+      {/* Kuras yra apie ketvirtadalis reiso kaštų, o kaina tarp šalių skiriasi
+          dešimtimis centų. Iki šiol matėsi tik bendra suma (#139). */}
+      {kuroSalys.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-medium">Kuro kaina pagal šalį</h2>
+            <p className="text-sm text-neutral-500">
+              Kaina svertinė: visa suma dalinama iš visų litrų. Paprastas kainų vidurkis
+              meluotų — penkiasdešimt litrų brangioje stotelėje jame svertų tiek pat, kiek
+              pilnas bakas pigioje.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b">
+                <tr>
+                  <th className="py-2 pr-4 font-medium">Šalis</th>
+                  <th className="py-2 pr-4 text-right font-medium">Pylimai</th>
+                  <th className="py-2 pr-4 text-right font-medium">Litrai</th>
+                  <th className="py-2 pr-4 text-right font-medium">Suma</th>
+                  <th className="py-2 text-right font-medium">€/l</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kuroSalys.map((row) => (
+                  <tr key={row.key || "nenurodyta"} className="border-b last:border-0">
+                    <td className="py-2 pr-4">{row.key || "Nenurodyta"}</td>
+                    <td className="py-2 pr-4 text-right tabular-nums">{row.purchases}</td>
+                    <td className="py-2 pr-4 text-right tabular-nums">
+                      {Math.round(row.litres).toLocaleString("lt-LT")}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.costCents)}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums">
+                      {row.pricePerL === null ? "—" : row.pricePerL.toFixed(3)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {galimaSutaupyti > 0 && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              Jei visas kuras būtų pirktas pigiausios šalies kaina, laikotarpio sąskaita būtų{" "}
+              <strong>{formatCents(galimaSutaupyti)}</strong> mažesnė. Tai ne pažadas, o dydžio
+              matas: dalis pylimų neišvengiami ten, kur fura tuo metu yra.
+            </p>
+          )}
+
+          {kuroMenesiai.length > 1 && (
+            <p className="text-sm text-neutral-600">
+              Kaina per mėnesius:{" "}
+              {kuroMenesiai
+                .map((row) => `${row.key} — ${row.pricePerL === null ? "—" : `${row.pricePerL.toFixed(3)} €/l`}`)
+                .join(" · ")}
+            </p>
+          )}
+        </section>
       )}
 
       {issues && (issues.unassignedRows > 0 || issues.otherCurrencyRows > 0) && (

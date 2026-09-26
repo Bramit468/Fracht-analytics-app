@@ -89,3 +89,46 @@ export function tripProgress(
     truckCostSoFarCents: truckDailyCents * dayNow,
   };
 }
+
+export interface FuelDrift {
+  /** Skirtumas nuo normos jau nuvažiuotuose kilometruose. */
+  soFarCents: number;
+  /** Koks bus skirtumas visame reise, jei sąnaudos nesikeis. */
+  projectedCents: number;
+  /** Faktas minus norma, l/100 km. */
+  litresPer100KmDiff: number;
+}
+
+/**
+ * Kiek kuro viršija normą (#137).
+ *
+ * Vykstančio reiso pelnas dar nesuskaičiuotas, bet vienas dalykas jau žinomas:
+ * faktinės kuro sąnaudos. Jei fura degina 31 l/100 vietoj 27, tai kelių šimtų
+ * eurų skirtumas, ir apie jį verta žinoti dabar, o ne apskaitant reisą po
+ * dviejų savaičių.
+ *
+ * Teigiamas skaičius reiškia brangiau, nei planuota. `null`, kai faktinių
+ * sąnaudų dar nėra — spėti jų negalima.
+ */
+export function fuelDrift(
+  actualLitresPer100Km: number | null,
+  plannedLitresPer100Km: number,
+  fuelPriceEur: number,
+  drivenKm: number,
+  plannedKm: number,
+): FuelDrift | null {
+  if (actualLitresPer100Km === null || !(plannedLitresPer100Km > 0) || !(fuelPriceEur > 0)) {
+    return null;
+  }
+
+  const diff = actualLitresPer100Km - plannedLitresPer100Km;
+  const cents = (km: number) => Math.round((km * diff * fuelPriceEur) / 100 * 100);
+
+  return {
+    soFarCents: cents(Math.max(0, drivenKm)),
+    // Prognozė skaičiuojama visam planuotam atstumui: jei nuvažiuota daugiau,
+    // nei planuota, imami tikri kilometrai – jų jau nebeatsuksi.
+    projectedCents: cents(Math.max(plannedKm, drivenKm)),
+    litresPer100KmDiff: Math.round(diff * 100) / 100,
+  };
+}

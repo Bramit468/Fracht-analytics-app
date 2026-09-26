@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DailyDistance } from "./telematics-costs";
-import { addDays, isOnTheRoad, tripProgress } from "./trip-progress";
+import { addDays, fuelDrift, isOnTheRoad, tripProgress } from "./trip-progress";
 
 const DAILY: DailyDistance[] = [
   { plate: "LOV 141", date: "2026-09-21", km: 480, fuelL: 130 },
@@ -82,6 +82,41 @@ describe("tripProgress", () => {
   it("paskutinę dieną neperšoka trukmės", () => {
     const pabaiga = tripProgress(DAILY, "LOV 141", "2026-09-21", 4, 2060, 26900, "2026-09-24");
     expect(pabaiga.dayNow).toBe(4);
+  });
+});
+
+describe("fuelDrift", () => {
+  it("skaičiuoja perviršį nuvažiuotuose kilometruose", () => {
+    // 1000 km × 4 l/100 = 40 l × 1,24 € = 49,60 €.
+    const drift = fuelDrift(31, 27, 1.24, 1000, 2060);
+
+    expect(drift?.soFarCents).toBe(4960);
+    expect(drift?.litresPer100KmDiff).toBe(4);
+  });
+
+  it("prognozuoja visą reisą", () => {
+    // 2060 km × 4 l/100 × 1,24 € = 102,18 €.
+    expect(fuelDrift(31, 27, 1.24, 1000, 2060)?.projectedCents).toBe(10218);
+  });
+
+  it("taupesnę furą rodo minusu", () => {
+    // Mažesnės sąnaudos nei norma yra sutaupyti pinigai, ne klaida.
+    expect(fuelDrift(25, 27, 1.24, 1000, 1000)?.soFarCents).toBeLessThan(0);
+  });
+
+  it("nuvažiavus daugiau nei planuota, ima tikrus kilometrus", () => {
+    // Jų jau neatsuksi, tad prognozė negali būti mažesnė už tai, kas įvyko.
+    const drift = fuelDrift(31, 27, 1.24, 2500, 2060);
+    expect(drift?.projectedCents).toBe(drift?.soFarCents);
+  });
+
+  it("be faktinių sąnaudų nespėja", () => {
+    expect(fuelDrift(null, 27, 1.24, 1000, 2060)).toBeNull();
+  });
+
+  it("be normos ar kainos nespėja", () => {
+    expect(fuelDrift(31, 0, 1.24, 1000, 2060)).toBeNull();
+    expect(fuelDrift(31, 27, 0, 1000, 2060)).toBeNull();
   });
 });
 

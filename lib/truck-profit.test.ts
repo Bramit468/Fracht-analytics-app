@@ -81,6 +81,11 @@ describe("summarizeByTruck", () => {
     expect(rows[0].marginPercent).toBeNull();
   });
 
+  it("rodo savikainą už km", () => {
+    // 150 000 ct kaštų / 1000 km = 1,50 €/km – riba, žemiau kurios dirbama nuostolingai.
+    expect(summarizeByTruck([trip({})])[0].costPerKm).toBeCloseTo(1.5, 6);
+  });
+
   it("be km pelno už km nerodo", () => {
     const rows = summarizeByTruck([trip({ paidKm: 0 })]);
     expect(rows[0].profitPerKm).toBeNull();

@@ -61,7 +61,15 @@ it("be reisų grąžina nulius, o santykinius rodiklius – null", () => {
     profitCents: 0,
     marginPercent: null,
     profitPerKm: null,
+    costPerKm: null,
   });
+});
+
+it("savikaina už km skaičiuojama nuo apmokamų km", () => {
+  // 262 900 ct kaštų / 2740 apmokamų km = 0,9595 €/km. Tušti km čia neįeina:
+  // pajamos gaunamos tik už apmokamus, tad su jais kaina ir lyginama.
+  const stats = calculateDashboardStats(trips);
+  expect(stats.costPerKm).toBeCloseTo(262900 / 100 / 2740, 6);
 });
 
 it("nuostolingas reisas mažina bendrą maržą", () => {

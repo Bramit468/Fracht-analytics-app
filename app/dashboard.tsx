@@ -6,6 +6,7 @@ import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
 import { summarizeCountryRoads } from "../lib/country-roads";
 import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
+import { monthlyStats, peakProfitCents } from "../lib/monthly";
 import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
@@ -138,6 +139,47 @@ function EmptyKm({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: st
       </table>
     </div>}
     <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Skaičiuojamas tik kuras: paros kaštai tenka reisui vis tiek, o keliai sumokami nepriklausomai nuo to, ar fura pakrauta.</p>
+  </div>;
+}
+
+/**
+ * Mėnesių eiga (#131).
+ *
+ * Laikotarpio filtro **nepaiso** sąmoningai: tai kryptis, o ne pjūvis. Vienas
+ * palyginimas su praėjusiu mėnesiu nerodo, ar marža krenta trečią mėnesį iš
+ * eilės.
+ */
+function MonthlyTrend({ trips, today }: { trips: TripSummary[]; today: string }) {
+  const months = monthlyStats(trips, today, 12);
+  const peak = peakProfitCents(months);
+  if (peak === 0) return null;
+
+  return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="border-b border-slate-100 px-5 py-4 sm:px-6"><h3 className="font-semibold">Mėnesių eiga</h3><p className="mt-1 text-sm text-slate-500">Paskutiniai 12 mėnesių, nepriklausomai nuo pasirinkto laikotarpio</p></div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Mėnuo</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-5 py-3 font-medium sm:px-6">Eiga</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {months.map((month) => {
+            const width = `${Math.round((Math.abs(month.profitCents) / peak) * 100)}%`;
+
+            return <tr key={month.month} className={month.tripCount === 0 ? "text-slate-400" : ""}>
+              <td className="px-5 py-3 tabular-nums sm:px-6">{month.month}</td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-500">{month.tripCount}</td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCents(month.revenueCents)}</td>
+              <td className={`px-3 py-3 text-right font-semibold tabular-nums ${month.tripCount === 0 ? "" : month.profitCents >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCents(month.profitCents)}</td>
+              <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatPercent(month.marginPercent)}</td>
+              <td className="px-5 py-3 sm:px-6">
+                <div className="h-2 w-full min-w-24 overflow-hidden rounded-full bg-slate-100">
+                  <div className={`h-full rounded-full ${month.profitCents >= 0 ? "bg-emerald-500" : "bg-red-500"}`} style={{ width }} />
+                </div>
+              </td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Mėnesiai be reisų rodomi tušti — prastova yra faktas, ir praleista eilutė ją paslėptų.</p>
   </div>;
 }
 
@@ -283,6 +325,7 @@ export function Dashboard() {
       note="Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos."
       action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
     />
+    <MonthlyTrend trips={allTrips} today={today} />
     <EmptyKm trips={trips} periodLabel={periodLabel} />
     <CountryRoads trips={trips} periodLabel={periodLabel} />
     <ProfitTable

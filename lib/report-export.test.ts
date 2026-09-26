@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  actualsToCsv,
   countriesToCsv,
+  fuelPricesToCsv,
   monthsToCsv,
   reportFileName,
   routesToCsv,
@@ -105,6 +107,66 @@ describe("monthsToCsv", () => {
     ]).split("\r\n");
 
     expect(rows[1]).toBe("2026-08;0;0;0,00;0,00;0,00;;");
+  });
+});
+
+describe("actualsToCsv", () => {
+  const actual = {
+    plate: "LOV 141",
+    from: "2026-08-27",
+    to: "2026-09-26",
+    days: 21,
+    km: 8420.6,
+    fuelL: 2610.4,
+    dieselCents: 320000,
+    adblueCents: 12000,
+    tollCents: 84000,
+    otherCents: 5000,
+    totalCents: 416000,
+    adblueL: 60,
+    fuelPricePerL: 1.226,
+    adbluePricePerL: 0.8,
+    litresPer100Km: 31.0,
+  };
+
+  it("rašo furos eilutę", () => {
+    const rows = actualsToCsv([actual]).split("\r\n");
+
+    expect(rows[1]).toBe(
+      "LOV 141;2026-08-27;2026-09-26;21;8421;2610,4;31,00;1,226;3200,00;120,00;840,00;50,00;4160,00",
+    );
+  });
+
+  it("nesant kainos palieka tuščią langelį", () => {
+    // Nulis reikštų nemokamą kurą, o čia jo tiesiog nepirkta.
+    const rows = actualsToCsv([{ ...actual, fuelPricePerL: null, litresPer100Km: null }]).split("\r\n");
+
+    expect(rows[1]).toContain(";;;3200,00");
+  });
+
+  it("tuščia lentelė duoda vien antraštę", () => {
+    expect(actualsToCsv([]).split("\r\n")).toHaveLength(1);
+  });
+});
+
+describe("fuelPricesToCsv", () => {
+  it("rašo kainą trimis skaitmenimis", () => {
+    // Kuro kaina deramasi centų dalimis, todėl dviejų neužtenka.
+    const rows = fuelPricesToCsv(
+      [{ key: "POL", litres: 500, costCents: 61500, purchases: 2, pricePerL: 1.23 }],
+      "Šalis",
+    ).split("\r\n");
+
+    expect(rows[1]).toBe("POL;2;500,0;615,00;1,230");
+  });
+
+  it("tuščią šalį pavadina", () => {
+    const rows = fuelPricesToCsv(
+      [{ key: "", litres: 100, costCents: 12000, purchases: 1, pricePerL: 1.2 }],
+      "Šalis",
+    ).split("\r\n");
+
+    expect(rows[1].startsWith("Nenurodyta;")).toBe(true);
   });
 });
 

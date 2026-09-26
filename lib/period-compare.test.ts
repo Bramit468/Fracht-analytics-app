@@ -21,6 +21,7 @@ function trip(overrides: Partial<TripSummary>): TripSummary {
     profitCents: 50000,
     marginPercent: 25,
     profitPerKm: 0.5,
+    roadByCountry: [],
     ...overrides,
   };
 }

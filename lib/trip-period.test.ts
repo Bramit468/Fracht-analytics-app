@@ -19,6 +19,7 @@ function trip(id: string, tripDate: string): TripSummary {
     profitCents: 50000,
     marginPercent: 25,
     profitPerKm: 0.5,
+    roadByCountry: [],
   };
 }
 

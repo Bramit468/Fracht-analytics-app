@@ -1,3 +1,4 @@
+import { tripRoadsByCountry, type CountryRoad } from "./country-roads";
 import { emptyFuelCents } from "./empty-km";
 import { getSupabaseClient } from "./supabase";
 import { calculateSavedTrip } from "./trip-input";
@@ -23,6 +24,8 @@ export interface TripSummary {
   profitCents: number;
   marginPercent: number | null;
   profitPerKm: number | null;
+  /** Kelių kaštai pagal šalį — atskirų mokesčių čia nėra (#125). */
+  roadByCountry: CountryRoad[];
 }
 
 export function buildTripSummaries(
@@ -71,6 +74,10 @@ export function buildTripSummaries(
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,
       profitPerKm: result.profitPerKm,
+      roadByCountry: tripRoadsByCountry(
+        (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
+        tariffs,
+      ),
     }];
   });
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
 import { formatCents } from "../lib/money";
+import { summarizeCountryRoads } from "../lib/country-roads";
 import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
 import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod } from "../lib/period-compare";
@@ -140,6 +141,38 @@ function EmptyKm({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: st
   </div>;
 }
 
+/**
+ * Kelių mokesčiai pagal šalį (#125).
+ *
+ * Atsako, per kurią šalį važiuojame daugiausia ir kiek ji kainuoja. Nuo to
+ * priklauso, ar verta ieškoti aplinkkelio — PTV variantų palyginimas tokius
+ * randa, bet tik žinant, kurio reikia ieškoti.
+ */
+function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
+  const rows = summarizeCountryRoads(trips).filter((row) => row.km > 0);
+  if (rows.length === 0) return null;
+
+  return <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="border-b border-slate-100 px-5 py-4 sm:px-6"><h3 className="font-semibold">Keliai pagal šalį</h3><p className="mt-1 text-sm text-slate-500">{periodLabel}, brangiausia viršuje</p></div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-5 py-3 font-medium sm:px-6">Šalis</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Km</th><th className="px-3 py-3 text-right font-medium">Keliai</th><th className="px-3 py-3 text-right font-medium">Dalis</th><th className="px-5 py-3 text-right font-medium sm:px-6">€/km</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((row) => <tr key={row.country}>
+            <td className="px-5 py-3 sm:px-6">{row.country}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-500">{row.tripCount}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{Math.round(row.km).toLocaleString("lt-LT")}</td>
+            <td className="px-3 py-3 text-right font-semibold tabular-nums">{formatCents(row.costCents)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatPercent(row.costShare)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-slate-600 sm:px-6">{row.centsPerKm === null ? "—" : `${(row.centsPerKm / 100).toFixed(2)} €/km`}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+    <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 sm:px-6">Tik šalių atkarpos. Tiltai, keltai, tuneliai ir parkingas įvedami atskirai, todėl šitoje lentelėje jų nėra.</p>
+  </div>;
+}
+
 interface ProfitRow extends Omit<ProfitGroup, "key"> {
   /** Ką rodo pirmas stulpelis: furos numeris arba kryptis. */
   label: string;
@@ -248,6 +281,7 @@ export function Dashboard() {
       action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
     />
     <EmptyKm trips={trips} periodLabel={periodLabel} />
+    <CountryRoads trips={trips} periodLabel={periodLabel} />
     <ProfitTable
       title="Krypčių pelningumas"
       subtitle={`${periodLabel}, pelningiausia viršuje`}

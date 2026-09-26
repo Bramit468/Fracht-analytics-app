@@ -8,6 +8,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { truckRowToCalc } from "@/lib/truck";
 import type { Truck } from "@/types/truck";
 
+import { AppNav } from "../app-nav";
 import { TruckForm } from "./truck-form";
 import { TruckRowActions } from "./truck-row-actions";
 
@@ -29,6 +30,7 @@ export default async function TrucksPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
+      <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Furos</h1>
         <p className="text-sm text-neutral-500">

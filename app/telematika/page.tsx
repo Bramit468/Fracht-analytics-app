@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { connection } from "next/server";
 
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
@@ -13,6 +12,7 @@ import {
   type SupplyIssues,
 } from "@/lib/telematics-costs";
 
+import { AppNav } from "../app-nav";
 import { ArchiveButton } from "./archive-button";
 
 export const metadata: Metadata = {
@@ -119,11 +119,9 @@ export default async function TelematikaPage({
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
+      <AppNav />
       <header className="flex flex-col gap-1">
-        <Link href="/" className="text-sm underline">
-          Atgal į suvestinę
-        </Link>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">Faktiniai kaštai</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Faktiniai kaštai</h1>
         <p className="text-sm text-neutral-500">
           Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų. „Iš viso“
           apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra: telematika

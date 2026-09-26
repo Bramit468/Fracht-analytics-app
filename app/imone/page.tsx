@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { connection } from "next/server";
 
 import {
@@ -9,6 +8,7 @@ import {
 } from "@/lib/invitations";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
+import { AppNav } from "../app-nav";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 
@@ -43,11 +43,9 @@ export default async function ImonePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
+      <AppNav />
       <header className="flex flex-col gap-1">
-        <Link href="/" className="text-sm underline">
-          Atgal į suvestinę
-        </Link>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">Įmonė</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Įmonė</h1>
         <p className="text-sm text-neutral-500">
           Visi įmonės nariai mato tuos pačius reisus, furas ir skaičius. Kitų įmonių duomenys
           lieka nematomi.

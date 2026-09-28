@@ -12,7 +12,7 @@ import { TruckForm } from "./truck-form";
 import { TruckRowActions } from "./truck-row-actions";
 
 export const metadata: Metadata = {
-  title: "Furos | Fracht Analytics",
+  title: "Furos | Bramit",
 };
 
 export default async function TrucksPage() {

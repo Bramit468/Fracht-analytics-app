@@ -12,7 +12,7 @@ import { CostTable } from "./cost-table";
 import { WeightTable } from "./weight-table";
 
 export const metadata: Metadata = {
-  title: "Furų kaštai | Fracht Analytics",
+  title: "Furų kaštai | Bramit",
 };
 
 export default async function TruckCostsPage() {

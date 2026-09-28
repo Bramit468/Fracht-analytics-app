@@ -8,7 +8,7 @@ import type { Truck } from "@/types/truck";
 import { TruckForm } from "../../truck-form";
 
 export const metadata: Metadata = {
-  title: "Furos taisymas | Fracht Analytics",
+  title: "Furos taisymas | Bramit",
 };
 
 export default async function EditTruckPage({

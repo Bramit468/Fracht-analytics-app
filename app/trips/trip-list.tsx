@@ -71,7 +71,7 @@ function Controls({
     </div>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted">Rodoma {shown} iš {total} reisų.</p>
-      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-accent underline disabled:opacity-50">
+      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-good underline disabled:opacity-50">
         Atsisiųsti Excel lentelei ({shown})
       </button>
     </div>

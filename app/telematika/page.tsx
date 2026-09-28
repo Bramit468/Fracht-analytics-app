@@ -22,7 +22,7 @@ import { ArchiveButton } from "./archive-button";
 import { ExportButtons } from "./export-buttons";
 
 export const metadata: Metadata = {
-  title: "Faktiniai kaštai | Fracht Analytics",
+  title: "Faktiniai kaštai | Bramit",
 };
 
 const DIENU_PAGAL_NUTYLEJIMA = 30;

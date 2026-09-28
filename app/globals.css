@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /**
- * Viena tema visai programai (#143).
+ * Viena tema visai programai (#143, #147).
  *
- * Anksčiau dalis puslapių buvo šviesūs (`bg-slate-50`), o dalis sekė sistemos
- * tamsiąją temą, todėl ta pati programa atrodė kaip dvi. Dabar tema viena ir
- * nepriklauso nuo operacinės sistemos: tamsiai pilka, pastelinė žalia ir balta.
+ * Puslapis šviesus: skaičiai skaitomi ir atspausdinti, ir dienos šviesoje
+ * kabinoje. Tamsiai pilka lieka šonui ir tekstui, pastelinė žalia – veiksmams
+ * ir teigiamiems skaičiams.
  *
  * Spalvos aprašytos kintamaisiais ir per `@theme` virsta `bg-surface`,
  * `text-muted` ir panašiomis klasėmis — kad naujas puslapis nebeturėtų iš kur
@@ -13,26 +13,34 @@
  */
 :root {
   /* Fonas ir paviršiai */
-  --page: #15181a;
-  --surface: #1d2124;
-  --raised: #262b2f;
-  --line: #333a3f;
+  --page: #f5f7f6;
+  --surface: #ffffff;
+  --raised: #eef1ef;
+  --line: #dde2df;
 
   /* Tekstas */
-  --ink: #f3f5f4;
-  --muted: #9aa5ab;
+  --ink: #1b211f;
+  --muted: #5e6a65;
 
-  /* Pastelinė žalia – veiksmams ir teigiamiems skaičiams */
+  /* Pastelinė žalia – veiksmams */
   --accent: #93dcb1;
   --accent-ink: #10231a;
-  --accent-soft: #1e3329;
+  --accent-soft: #e6f7ee;
 
-  /* Rezultatai. Raudona taip pat prislopinta, kad netriukšmautų greta žalios */
-  --good: #93dcb1;
-  --bad: #f0a6a0;
-  --bad-soft: #35211f;
-  --warn: #e6cd9a;
-  --warn-soft: #33301f;
+  /*
+   * Rezultatai. Tekstui imamos tamsesnės atmainos: pastelinė žalia ant balto
+   * fono neįskaitoma, o skaičius, kurio neperskaitai, yra blogesnis už jokį.
+   */
+  --good: #1f7a53;
+  --bad: #b2413a;
+  --bad-soft: #fdecea;
+  --warn: #8a6a2c;
+  --warn-soft: #fdf3e0;
+
+  /* Šoninis meniu – ta pati moderni tamsiai pilka */
+  --sidebar: #232826;
+  --sidebar-ink: #f3f5f4;
+  --sidebar-muted: #a7b1ac;
 }
 
 @theme inline {
@@ -50,6 +58,9 @@
   --color-bad-soft: var(--bad-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-ink: var(--sidebar-ink);
+  --color-sidebar-muted: var(--sidebar-muted);
 
   /* Senieji vardai, kad likę `bg-background` / `text-foreground` nesugriūtų */
   --color-background: var(--page);
@@ -66,7 +77,7 @@ body {
 }
 
 /* Tailwind 4 numatytoji rėmelio spalva yra `currentColor`, todėl `border` be
-   spalvos tamsioje temoje būtų beveik baltas. Vietoj to – ta pati linija. */
+   spalvos būtų beveik juodas. Vietoj to – ta pati linija. */
 @layer base {
   *,
   ::before,
@@ -75,15 +86,7 @@ body {
   }
 }
 
-/* Skaičiai – svarbiausia, ką ši programa rodo, todėl jie visada vienodo pločio
-   ir niekada nesulimpa į vieną sriubą. */
+/* Skaičiai – svarbiausia, ką ši programa rodo, todėl jie visada vienodo pločio. */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
-}
-
-/* Laukai tamsioje temoje: naršyklės numatytieji būtų balti langeliai. */
-input,
-select,
-textarea {
-  color-scheme: dark;
 }

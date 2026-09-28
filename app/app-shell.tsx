@@ -16,7 +16,7 @@ function BrandMark() {
       aria-hidden="true"
       className="grid size-10 place-items-center rounded-xl bg-accent text-lg font-black text-accent-ink"
     >
-      F
+      B
     </span>
   );
 }
@@ -39,12 +39,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-page text-ink lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
-      <aside className="hidden min-h-screen flex-col border-r border-line bg-surface px-4 py-6 lg:flex">
+      <aside className="hidden min-h-screen flex-col bg-sidebar px-4 py-6 lg:flex">
         <Link href="/" className="flex items-center gap-3 px-2">
           <BrandMark />
           <span>
-            <strong className="block text-sm text-ink">Fracht Analytics</strong>
-            <span className="text-xs text-muted">Reisų analitika</span>
+            <strong className="block text-sm text-sidebar-ink">Bramit</strong>
+            <span className="text-xs text-sidebar-muted">Reisų analitika</span>
           </span>
         </Link>
 
@@ -57,7 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={`block rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 item.href === active
                   ? "bg-accent text-accent-ink"
-                  : "text-muted hover:bg-raised hover:text-ink"
+                  : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-ink"
               }`}
             >
               {item.label}
@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3">
               <BrandMark />
-              <span className="text-sm font-bold">Fracht Analytics</span>
+              <span className="text-sm font-bold">Bramit</span>
             </Link>
             <Link
               href="/trips/new"

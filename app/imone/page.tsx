@@ -12,7 +12,7 @@ import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 
 export const metadata: Metadata = {
-  title: "Įmonė | Fracht Analytics",
+  title: "Įmonė | Bramit",
 };
 
 function formatDate(value: string): string {

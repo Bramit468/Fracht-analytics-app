@@ -19,7 +19,7 @@ import type { Truck } from "@/types/truck";
 
 
 export const metadata: Metadata = {
-  title: "Vyksta dabar | Fracht Analytics",
+  title: "Vyksta dabar | Bramit",
 };
 
 /** Kiek dienų atgal ieškoti reisų, kurie dar gali vykti. */

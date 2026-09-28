@@ -8,7 +8,6 @@ import {
 } from "@/lib/invitations";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
-import { AppNav } from "../app-nav";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 
@@ -43,7 +42,6 @@ export default async function ImonePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
-      <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Įmonė</h1>
         <p className="text-sm text-muted">

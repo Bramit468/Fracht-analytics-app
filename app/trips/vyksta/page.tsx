@@ -17,7 +17,6 @@ import {
 import type { Trip } from "@/types/trip";
 import type { Truck } from "@/types/truck";
 
-import { AppNav } from "../../app-nav";
 
 export const metadata: Metadata = {
   title: "Vyksta dabar | Fracht Analytics",
@@ -105,7 +104,6 @@ export default async function VykstaPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-10">
-      <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Vyksta dabar</h1>
         <p className="text-sm text-muted">

@@ -1,12 +1,10 @@
 import Link from "next/link";
 
-import { AppNav } from "../app-nav";
 import { TripList } from "./trip-list";
 
 export default function TripsPage() {
-  return <main className="min-h-screen bg-page px-4 py-8 text-ink">
+  return <main className="px-4 py-8">
     <div className="mx-auto max-w-4xl">
-      <AppNav className="mb-6" />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Reisai</h1>

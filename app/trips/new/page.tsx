@@ -1,4 +1,3 @@
-import { AppNav } from "../../app-nav";
 import { TripForm } from "./trip-form";
 
 export default async function NewTripPage({
@@ -10,8 +9,7 @@ export default async function NewTripPage({
   // neperkelia — jie kiekvienam reisui savi (#129).
   const { copy } = await searchParams;
 
-  return <main className="min-h-screen bg-page px-4 py-8 text-ink"><div className="mx-auto max-w-4xl">
-    <AppNav />
+  return <main className="px-4 py-8"><div className="mx-auto max-w-4xl">
     <h1 className="my-6 text-3xl font-semibold">{copy ? "Naujas reisas pagal ankstesnį" : "Naujas reisas"}</h1>
     {copy && <p className="mb-4 rounded-lg bg-accent-soft p-3 text-sm text-ink">
       Laukai užpildyti iš pasirinkto reiso. Reiso numerį įrašykite naują, o datą patikrinkite.

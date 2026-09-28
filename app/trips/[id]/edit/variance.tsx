@@ -110,11 +110,11 @@ function Ratio({
 }) {
   return (
     <div>
-      <dt className="text-slate-500">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd className="font-semibold tabular-nums">
         {planned.toFixed(places)} → {actual === null ? "—" : actual.toFixed(places)} {unit}
         {diff !== null && diff !== 0 && (
-          <span className={diff > 0 ? "ml-2 text-red-700" : "ml-2 text-green-700"}>
+          <span className={diff > 0 ? "ml-2 text-bad" : "ml-2 text-good"}>
             {diff > 0 ? "+" : ""}
             {diff.toFixed(places)}
           </span>
@@ -132,9 +132,9 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
   const brangiau = variance.profitImpactCents > 0;
 
   return (
-    <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
+    <section className="mt-6 rounded-2xl border bg-surface p-6 shadow-sm">
       <h2 className="text-xl font-semibold">Planas prieš faktą</h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-sm text-muted">
         Kairėje – kiek reisas turėjo kainuoti pagal suvestas normas, dešinėje – kiek
         ta fura realiai išleido tomis dienomis.
       </p>
@@ -156,7 +156,7 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
               <td className="py-2 text-right tabular-nums">{formatCents(line.actualCents)}</td>
               <td
                 className={`py-2 text-right font-semibold tabular-nums ${
-                  line.diffCents > 0 ? "text-red-700" : line.diffCents < 0 ? "text-green-700" : ""
+                  line.diffCents > 0 ? "text-bad" : line.diffCents < 0 ? "text-good" : ""
                 }`}
               >
                 {line.diffCents > 0 ? "+" : ""}
@@ -167,7 +167,7 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
         </tbody>
       </table>
 
-      <p className={`mt-4 text-lg font-semibold ${brangiau ? "text-red-700" : "text-green-700"}`}>
+      <p className={`mt-4 text-lg font-semibold ${brangiau ? "text-bad" : "text-good"}`}>
         Reisas uždirbo {formatCents(Math.abs(variance.profitImpactCents))}{" "}
         {brangiau ? "mažiau" : "daugiau"}, nei rodo skaičiavimas
         {" "}({formatCents(variance.plannedProfitCents)} → {formatCents(variance.actualProfitCents)}).
@@ -200,7 +200,7 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
         />
       </dl>
 
-      <p className="mt-4 border-t pt-4 text-xs text-slate-500">
+      <p className="mt-4 border-t pt-4 text-xs text-muted">
         Furos paros kaštai čia nelyginami: telematika jų neturi, tai skaičiavimo
         prielaida, ne matavimas. Todėl pelno skirtumą lemia tik kuras, AdBlue ir keliai.
         {" "}

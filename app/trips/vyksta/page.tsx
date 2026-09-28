@@ -108,14 +108,14 @@ export default async function VykstaPage() {
       <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Vyksta dabar</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Reisai, kurių šiandiena patenka tarp pradžios ir pabaigos. Žymėti nieko nereikia –
           tai matyti iš datos ir trukmės.
         </p>
       </header>
 
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-8 text-center text-neutral-500">
+        <p className="rounded-2xl border border-dashed p-8 text-center text-muted">
           Šiandien nė vienas reisas nevyksta.
         </p>
       ) : (
@@ -124,11 +124,11 @@ export default async function VykstaPage() {
             <li key={trip.id} className="rounded-2xl border p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-sm text-muted">
                     {plate || "fura nerasta"} · {progress.dayNow} para iš {progress.daysTotal}
                   </p>
                   <h2 className="mt-1 text-lg font-semibold">{trip.trip_number}</h2>
-                  <p className="text-neutral-700">
+                  <p className="text-ink">
                     {trip.origin} → {trip.destination}
                   </p>
                 </div>
@@ -139,30 +139,30 @@ export default async function VykstaPage() {
 
               <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-sm sm:grid-cols-4">
                 <div>
-                  <dt className="text-neutral-500">Nuvažiuota</dt>
+                  <dt className="text-muted">Nuvažiuota</dt>
                   <dd className="font-semibold tabular-nums">
                     {Math.round(progress.drivenKm).toLocaleString("lt-LT")} km
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-neutral-500">Liko</dt>
+                  <dt className="text-muted">Liko</dt>
                   <dd className="font-semibold tabular-nums">
                     {Math.round(progress.remainingKm).toLocaleString("lt-LT")} km
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-neutral-500">Sąnaudos</dt>
+                  <dt className="text-muted">Sąnaudos</dt>
                   <dd className="font-semibold tabular-nums">
                     {progress.litresPer100Km === null
                       ? "—"
                       : `${progress.litresPer100Km.toFixed(1)} l/100`}
-                    <span className="ml-1 text-xs font-normal text-neutral-500">
+                    <span className="ml-1 text-xs font-normal text-muted">
                       (plan. {trip.fuel_l_per_100km})
                     </span>
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-neutral-500">Furos kaštai</dt>
+                  <dt className="text-muted">Furos kaštai</dt>
                   <dd className="font-semibold tabular-nums">
                     {formatCents(progress.truckCostSoFarCents)}
                   </dd>
@@ -175,8 +175,8 @@ export default async function VykstaPage() {
                 <p
                   className={`mt-3 rounded-lg p-3 text-sm ${
                     drift.projectedCents > 0
-                      ? "bg-amber-50 text-amber-900"
-                      : "bg-emerald-50 text-emerald-900"
+                      ? "bg-warn-soft text-warn"
+                      : "bg-accent-soft text-good"
                   }`}
                 >
                   Kuras {drift.litresPer100KmDiff > 0 ? "viršija normą" : "mažesnis už normą"}{" "}
@@ -187,7 +187,7 @@ export default async function VykstaPage() {
                 </p>
               )}
 
-              <p className="mt-3 text-xs text-neutral-500">
+              <p className="mt-3 text-xs text-muted">
                 {progress.measuredThrough
                   ? `Kilometrai ir kuras – iki ${progress.measuredThrough} imtinai. Šiandienos eilutė telematikoje atsiranda rytoj.`
                   : "Telematikos duomenų apie šį reisą dar nėra."}
@@ -197,7 +197,7 @@ export default async function VykstaPage() {
         </ul>
       )}
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-muted">
         Furos kaštai skaičiuojami už prasidėjusias paras – fura kainuoja nuo išvažiavimo, o ne
         nuo tada, kai atsiranda matavimas. Kuro ir kelių išlaidos čia neįtrauktos: jos matomos
         reiso skaičiavime, o pirkimai telematikoje atsiranda su vėlavimu.

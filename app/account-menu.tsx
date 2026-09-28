@@ -42,14 +42,14 @@ export function AccountMenu() {
   if (!email) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
+    <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl border border-line bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
       <div className="min-w-0">
         {companyName && (
-          <span className="block max-w-44 truncate font-semibold text-slate-800">
+          <span className="block max-w-44 truncate font-semibold text-ink">
             {companyName}
           </span>
         )}
-        <span className="block max-w-44 truncate text-xs text-slate-500">{email}</span>
+        <span className="block max-w-44 truncate text-xs text-muted">{email}</span>
       </div>
       <button
         type="button"
@@ -60,7 +60,7 @@ export function AccountMenu() {
           router.replace("/login");
           router.refresh();
         }}
-        className="font-semibold text-slate-800 underline disabled:opacity-50"
+        className="font-semibold text-ink underline disabled:opacity-50"
       >
         {busy ? "Atsijungiama…" : "Atsijungti"}
       </button>

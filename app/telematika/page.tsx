@@ -143,7 +143,7 @@ export default async function TelematikaPage({
       <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Faktiniai kaštai</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų. „Iš viso“
           apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra: telematika
           jų su fura nesieja.
@@ -157,7 +157,7 @@ export default async function TelematikaPage({
             type="date"
             name="from"
             defaultValue={from}
-            className="rounded-md border border-neutral-300 px-3 py-2 dark:border-neutral-700"
+            className="rounded-md border border-line px-3 py-2 "
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -166,19 +166,19 @@ export default async function TelematikaPage({
             type="date"
             name="to"
             defaultValue={to}
-            className="rounded-md border border-neutral-300 px-3 py-2 dark:border-neutral-700"
+            className="rounded-md border border-line px-3 py-2 "
           />
         </label>
         <button
           type="submit"
-          className="rounded-md bg-foreground px-4 py-2 font-medium text-background"
+          className="rounded-md bg-accent px-4 py-2 font-medium text-accent-ink"
         >
           Rodyti
         </button>
       </form>
 
-      <section className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-        <p className="text-sm text-neutral-500">
+      <section className="flex flex-col gap-2 rounded-lg border border-line p-4 ">
+        <p className="text-sm text-muted">
           Telematika laiko tik paskutinius ~3 mėnesius. Išsaugoti duomenys lieka pas jus
           ir tada, kai tiekėjas juos pamirš.
         </p>
@@ -186,7 +186,7 @@ export default async function TelematikaPage({
       </section>
 
       {klaida && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-bad">
           {klaida}
         </p>
       )}
@@ -263,7 +263,7 @@ export default async function TelematikaPage({
         <section className="flex flex-col gap-3">
           <div>
             <h2 className="text-lg font-medium">Kuro kaina pagal šalį</h2>
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-muted">
               Kaina svertinė: visa suma dalinama iš visų litrų. Paprastas kainų vidurkis
               meluotų — penkiasdešimt litrų brangioje stotelėje jame svertų tiek pat, kiek
               pilnas bakas pigioje.
@@ -300,7 +300,7 @@ export default async function TelematikaPage({
           </div>
 
           {galimaSutaupyti > 0 && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="rounded-lg bg-warn-soft p-3 text-sm text-warn">
               Jei visas kuras būtų pirktas pigiausios šalies kaina, laikotarpio sąskaita būtų{" "}
               <strong>{formatCents(galimaSutaupyti)}</strong> mažesnė. Tai ne pažadas, o dydžio
               matas: dalis pylimų neišvengiami ten, kur fura tuo metu yra.
@@ -308,7 +308,7 @@ export default async function TelematikaPage({
           )}
 
           {kuroMenesiai.length > 1 && (
-            <p className="text-sm text-neutral-600">
+            <p className="text-sm text-muted">
               Kaina per mėnesius:{" "}
               {kuroMenesiai
                 .map((row) => `${row.key} — ${row.pricePerL === null ? "—" : `${row.pricePerL.toFixed(3)} €/l`}`)
@@ -319,7 +319,7 @@ export default async function TelematikaPage({
       )}
 
       {issues && (issues.unassignedRows > 0 || issues.otherCurrencyRows > 0) && (
-        <div className="text-xs text-neutral-500">
+        <div className="text-xs text-muted">
           <p className="font-medium">Į lentelę nepatenka:</p>
           {issues.unassignedRows > 0 && (
             <p>
@@ -338,7 +338,7 @@ export default async function TelematikaPage({
       )}
 
       {issues && issues.convertedRows > 0 && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-muted">
           <span className="font-medium">Įvertis:</span> {issues.convertedRows} pirkimai už{" "}
           {formatCents(issues.convertedCents)} perskaičiuoti iš kitos valiutos ECB pirkimo
           dienos kursu. Kortelės tiekėjas nurašo savo kursu su marža, tad tikroji suma

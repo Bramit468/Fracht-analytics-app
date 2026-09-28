@@ -23,7 +23,7 @@ export function InviteForm() {
           defaultValue={state.email ?? ""}
           aria-invalid={error ? true : undefined}
           aria-describedby={state.message ? "invite-message" : undefined}
-          className="rounded-md border border-neutral-300 bg-transparent px-3 py-2 aria-invalid:border-red-600 dark:border-neutral-700"
+          className="rounded-md border border-line bg-transparent px-3 py-2 aria-invalid:border-bad "
         />
       </label>
 
@@ -31,7 +31,7 @@ export function InviteForm() {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
           {pending ? "Įrašoma…" : "Pakviesti"}
         </button>
@@ -39,7 +39,7 @@ export function InviteForm() {
           <p
             id="invite-message"
             role="status"
-            className={error ? "text-sm text-red-600" : "text-sm text-green-700"}
+            className={error ? "text-sm text-bad" : "text-sm text-good"}
           >
             {state.message}
           </p>

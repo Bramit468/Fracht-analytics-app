@@ -41,13 +41,13 @@ function Controls({
   total: number;
   onExport: () => void;
 }) {
-  const select = "rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm";
+  const select = "rounded-xl border border-line bg-surface px-3 py-2 text-sm";
 
-  return <div className="rounded-2xl border bg-white p-4 shadow-sm">
+  return <div className="rounded-2xl border bg-surface p-4 shadow-sm">
     <div className="flex flex-wrap gap-3">
       <label className="flex-1 text-sm">
         <span className="sr-only">Paieška</span>
-        <input type="search" value={filter.query} onChange={(event) => onFilter({ ...filter, query: event.target.value })} placeholder="Reiso numeris, miestas arba fura" className="w-full min-w-48 rounded-xl border border-slate-300 px-3 py-2" />
+        <input type="search" value={filter.query} onChange={(event) => onFilter({ ...filter, query: event.target.value })} placeholder="Reiso numeris, miestas arba fura" className="w-full min-w-48 rounded-xl border border-line px-3 py-2" />
       </label>
       <label className="text-sm">
         <span className="sr-only">Fura</span>
@@ -70,8 +70,8 @@ function Controls({
       </label>
     </div>
     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-slate-500">Rodoma {shown} iš {total} reisų.</p>
-      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-blue-600 underline disabled:opacity-50">
+      <p className="text-sm text-muted">Rodoma {shown} iš {total} reisų.</p>
+      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-accent underline disabled:opacity-50">
         Atsisiųsti Excel lentelei ({shown})
       </button>
     </div>
@@ -133,7 +133,7 @@ export function TripList() {
 
   if (error) {
     return <div>
-      <p role="alert" className="text-red-700">{error}</p>
+      <p role="alert" className="text-bad">{error}</p>
       <button type="button" className="mt-3 underline" onClick={() => {
         setLoading(true);
         setError("");
@@ -143,7 +143,7 @@ export function TripList() {
   }
 
   if (!trips.length) {
-    return <p className="rounded-2xl border border-dashed bg-white p-8 text-center text-slate-600">
+    return <p className="rounded-2xl border border-dashed bg-surface p-8 text-center text-muted">
       Išsaugotų reisų dar nėra. Sukurkite pirmą reisą ir čia matysite jo pelną.
     </p>;
   }
@@ -156,37 +156,37 @@ export function TripList() {
   return <div className="space-y-4">
     <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
 
-    {shown.length === 0 ? <p className="rounded-2xl border border-dashed bg-white p-8 text-center text-slate-600">
+    {shown.length === 0 ? <p className="rounded-2xl border border-dashed bg-surface p-8 text-center text-muted">
       Pagal šią paiešką reisų nėra.
     </p> : <ul className="space-y-4">
     {shown.map((trip) => {
       const profitable = trip.profitCents >= 0;
-      return <li key={trip.id} className="rounded-2xl border bg-white p-5 shadow-sm">
+      return <li key={trip.id} className="rounded-2xl border bg-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-slate-500">{formatDate(trip.tripDate)} · {trip.truckPlate}</p>
+            <p className="text-sm text-muted">{formatDate(trip.tripDate)} · {trip.truckPlate}</p>
             <h2 className="mt-1 text-lg font-semibold">{trip.tripNumber}</h2>
-            <p className="text-slate-700">{trip.origin} → {trip.destination}</p>
+            <p className="text-ink">{trip.origin} → {trip.destination}</p>
           </div>
           <div className="text-right">
-            <p className={`text-xl font-bold ${profitable ? "text-green-700" : "text-red-700"}`}>
+            <p className={`text-xl font-bold ${profitable ? "text-good" : "text-bad"}`}>
               {formatCents(trip.profitCents)} {profitable ? "pelnas" : "nuostolis"}
             </p>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted">
               Marža {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
             </p>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t pt-4">
           <dl className="grid flex-1 grid-cols-2 gap-3 text-sm sm:max-w-md">
-            <div><dt className="text-slate-500">Pajamos</dt><dd className="font-semibold">{formatCents(trip.revenueCents)}</dd></div>
-            <div><dt className="text-slate-500">Kaštai</dt><dd className="font-semibold">{formatCents(trip.totalCostCents)}</dd></div>
+            <div><dt className="text-muted">Pajamos</dt><dd className="font-semibold">{formatCents(trip.revenueCents)}</dd></div>
+            <div><dt className="text-muted">Kaštai</dt><dd className="font-semibold">{formatCents(trip.totalCostCents)}</dd></div>
           </dl>
           <div className="flex gap-4 text-sm">
             <Link href={`/trips/${trip.id}/edit`} className="underline">Redaguoti</Link>
             {/* Tas pats maršrutas kartojasi kas savaitę (#129). */}
             <Link href={`/trips/new?copy=${trip.id}`} className="underline">Kopijuoti</Link>
-            <button type="button" disabled={removing === trip.id} onClick={() => void remove(trip)} className="text-red-700 underline disabled:opacity-50">
+            <button type="button" disabled={removing === trip.id} onClick={() => void remove(trip)} className="text-bad underline disabled:opacity-50">
               {removing === trip.id ? "Trinama…" : "Ištrinti"}
             </button>
           </div>

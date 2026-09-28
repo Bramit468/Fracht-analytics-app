@@ -67,7 +67,7 @@ const kastuFields = [
   ["adblue_price", "AdBlue kaina (€/l)", "0.0001"],
 ] as const;
 const extras = [["bridges_cents", "Tiltai / vinjetės (€)"], ["ferries_cents", "Keltai (€)"], ["tunnels_cents", "Tuneliai (€)"], ["parking_cents", "Parkingas (€)"]] as const;
-const inputClass = "mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3";
+const inputClass = "mt-1 block w-full rounded-lg border border-line bg-surface p-3";
 
 /** Naršyklės vietinę datą ir laiką paverčia nedviprasmišku UTC laiku PTV. */
 function departureIso(date: string, time: string): string | undefined {
@@ -585,7 +585,7 @@ export function TripForm({
         {/* Mygtukas šalia laukų, kuriuos jis užpildo, o ne atskiroje dėžutėje viršuje. */}
         {routeLookup && <div className="mt-3">
           <div className="flex flex-wrap items-center gap-4">
-            <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+            <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
               {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
             </button>
             <label className="flex items-center gap-2 text-sm">
@@ -610,18 +610,18 @@ export function TripForm({
               />
             </label>
           </div>
-          <p className="mt-2 text-sm text-slate-600">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
-          {marsrutas && <p role="status" className="mt-2 text-sm text-slate-700">{marsrutas}</p>}
+          <p className="mt-2 text-sm text-muted">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
+          {marsrutas && <p role="status" className="mt-2 text-sm text-ink">{marsrutas}</p>}
 
-          {emisijos && <div className="mt-3 rounded-lg border bg-white p-3 text-sm">
+          {emisijos && <div className="mt-3 rounded-lg border bg-surface p-3 text-sm">
             <p className="font-semibold">PTV kuro įvertis pagal maršrutą</p>
             <p className="mt-1 tabular-nums">
               {emisijos.fuelLitres.toFixed(0)} l
               {emisijos.litresPer100Km !== null && ` (${emisijos.litresPer100Km.toFixed(1)} l/100 km)`}
               {" · CO₂e "}{emisijos.co2eWellToWheelTonnes.toFixed(2)} t
-              <span className="text-slate-500"> (iš jų važiuojant {emisijos.co2eTankToWheelTonnes.toFixed(2)} t)</span>
+              <span className="text-muted"> (iš jų važiuojant {emisijos.co2eTankToWheelTonnes.toFixed(2)} t)</span>
             </p>
-            <p className="mt-1 text-slate-600">
+            <p className="mt-1 text-muted">
               {emisijuSvoriai
                 ? "Skaičiuota pagal nurodytus svorius ir kelio profilį."
                 : "Svoriai nenurodyti, tad PTV ėmė numatytuosius. Įrašykite furos svorius ir krovinį — įvertis pasikeis."}
@@ -643,9 +643,9 @@ export function TripForm({
             >
               Įrašyti į „Kuro sąnaudos“
             </button>
-            <span className="ml-2 text-slate-500">Pelnas skaičiuojamas pagal įvestą normą, kol jos nepakeisite.</span>
+            <span className="ml-2 text-muted">Pelnas skaičiuojamas pagal įvestą normą, kol jos nepakeisite.</span>
           </div>}
-          {marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 rounded-lg border border-amber-400 bg-amber-50 p-4 text-sm text-slate-800">
+          {marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 rounded-lg border border-warn bg-warn-soft p-4 text-sm text-ink">
             <p className="font-semibold">PTV aptiko maršruto apribojimų:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               {marsrutoPazeidimai.map((violation, index) => <li key={`${violation.type}-${violation.property ?? ""}-${violation.distanceKm}-${index}`}>
@@ -661,38 +661,38 @@ export function TripForm({
           {/* Skirtumas tarp PTV siūlomų kelių yra pinigai: tas pats Panevėžys–
               Oslas gali skirtis 133 € vien mokesčiais (#84). */}
           <div className="mt-4 border-t pt-3">
-            <button type="button" disabled={lyginama} onClick={() => void compareRoutes()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+            <button type="button" disabled={lyginama} onClick={() => void compareRoutes()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
               {lyginama ? "Lyginama…" : "Palyginti maršruto variantus"}
             </button>
-            {variantuKlaida && <p role="alert" className="mt-2 text-sm text-red-700">{variantuKlaida}</p>}
+            {variantuKlaida && <p role="alert" className="mt-2 text-sm text-bad">{variantuKlaida}</p>}
 
             {variantai.length > 0 && <ul className="mt-3 space-y-2">
               {variantai.map((option) => {
                 const key = option.routeId ?? "pagrindinis";
                 const chosen = pasirinktas === key;
 
-                return <li key={key} className={`rounded-lg border p-3 text-sm ${chosen ? "border-blue-600 bg-blue-50" : "bg-white"}`}>
+                return <li key={key} className={`rounded-lg border p-3 text-sm ${chosen ? "border-accent bg-accent-soft" : "bg-surface"}`}>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="font-semibold tabular-nums">
                       {Math.round(option.km)} km · {durationText(option.travelMinutes)}
-                      {option.cheapest && <span className="ml-2 rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">pigiausias</span>}
-                      {option.fastest && <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">greičiausias</span>}
+                      {option.cheapest && <span className="ml-2 rounded bg-accent-soft px-2 py-0.5 text-xs font-bold text-good">pigiausias</span>}
+                      {option.fastest && <span className="ml-2 rounded bg-raised px-2 py-0.5 text-xs font-bold text-ink">greičiausias</span>}
                     </span>
                     <button type="button" onClick={() => applyRouteOption(option)} className="underline">
                       {chosen ? "Pasirinktas" : "Rinktis šį"}
                     </button>
                   </div>
-                  <p className="mt-1 tabular-nums text-slate-700">
+                  <p className="mt-1 tabular-nums text-ink">
                     Keliai {formatCents(option.tollCents)} · kuras {formatCents(option.fuelCents)} ·{" "}
                     {option.totalCents === null
                       ? <strong>iš viso neaišku, kol nežinoma kelto kaina</strong>
                       : <>iš viso <strong>{formatCents(option.totalCents)}</strong></>}
                   </p>
-                  {option.ferryNames.length > 0 && <p className="mt-1 text-slate-600">
+                  {option.ferryNames.length > 0 && <p className="mt-1 text-muted">
                     Keltas: {option.ferryNames.join(", ")}
                     {option.ferryPriceUnknown && " — PTV neturi jo bilieto kainos, todėl į sumą neįskaičiuota."}
                   </p>}
-                  {option.violated && <p className="mt-1 text-amber-800">PTV pažymėjo šio kelio apribojimų.</p>}
+                  {option.violated && <p className="mt-1 text-warn">PTV pažymėjo šio kelio apribojimų.</p>}
                 </li>;
               })}
             </ul>}
@@ -722,14 +722,14 @@ export function TripForm({
                   className={`${inputClass} w-24`}
                 />
               </label>
-              <button type="button" disabled={planuoja} onClick={() => void planDriverHours()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+              <button type="button" disabled={planuoja} onClick={() => void planDriverHours()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
                 {planuoja ? "Planuojama…" : "Vairavimo laikas ir atvykimas"}
               </button>
             </div>
 
-            {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-red-700">{tvarkarascioKlaida}</p>}
+            {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
 
-            {tvarkarastis && <div className="mt-3 rounded-lg border bg-white p-3 text-sm">
+            {tvarkarastis && <div className="mt-3 rounded-lg border bg-surface p-3 text-sm">
               <p className="font-semibold">Su privalomomis pertraukomis ir poilsiu</p>
               <p className="mt-1 tabular-nums">
                 Vairavimas {durationText(tvarkarastis.drivingMinutes)} ·
@@ -741,7 +741,7 @@ export function TripForm({
                 Atvykimas <strong>{tvarkarastis.endTime.replace("T", " ").slice(0, 16)}</strong> UTC ·
                 {" "}reisas apima <strong>{tvarkarastis.days} par.</strong>
               </p>
-              {tvarkarastis.stops.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-700">
+              {tvarkarastis.stops.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-ink">
                 {tvarkarastis.stops.slice(0, 6).map((stop, index) => <li key={`${stop.startsAt}-${index}`}>
                   {stop.type === "BREAK" ? "Pertrauka" : stop.type === "DAILY_REST" ? "Paros poilsis" : stop.type === "WEEKLY_REST" ? "Savaitės poilsis" : "Laukimas"}
                   {" "}{durationText(stop.minutes)} ties {stop.distanceKm} km
@@ -762,7 +762,7 @@ export function TripForm({
               >
                 Įrašyti {tvarkarastis.days} par. į trukmę
               </button>
-              <span className="ml-2 text-slate-500">Kol neįrašysite, kaštai skaičiuojami pagal formoje esančią trukmę.</span>
+              <span className="ml-2 text-muted">Kol neįrašysite, kaštai skaičiuojami pagal formoje esančią trukmę.</span>
             </div>}
           </div>
 
@@ -783,7 +783,7 @@ export function TripForm({
           <label>Išvykimo laikas maršrutui<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
           {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} /></label>)}
         </div>
-        <p className="mt-2 text-sm text-slate-600">Išvykimo laikas naudojamas PTV eismui ir kelių apribojimams. Be datos PTV skaičiuoja išvykstant dabar. Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
+        <p className="mt-2 text-sm text-muted">Išvykimo laikas naudojamas PTV eismui ir kelių apribojimams. Be datos PTV skaičiuoja išvykstant dabar. Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
       </Skiltis>
 
       <Skiltis numeris={3} antraste="Kiek išleis">
@@ -791,9 +791,9 @@ export function TripForm({
           {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} /></label>)}
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
-        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
-          <p className="mt-1 text-sm text-slate-700">
+          <p className="mt-1 text-sm text-ink">
             PTV aptiko {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : "keltą"}, bet bilieto kainos nepateikė.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -829,13 +829,13 @@ export function TripForm({
               </select>
             </label>
           </div>
-          {keltoIvertis ? <p className="mt-3 text-sm text-slate-700">
+          {keltoIvertis ? <p className="mt-3 text-sm text-ink">
             Į lauką „Keltai (€)“ įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong>:
             bazė {formatCents(keltoIvertis.baseCents)} + BAF/GIR/ETS {formatCents(keltoIvertis.surchargeCents)}.
-          </p> : <p role="alert" className="mt-3 text-sm text-red-700">
+          </p> : <p role="alert" className="mt-3 text-sm text-bad">
             Šiam maršrutui arba ilgiui automatinio tarifo nėra. Kelto kainą įrašykite ranka.
           </p>}
-          <p className="mt-2 text-xs text-slate-600">
+          <p className="mt-2 text-xs text-muted">
             Scandlines viešo krovininio tarifo įvertis ({SCANDLINES_TARIFF_PERIOD}), be PVM. Sutartinė kaina ir ADR, pločio ar svorio priemokos gali skirtis. {" "}
             <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Bazinis tarifas</a>{" · "}
             <a href={SCANDLINES_SURCHARGE_URL} target="_blank" rel="noreferrer" className="underline">Priemokos</a>
@@ -844,13 +844,13 @@ export function TripForm({
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm">Nuo<input name="tele_from" type="date" className={inputClass} /></label>
           <label className="text-sm">Iki<input name="tele_to" type="date" className={inputClass} /></label>
-          <button type="button" disabled={pildoma} onClick={() => void fillFromTelematics()} className="rounded-lg border bg-white p-3 disabled:opacity-50">
+          <button type="button" disabled={pildoma} onClick={() => void fillFromTelematics()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
             {pildoma ? "Imama…" : "Užpildyti iš telematikos"}
           </button>
         </div>
-        <p className="mt-2 text-sm text-slate-600">Paims tikrus tos furos km, kurą ir sumokėtus kelius per nurodytą laikotarpį.</p>
-        {telematika && <p role="status" className="mt-2 text-sm text-slate-700">{telematika}</p>}
-        <p className="mt-3 text-sm text-slate-600">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš furos paros savikainos — atskirai vesti nereikia.</p>
+        <p className="mt-2 text-sm text-muted">Paims tikrus tos furos km, kurą ir sumokėtus kelius per nurodytą laikotarpį.</p>
+        {telematika && <p role="status" className="mt-2 text-sm text-ink">{telematika}</p>}
+        <p className="mt-3 text-sm text-muted">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš furos paros savikainos — atskirai vesti nereikia.</p>
       </Skiltis>
 
       <Skiltis numeris={4} antraste="Kiek gaus">
@@ -865,42 +865,42 @@ export function TripForm({
           todėl skiltis suskleista ir nebeblaško. */}
       <details className="rounded-xl border p-4">
         <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis</summary>
-        <p className="mt-2 text-sm text-slate-600">Reikalinga tik tada, kai kelių kaina skaičiuojama pagal šalių įkainius. Suvedus tikrus mokesčius, čia lieka viena „Nemokami“ eilutė su visais kilometrais.</p>
+        <p className="mt-2 text-sm text-muted">Reikalinga tik tada, kai kelių kaina skaičiuojama pagal šalių įkainius. Suvedus tikrus mokesčius, čia lieka viena „Nemokami“ eilutė su visais kilometrais.</p>
         <div className="mt-3 space-y-3">
           {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
           <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
         </div>
       </details>
 
-      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
 
-      {error && <p role="alert" className="text-red-700">{error}</p>}
-      {saved && <p role="status" className="text-green-800">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
+      {error && <p role="alert" className="text-bad">{error}</p>}
+      {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
 
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
-      {result && <section aria-label="Reiso rezultatai" className="rounded-xl border-2 border-slate-300 bg-white p-4">
+      {result && <section aria-label="Reiso rezultatai" className="rounded-xl border-2 border-line bg-surface p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="font-semibold">Reiso rezultatai</h2>
-          <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-green-700" : "text-red-700"}`}>
+          <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
             {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
           </p>
         </div>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
           {" · "}
           {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
         </p>
         {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
             nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
-        {nepatikslinta && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+        {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
           Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura — greičiausiai
           nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
           <Link href="/trucks/kastai" className="font-semibold underline">Patikslinti kaštus</Link>
         </p>}
 
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
-          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-slate-500">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
+          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
 
         {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Būtent jo
@@ -921,40 +921,40 @@ export function TripForm({
             {(() => {
               const kaina = priceForMargin(result.totalCostCents, Number(norimaMarza));
               if (kaina === null) {
-                return <p className="text-sm text-slate-600">Tokia marža nepasiekiama — 100 % reikštų pajamas be kaštų.</p>;
+                return <p className="text-sm text-muted">Tokia marža nepasiekiama — 100 % reikštų pajamas be kaštų.</p>;
               }
               const uzKm = pricePerKm(kaina, apmokamiKm);
               return (
                 <p className="text-lg font-semibold tabular-nums">
                   {formatCents(kaina)}
-                  {uzKm !== null && <span className="ml-2 text-sm font-normal text-slate-600">({uzKm.toFixed(2)} €/km)</span>}
+                  {uzKm !== null && <span className="ml-2 text-sm font-normal text-muted">({uzKm.toFixed(2)} €/km)</span>}
                 </p>
               );
             })()}
           </div>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-muted">
             Marža skaičiuojama nuo sąskaitos sumos, ne nuo kaštų: 20 % prie 800 € kaštų yra 1 000 €, ne 960 €.
           </p>
 
           {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
               kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
               dabar prašoma daugiau, ar mažiau nei anksčiau (#109). */}
-          {istorija && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
+          {istorija && <div className="mt-3 rounded-lg bg-page p-3 text-sm">
             <p className="font-semibold">
               {istorija.matchType === "route" ? "Ta pati kryptis anksčiau" : "Į tą pačią vietą anksčiau"}
-              <span className="ml-2 font-normal text-slate-500">
+              <span className="ml-2 font-normal text-muted">
                 {istorija.tripCount} reis. · paskutinis {istorija.lastTripDate}
               </span>
             </p>
             <p className="mt-1 tabular-nums">
               Mediana <strong>{formatCents(istorija.medianRevenueCents)}</strong>
               {istorija.medianPricePerKm !== null && <span> ({istorija.medianPricePerKm.toFixed(2)} €/km)</span>}
-              <span className="text-slate-500">
+              <span className="text-muted">
                 {" "}· nuo {formatCents(istorija.lowestRevenueCents)} iki {formatCents(istorija.highestRevenueCents)}
               </span>
-              {istorija.medianMarginPercent !== null && <span className="text-slate-500"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
+              {istorija.medianMarginPercent !== null && <span className="text-muted"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
             </p>
-            <p className="mt-1 text-slate-600">
+            <p className="mt-1 text-muted">
               {istorija.matchType === "route"
                 ? "Mediana, ne vidurkis: vienas keistas reisas jos nepatraukia."
                 : "Tiksliai šios krypties dar nebuvo — tai kitų reisų į tą pačią vietą kainos, tad tik atskaitos taškas."}
@@ -971,7 +971,7 @@ function Skiltis({ numeris, antraste, children }: { numeris: number; antraste: s
   return (
     <section className="rounded-xl border p-4">
       <h2 className="mb-3 flex items-center gap-2 font-semibold">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-sm">{numeris}</span>
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-raised text-sm">{numeris}</span>
         {antraste}
       </h2>
       {children}

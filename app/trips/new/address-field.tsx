@@ -93,27 +93,27 @@ export function AddressField({
             type="button"
             disabled={busy || query.trim().length < 3}
             onClick={() => void search()}
-            className="rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-50"
+            className="rounded-lg border bg-surface px-3 py-2 text-sm disabled:opacity-50"
           >
             {busy ? "Ieškoma…" : "Ieškoti adreso"}
           </button>
-          {point && <span className="text-sm text-green-700">Adresas patvirtintas</span>}
-          {message && <span className="text-sm text-slate-600">{message}</span>}
+          {point && <span className="text-sm text-good">Adresas patvirtintas</span>}
+          {message && <span className="text-sm text-muted">{message}</span>}
         </div>
       )}
 
       {found.length > 0 && (
-        <ul className="overflow-hidden rounded-lg border bg-white">
+        <ul className="overflow-hidden rounded-lg border bg-surface">
           {found.map((address) => (
             <li key={`${address.latitude},${address.longitude}`}>
               <button
                 type="button"
                 onClick={() => choose(address)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
+                className="block w-full px-3 py-2 text-left text-sm hover:bg-raised"
               >
                 <span className="block">{address.label}</span>
                 {address.sublabel && (
-                  <span className="block text-xs text-slate-500">{address.sublabel}</span>
+                  <span className="block text-xs text-muted">{address.sublabel}</span>
                 )}
               </button>
             </li>

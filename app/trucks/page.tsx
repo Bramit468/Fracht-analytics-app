@@ -33,7 +33,7 @@ export default async function TrucksPage() {
       <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Furos</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Paros savikaina — kiek fura kainuoja kiekvieną parą, net stovėdama.
         </p>
       </header>
@@ -46,16 +46,16 @@ export default async function TrucksPage() {
           </Link>
         </div>
         {error ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-bad">
             Nepavyko nuskaityti furų: {error.message}
           </p>
         ) : data.length === 0 ? (
-          <p className="text-sm text-neutral-500">Furų dar nėra. Pridėkite pirmą žemiau.</p>
+          <p className="text-sm text-muted">Furų dar nėra. Pridėkite pirmą žemiau.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-300 text-left dark:border-neutral-700">
+                <tr className="border-b border-line text-left ">
                   <th className="py-2 pr-4 font-medium">Numeris</th>
                   <th className="py-2 pr-4 text-right font-medium">Paros savikaina</th>
                   <th className="py-2 pr-4 text-right font-medium">Priekaba / mėn.</th>
@@ -69,7 +69,7 @@ export default async function TrucksPage() {
                 {data.map((truck) => (
                   <tr
                     key={truck.id}
-                    className="border-b border-neutral-200 dark:border-neutral-800"
+                    className="border-b border-line "
                   >
                     <td className="py-2 pr-4 font-mono">{truck.plate}</td>
                     <td className="py-2 pr-4 text-right tabular-nums">

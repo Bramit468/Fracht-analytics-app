@@ -39,7 +39,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-page text-ink lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
-      <aside className="hidden min-h-screen flex-col bg-sidebar px-4 py-6 lg:flex">
+      {/* Meniu lieka ekrane slenkant: `sticky` ir savas slinkimas, jei skilčių
+          netilptų į žemą langą (#149). */}
+      <aside className="hidden flex-col bg-sidebar px-4 py-6 lg:sticky lg:top-0 lg:flex lg:h-screen lg:overflow-y-auto">
         <Link href="/" className="flex items-center gap-3 px-2">
           <BrandMark />
           <span>
@@ -67,8 +69,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="min-w-0">
-        {/* Telefone meniu juosta viršuje – tos pačios skiltys ta pačia tvarka. */}
-        <header className="border-b border-line bg-surface px-4 py-3 lg:hidden">
+        {/* Telefone meniu juosta viršuje – tos pačios skiltys ta pačia tvarka,
+            taip pat prilipusi prie ekrano viršaus. */}
+        <header className="sticky top-0 z-30 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3">
               <BrandMark />

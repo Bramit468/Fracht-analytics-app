@@ -5,7 +5,6 @@ import { connection } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import type { Truck } from "@/types/truck";
 
-import { AppNav } from "../../../app-nav";
 import { TruckForm } from "../../truck-form";
 
 export const metadata: Metadata = {
@@ -39,7 +38,6 @@ export default async function EditTruckPage({
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
-      <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">
           Fura {truck.plate}

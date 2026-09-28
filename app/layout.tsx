@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AccountMenu } from "./account-menu";
+import { AppShell } from "./app-shell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="lt">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+        <AppShell>{children}</AppShell>
         <AccountMenu />
       </body>
     </html>

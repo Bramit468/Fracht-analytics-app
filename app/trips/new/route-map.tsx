@@ -190,8 +190,8 @@ export function RouteMap({
   if (line.length < 2) return null;
 
   return <div className="mt-3">
-    <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-      <legend className="px-1 font-medium text-slate-700">Žemėlapio sluoksniai</legend>
+    <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-page px-3 py-2 text-sm">
+      <legend className="px-1 font-medium text-ink">Žemėlapio sluoksniai</legend>
       {MAP_LAYERS.map(({ layer, label }) => <label key={layer} className="flex cursor-pointer items-center gap-2">
         <input
           type="checkbox"
@@ -206,7 +206,7 @@ export function RouteMap({
       className="h-80 w-full overflow-hidden rounded-lg border"
       aria-label="Maršrutas žemėlapyje"
     />
-    {onAddVia && <p className="mt-2 text-sm text-slate-600">
+    {onAddVia && <p className="mt-2 text-sm text-muted">
       Spustelėkite žemėlapį, kad maršrutas eitų per tą vietą. Tarpinį tašką galima tempti, o
       spustelėjus – pašalinti. {via.length > 0 && `Dabar tarpinių taškų: ${via.length}.`}
     </p>}

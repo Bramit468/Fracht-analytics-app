@@ -15,7 +15,7 @@ export function ArchiveButton() {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium disabled:opacity-50 dark:border-neutral-700"
+        className="rounded-md border border-line px-4 py-2 text-sm font-medium disabled:opacity-50 "
       >
         {pending ? "Archyvuojama…" : "Išsaugoti į archyvą"}
       </button>
@@ -23,7 +23,7 @@ export function ArchiveButton() {
         <p
           role="status"
           className={
-            state.status === "error" ? "text-sm text-red-600" : "text-sm text-green-700"
+            state.status === "error" ? "text-sm text-bad" : "text-sm text-good"
           }
         >
           {state.message}

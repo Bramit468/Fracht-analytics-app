@@ -17,7 +17,7 @@ import { saveTrip } from "../../../lib/trips";
 import type { CountryTariff } from "../../../lib/calc";
 import type { Truck } from "../../../types/truck";
 
-const inputClass = "mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3";
+const inputClass = "mt-1 block w-full rounded-lg border border-line bg-surface p-3";
 
 function headerText(cell: unknown, index: number): string {
   if (cell === null || cell instanceof Date || !String(cell).trim()) return `Column ${index + 1}`;
@@ -123,23 +123,23 @@ export function ExcelImport() {
   }
 
   if (loadingReference) return <p role="status">Kraunamos furos ir kelių įkainiai…</p>;
-  if (!trucks.length || !tariffs.length) return <p role="alert" className="text-red-700">{error || "Pirma įveskite furas ir kelių įkainius."}</p>;
+  if (!trucks.length || !tariffs.length) return <p role="alert" className="text-bad">{error || "Pirma įveskite furas ir kelių įkainius."}</p>;
 
   return <div className="space-y-8">
     <section>
       <h2 className="text-lg font-semibold">1. Upload Excel</h2>
-      <p className="mt-1 text-sm text-slate-600">Naudojamas pirmas lapas ir jo pirma eilutė. Pajamos importuojamos kaip frachto kaina.</p>
-      <label className="mt-4 inline-flex cursor-pointer rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700">
+      <p className="mt-1 text-sm text-muted">Naudojamas pirmas lapas ir jo pirma eilutė. Pajamos importuojamos kaip frachto kaina.</p>
+      <label className="mt-4 inline-flex cursor-pointer rounded-xl bg-accent px-5 py-3 font-semibold text-accent-ink hover:opacity-90">
         Choose .xlsx file
         <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={selectFile} disabled={importing} />
       </label>
-      {fileName && <p className="mt-2 text-sm text-slate-600">Selected: {fileName}</p>}
-      {error && <p role="alert" className="mt-3 text-red-700">{error}</p>}
+      {fileName && <p className="mt-2 text-sm text-muted">Selected: {fileName}</p>}
+      {error && <p role="alert" className="mt-3 text-bad">{error}</p>}
     </section>
 
     {mapping && <section>
       <h2 className="text-lg font-semibold">2. Match columns</h2>
-      <p className="mt-1 text-sm text-slate-600">Privalomi laukai pažymėti *. Nepriskirti neprivalomi laukai bus 0, viena para ir įkainis „Nemokami“.</p>
+      <p className="mt-1 text-sm text-muted">Privalomi laukai pažymėti *. Nepriskirti neprivalomi laukai bus 0, viena para ir įkainis „Nemokami“.</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {importFields.map((field) => <label key={field.key} className="text-sm font-medium">
           {field.label}{field.required ? " *" : ""}
@@ -152,35 +152,35 @@ export function ExcelImport() {
           </select>
         </label>)}
       </div>
-      {!!missingMappings.length && <p role="alert" className="mt-4 text-red-700">Map required fields: {missingMappings.join(", ")}.</p>}
+      {!!missingMappings.length && <p role="alert" className="mt-4 text-bad">Map required fields: {missingMappings.join(", ")}.</p>}
     </section>}
 
     {mapping && !missingMappings.length && <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">3. Review and import</h2>
-          <p className="mt-1 text-sm text-slate-600">{preview.validRows.length} valid · {preview.invalidRows.length} skipped</p>
+          <p className="mt-1 text-sm text-muted">{preview.validRows.length} valid · {preview.invalidRows.length} skipped</p>
         </div>
-        <button type="button" onClick={importTrips} disabled={importing || !!result || !preview.validRows.length} className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-50">
+        <button type="button" onClick={importTrips} disabled={importing || !!result || !preview.validRows.length} className="rounded-xl bg-accent px-5 py-3 font-semibold text-accent-ink disabled:opacity-50">
           {importing ? `Importing ${progress}/${preview.validRows.length}…` : `Import ${preview.validRows.length} trips`}
         </button>
       </div>
       <div className="mt-4 max-h-96 overflow-auto rounded-xl border">
         <table className="w-full min-w-[700px] text-left text-sm">
-          <thead className="sticky top-0 bg-slate-100"><tr><th className="p-3">Excel eilutė</th><th className="p-3">Reisas</th><th className="p-3">Maršrutas</th><th className="p-3">Būsena</th></tr></thead>
+          <thead className="sticky top-0 bg-raised"><tr><th className="p-3">Excel eilutė</th><th className="p-3">Reisas</th><th className="p-3">Maršrutas</th><th className="p-3">Būsena</th></tr></thead>
           <tbody>
-            {preview.validRows.map((row) => <tr key={`valid-${row.sourceRow}`} className="border-t"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.trip.trip_number}</td><td className="p-3">{row.trip.origin} → {row.trip.destination}</td><td className="p-3 font-medium text-emerald-700">Tinka</td></tr>)}
-            {preview.invalidRows.map((row) => <tr key={`invalid-${row.sourceRow}`} className="border-t bg-red-50"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.tripNumber}</td><td className="p-3">—</td><td className="p-3 text-red-700">{row.reason}</td></tr>)}
+            {preview.validRows.map((row) => <tr key={`valid-${row.sourceRow}`} className="border-t"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.trip.trip_number}</td><td className="p-3">{row.trip.origin} → {row.trip.destination}</td><td className="p-3 font-medium text-good">Tinka</td></tr>)}
+            {preview.invalidRows.map((row) => <tr key={`invalid-${row.sourceRow}`} className="border-t bg-bad-soft"><td className="p-3">{row.sourceRow}</td><td className="p-3">{row.tripNumber}</td><td className="p-3">—</td><td className="p-3 text-bad">{row.reason}</td></tr>)}
           </tbody>
         </table>
       </div>
     </section>}
 
-    {result && <section role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-      <h2 className="font-semibold text-emerald-900">Importas baigtas</h2>
-      <p className="mt-1 text-emerald-900">{result.imported} trips imported. {result.failed.length} rows skipped.</p>
+    {result && <section role="status" className="rounded-xl border border-line bg-accent-soft p-5">
+      <h2 className="font-semibold text-good">Importas baigtas</h2>
+      <p className="mt-1 text-good">{result.imported} trips imported. {result.failed.length} rows skipped.</p>
       <div className="mt-4 flex gap-4"><Link href="/trips" className="font-semibold underline">Rodyti reisus</Link><Link href="/" className="font-semibold underline">Rodyti suvestinę</Link></div>
-      {!!result.failed.length && <ul className="mt-4 list-disc pl-5 text-sm text-red-800">{result.failed.map((row) => <li key={`${row.sourceRow}-${row.tripNumber}`}>Row {row.sourceRow} ({row.tripNumber}): {row.reason}</li>)}</ul>}
+      {!!result.failed.length && <ul className="mt-4 list-disc pl-5 text-sm text-bad">{result.failed.map((row) => <li key={`${row.sourceRow}-${row.tripNumber}`}>Row {row.sourceRow} ({row.tripNumber}): {row.reason}</li>)}</ul>}
     </section>}
   </div>;
 }

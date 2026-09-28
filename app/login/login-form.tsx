@@ -11,18 +11,18 @@ export function LoginForm() {
 
   return (
     <form action={action} className="space-y-5">
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-ink">
         El. paštas
         <input
           name="email"
           type="email"
           autoComplete="email"
           required
-          className="mt-2 block w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          className="mt-2 block w-full rounded-xl border border-line bg-raised px-4 py-3 outline-none transition focus:border-accent"
           placeholder="vardas@imone.lt"
         />
       </label>
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-ink">
         Slaptažodis
         <input
           name="password"
@@ -30,7 +30,7 @@ export function LoginForm() {
           autoComplete="current-password"
           minLength={6}
           required
-          className="mt-2 block w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          className="mt-2 block w-full rounded-xl border border-line bg-raised px-4 py-3 outline-none transition focus:border-accent"
         />
       </label>
 
@@ -39,8 +39,8 @@ export function LoginForm() {
           role="status"
           className={`rounded-xl px-4 py-3 text-sm ${
             state.status === "error"
-              ? "bg-red-50 text-red-700"
-              : "bg-emerald-50 text-emerald-800"
+              ? "bg-bad-soft text-bad"
+              : "bg-accent-soft text-good"
           }`}
         >
           {state.message}
@@ -50,12 +50,12 @@ export function LoginForm() {
       <div>
         <button
           disabled={pending}
-          className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+          className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50"
         >
           {pending ? "Prašome palaukti…" : "Prisijungti"}
         </button>
       </div>
-      <p className="text-center text-xs leading-5 text-slate-500">
+      <p className="text-center text-xs leading-5 text-muted">
         Prieigą prie įmonės darbo erdvės suteikia administratorius.
       </p>
     </form>

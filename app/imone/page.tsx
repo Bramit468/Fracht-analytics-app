@@ -46,7 +46,7 @@ export default async function ImonePage() {
       <AppNav />
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold tracking-tight">Įmonė</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Visi įmonės nariai mato tuos pačius reisus, furas ir skaičius. Kitų įmonių duomenys
           lieka nematomi.
         </p>
@@ -55,14 +55,14 @@ export default async function ImonePage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Turi prieigą</h2>
         {memberResult.error ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-bad">
             Nepavyko nuskaityti narių: {memberResult.error.message}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-300 text-left dark:border-neutral-700">
+                <tr className="border-b border-line text-left ">
                   <th className="py-2 pr-4 font-medium">El. paštas</th>
                   <th className="py-2 pr-4 font-medium">Teisės</th>
                   <th className="py-2 font-medium">Nuo</th>
@@ -72,7 +72,7 @@ export default async function ImonePage() {
                 {members.map((member) => (
                   <tr
                     key={member.user_id}
-                    className="border-b border-neutral-200 dark:border-neutral-800"
+                    className="border-b border-line "
                   >
                     <td className="py-2 pr-4">{member.email}</td>
                     <td className="py-2 pr-4">
@@ -90,21 +90,21 @@ export default async function ImonePage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Laukia registracijos</h2>
         {inviteResult.error ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-bad">
             Nepavyko nuskaityti pakvietimų: {inviteResult.error.message}
           </p>
         ) : waiting.length === 0 ? (
-          <p className="text-sm text-neutral-500">Laukiančių pakvietimų nėra.</p>
+          <p className="text-sm text-muted">Laukiančių pakvietimų nėra.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {waiting.map((invitation) => (
               <li
                 key={invitation.email}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 py-2 text-sm dark:border-neutral-800"
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-2 text-sm "
               >
                 <span>
                   {invitation.email}
-                  <span className="ml-2 text-xs text-neutral-500">
+                  <span className="ml-2 text-xs text-muted">
                     pakviesta {formatDate(invitation.invited_at)}
                   </span>
                 </span>
@@ -117,7 +117,7 @@ export default async function ImonePage() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Pakviesti darbuotoją</h2>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted">
           Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu
           el. paštu — tada jis iškart pateks į šią įmonę, o ne į tuščią erdvę.
         </p>

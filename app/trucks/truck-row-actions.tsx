@@ -30,14 +30,14 @@ export function TruckRowActions({ id, plate }: { id: string; plate: string }) {
           <button
             type="submit"
             disabled={pending}
-            className="text-red-600 underline disabled:opacity-50"
+            className="text-bad underline disabled:opacity-50"
           >
             {pending ? "Trinama…" : "Ištrinti"}
           </button>
         </form>
       </div>
       {state.message && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-bad">
           {state.message}
         </p>
       )}

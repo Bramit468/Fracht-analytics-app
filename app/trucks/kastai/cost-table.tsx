@@ -28,7 +28,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-300 text-left dark:border-neutral-700">
+            <tr className="border-b border-line text-left ">
               <th className="sticky left-0 bg-background py-2 pr-4 font-medium">Numeris</th>
               {TRUCK_COST_FIELDS.map((field) => (
                 <th key={field} title={costLabel(field)} className="py-2 pr-3 font-medium">
@@ -46,7 +46,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
               return (
                 <tr
                   key={truck.id}
-                  className="border-b border-neutral-200 align-top dark:border-neutral-800"
+                  className="border-b border-line align-top "
                 >
                   <th
                     scope="row"
@@ -56,7 +56,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
                     {copiedIds.has(truck.id) && (
                       <span
                         title="Šios furos kaštai iki cento sutampa su kita fura — greičiausiai nukopijuoti."
-                        className="ml-2 text-xs text-amber-600"
+                        className="ml-2 text-xs text-warn"
                       >
                         nepatikslinta
                       </span>
@@ -75,7 +75,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
                     </td>
                   ))}
 
-                  <td className="py-2 text-right tabular-nums text-neutral-500">
+                  <td className="py-2 text-right tabular-nums text-muted">
                     {formatCents(calcDailyRate(truckRowToCalc(truck)))}
                   </td>
                 </tr>
@@ -89,7 +89,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
           {pending ? "Įrašoma…" : "Išsaugoti pakeitimus"}
         </button>
@@ -97,7 +97,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
           <p
             role="status"
             className={
-              state.status === "error" ? "text-sm text-red-600" : "text-sm text-green-700"
+              state.status === "error" ? "text-sm text-bad" : "text-sm text-good"
             }
           >
             {state.message}
@@ -134,10 +134,10 @@ function Cell({
         defaultValue={defaultValue}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${name}-error` : undefined}
-        className="w-24 rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-right tabular-nums aria-invalid:border-red-600 dark:border-neutral-700"
+        className="w-24 rounded-md border border-line bg-transparent px-2 py-1 text-right tabular-nums aria-invalid:border-bad "
       />
       {error && (
-        <span id={`${name}-error`} className="mt-1 block max-w-32 text-xs text-red-600">
+        <span id={`${name}-error`} className="mt-1 block max-w-32 text-xs text-bad">
           {error}
         </span>
       )}

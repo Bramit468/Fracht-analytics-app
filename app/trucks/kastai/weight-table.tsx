@@ -25,7 +25,7 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {missing > 0 && (
-        <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="rounded-xl border border-warn bg-warn-soft p-4 text-sm text-warn  ">
           Furų be svorių: {missing} iš {trucks.length}. Joms PTV kuro ir CO₂ skaičiuoja pagal
           numatytą 40 t vilkiką, o ne pagal jūsiškį.
         </p>
@@ -35,13 +35,13 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
         <span className="font-medium">Užpildyti tuščius laukus visoms furoms:</span>
         {WEIGHT_FIELDS.map((field) => (
           <label key={field} className="flex flex-col gap-1">
-            <span className="text-xs text-neutral-500">{WEIGHT_LABELS[field]}</span>
+            <span className="text-xs text-muted">{WEIGHT_LABELS[field]}</span>
             <input
               type="text"
               inputMode="numeric"
               value={visiems[field]}
               onChange={(event) => setVisiems((current) => ({ ...current, [field]: event.target.value }))}
-              className="w-28 rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-right tabular-nums dark:border-neutral-700"
+              className="w-28 rounded-md border border-line bg-transparent px-2 py-1 text-right tabular-nums "
             />
           </label>
         ))}
@@ -54,7 +54,7 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-300 text-left dark:border-neutral-700">
+            <tr className="border-b border-line text-left ">
               <th className="py-2 pr-4 font-medium">Numeris</th>
               {WEIGHT_FIELDS.map((field) => (
                 <th key={field} className="py-2 pr-4 font-medium">{WEIGHT_LABELS[field]}</th>
@@ -67,7 +67,7 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
               const errors = state.errors?.[truck.id];
 
               return (
-                <tr key={truck.id} className="border-b border-neutral-200 align-top dark:border-neutral-800">
+                <tr key={truck.id} className="border-b border-line align-top ">
                   <th scope="row" className="py-2 pr-4 text-left font-mono font-normal">
                     {truck.plate}
                   </th>
@@ -90,10 +90,10 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
                           defaultValue={current === "" && fill > 0 ? visiems[field] : current}
                           aria-invalid={error ? true : undefined}
                           aria-describedby={error ? `${name}-error` : undefined}
-                          className="w-28 rounded-md border border-neutral-300 bg-transparent px-2 py-1 text-right tabular-nums aria-invalid:border-red-600 dark:border-neutral-700"
+                          className="w-28 rounded-md border border-line bg-transparent px-2 py-1 text-right tabular-nums aria-invalid:border-bad "
                         />
                         {error && (
-                          <span id={`${name}-error`} className="mt-1 block max-w-40 text-xs text-red-600">
+                          <span id={`${name}-error`} className="mt-1 block max-w-40 text-xs text-bad">
                             {error}
                           </span>
                         )}
@@ -111,12 +111,12 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
           {pending ? "Įrašoma…" : "Išsaugoti svorius"}
         </button>
         {state.message && (
-          <p role="status" className={state.status === "error" ? "text-sm text-red-600" : "text-sm text-green-700"}>
+          <p role="status" className={state.status === "error" ? "text-sm text-bad" : "text-sm text-good"}>
             {state.message}
           </p>
         )}

@@ -24,8 +24,8 @@ export function AppNav({ className = "" }: { className?: string }) {
           aria-current={item.href === active ? "page" : undefined}
           className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
             item.href === active
-              ? "bg-slate-950 text-white"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              ? "bg-accent text-accent-ink"
+              : "bg-surface text-muted hover:text-ink"
           }`}
         >
           {item.label}

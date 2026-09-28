@@ -94,7 +94,7 @@ export function TruckForm({ truck }: { truck?: Truck }) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
         >
           {pending
             ? "Įrašoma…"
@@ -106,7 +106,7 @@ export function TruckForm({ truck }: { truck?: Truck }) {
           <p
             role="status"
             className={
-              state.status === "error" ? "text-sm text-red-600" : "text-sm text-green-700"
+              state.status === "error" ? "text-sm text-bad" : "text-sm text-good"
             }
           >
             {state.message}
@@ -150,11 +150,11 @@ function Field({
         defaultValue={state.values?.[name] ?? defaults[name] ?? defaultValue}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        className="rounded-md border border-neutral-300 bg-transparent px-3 py-2 aria-invalid:border-red-600 dark:border-neutral-700"
+        className="rounded-md border border-line bg-transparent px-3 py-2 aria-invalid:border-bad "
       />
-      {hint && !error && <span className="text-xs text-neutral-500">{hint}</span>}
+      {hint && !error && <span className="text-xs text-muted">{hint}</span>}
       {error && (
-        <span id={errorId} className="text-xs text-red-600">
+        <span id={errorId} className="text-xs text-bad">
           {error}
         </span>
       )}

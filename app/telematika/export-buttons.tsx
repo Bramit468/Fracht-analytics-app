@@ -31,7 +31,7 @@ export function ExportButtons({
       <button
         type="button"
         onClick={() => downloadCsv(reportFileName("faktiniai-kastai", period), actualsToCsv(actuals))}
-        className="font-semibold text-accent underline"
+        className="font-semibold text-good underline"
       >
         Atsisiųsti kaštus Excel lentelei
       </button>
@@ -44,7 +44,7 @@ export function ExportButtons({
               fuelPricesToCsv(fuelByCountry, "Šalis"),
             )
           }
-          className="font-semibold text-accent underline"
+          className="font-semibold text-good underline"
         >
           Atsisiųsti kuro kainas
         </button>

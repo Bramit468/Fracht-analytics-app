@@ -86,7 +86,7 @@ function ProfitabilityBars({ stats, periodLabel }: { stats: DashboardStats; peri
 
 function RecentTrips({ trips }: { trips: TripSummary[] }) {
   return <div className="rounded-2xl border border-line bg-surface shadow-sm">
-    <div className="flex items-center justify-between border-b border-line px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Paskutiniai reisai</h3><p className="mt-1 text-sm text-muted">Naujausi išsaugoti reisai</p></div><Link href="/trips" className="text-sm font-semibold text-accent hover:opacity-80">Rodyti visus</Link></div>
+    <div className="flex items-center justify-between border-b border-line px-5 py-4 sm:px-6"><div><h3 className="font-semibold">Paskutiniai reisai</h3><p className="mt-1 text-sm text-muted">Naujausi išsaugoti reisai</p></div><Link href="/trips" className="text-sm font-semibold text-good hover:opacity-80">Rodyti visus</Link></div>
     <div className="divide-y divide-line">
       {trips.slice(0, 5).map((trip) => <div key={trip.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 sm:grid-cols-[90px_minmax(0,1fr)_120px_120px] sm:px-6">
         <span className="hidden text-sm text-muted sm:block">{formatDate(trip.tripDate)}</span>
@@ -154,7 +154,7 @@ function EmptyKm({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: st
 function ExportButton({ onExport }: { onExport?: () => void }) {
   if (!onExport) return null;
 
-  return <button type="button" onClick={onExport} className="text-sm font-semibold text-accent hover:opacity-80">
+  return <button type="button" onClick={onExport} className="text-sm font-semibold text-good hover:opacity-80">
     Atsisiųsti
   </button>;
 }
@@ -252,7 +252,7 @@ function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: 
   onExport?: () => void;
 }) {
   return <div className="rounded-2xl border border-line bg-surface shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-muted">{subtitle}</p></div><div className="flex items-center gap-4">{action && <Link href={action.href} className="text-sm font-semibold text-accent hover:opacity-80">{action.label}</Link>}<ExportButton onExport={onExport} /></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-muted">{subtitle}</p></div><div className="flex items-center gap-4">{action && <Link href={action.href} className="text-sm font-semibold text-good hover:opacity-80">{action.label}</Link>}<ExportButton onExport={onExport} /></div></div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-5 py-3 text-right font-medium sm:px-6">Pelnas €/km</th></tr></thead>

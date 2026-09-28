@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fracht Analytics",
+  title: "Bramit",
   description: "Reisų pelningumas",
 };
 

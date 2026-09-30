@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } from "maplibre-gl";
+import { Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
@@ -67,10 +67,15 @@ export function RouteMap({
     callbacks.current = { onAddVia, onMoveVia, onRemoveVia };
   }, [onAddVia, onMoveVia, onRemoveVia]);
 
-  useEffect(() => {
-    if (!container.current || line.length < 2) return;
+  const [ready, setReady] = useState(false);
+  const hasRoute = line.length >= 2;
 
-    const bounds = routeBounds(line);
+  // Žemėlapis kuriamas vieną kartą. Anksčiau jis buvo griaunamas ir kuriamas iš
+  // naujo po kiekvieno formos perpiešimo, todėl plytelės mirksėjo, o
+  // vartotojo nustatytas mastelis dingdavo.
+  useEffect(() => {
+    if (!container.current || !hasRoute) return;
+
     const map = new MapLibreMap({
       container: container.current,
       style: {
@@ -87,7 +92,7 @@ export function RouteMap({
         layers: [{ id: "osm", type: "raster", source: "osm" }],
       },
       // Pradinė reikšmė, kurią iškart pakeičia `fitBounds`.
-      center: line[0],
+      center: [0, 50],
       zoom: 4,
     });
     mapRef.current = map;
@@ -113,10 +118,7 @@ export function RouteMap({
         });
       }
 
-      map.addSource("route", {
-        type: "geojson",
-        data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } },
-      });
+      map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route",
         type: "line",
@@ -125,54 +127,83 @@ export function RouteMap({
         paint: { "line-color": "#2563eb", "line-width": 4 },
       });
 
-      for (const [point, color] of [[line[0], "#16a34a"], [line[line.length - 1], "#dc2626"]] as const) {
-        new Marker({ color }).setLngLat(point).addTo(map);
-      }
-
-      for (const violation of violations) {
-        if (violation.latitude === undefined || violation.longitude === undefined) continue;
-        new Marker({ color: "#f59e0b" })
-          .setLngLat([violation.longitude, violation.latitude])
-          .setPopup(new Popup({ offset: 25 }).setText(violation.message))
-          .addTo(map);
-      }
-
-      // Tarpiniai taškai: tempiami, o paspaudus – pašalinami. Maršrutas
-      // perskaičiuojamas tik paleidus pelę, todėl užklausų audros nėra (#85).
-      for (const [index, point] of via.entries()) {
-        const marker = new Marker({ color: "#7c3aed", draggable: Boolean(onMoveVia) })
-          .setLngLat([point.longitude, point.latitude])
-          .addTo(map);
-
-        marker.on("dragend", () => {
-          const { lng, lat } = marker.getLngLat();
-          callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
-        });
-
-        marker.getElement().addEventListener("click", (event) => {
-          event.stopPropagation();
-          callbacks.current.onRemoveVia?.(index);
-        });
-        marker.getElement().title = "Tarpinis taškas. Tempkite arba spustelėkite, kad pašalintumėte.";
-      }
-
-      if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0 });
+      setReady(true);
     });
 
-    if (onAddVia) {
-      map.on("click", (event) => {
-        callbacks.current.onAddVia?.({
-          latitude: event.lngLat.lat,
-          longitude: event.lngLat.lng,
-        });
+    // Ar taškus galima pridėti, sprendžiama paspaudimo metu, o ne kuriant žemėlapį.
+    map.on("click", (event) => {
+      callbacks.current.onAddVia?.({
+        latitude: event.lngLat.lat,
+        longitude: event.lngLat.lng,
       });
-    }
+    });
 
     return () => {
       mapRef.current = null;
+      setReady(false);
       map.remove();
     };
-  }, [line, violations, via, onAddVia, onMoveVia]);
+  }, [hasRoute]);
+
+  // Maršruto linija keičiasi tik duomenimis; rėmas pritaikomas tik perskaičiavus maršrutą,
+  // kad tempiant tašką vaizdas nešokinėtų.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || line.length < 2) return;
+
+    (map.getSource("route") as GeoJSONSource | undefined)?.setData({
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: line },
+    });
+
+    const bounds = routeBounds(line);
+    if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0 });
+  }, [ready, line]);
+
+  // Žymekliai yra paprasti DOM elementai, todėl juos pigiau perkurti nei sekti pokyčius.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || line.length < 2) return;
+
+    const markers: Marker[] = [];
+
+    for (const [point, color] of [[line[0], "#16a34a"], [line[line.length - 1], "#dc2626"]] as const) {
+      markers.push(new Marker({ color }).setLngLat(point).addTo(map));
+    }
+
+    for (const violation of violations) {
+      if (violation.latitude === undefined || violation.longitude === undefined) continue;
+      markers.push(
+        new Marker({ color: "#f59e0b" })
+          .setLngLat([violation.longitude, violation.latitude])
+          .setPopup(new Popup({ offset: 25 }).setText(violation.message))
+          .addTo(map),
+      );
+    }
+
+    // Tarpiniai taškai: tempiami, o paspaudus – pašalinami. Maršrutas
+    // perskaičiuojamas tik paleidus pelę, todėl užklausų audros nėra (#85).
+    for (const [index, point] of via.entries()) {
+      const marker = new Marker({ color: "#7c3aed", draggable: Boolean(callbacks.current.onMoveVia) })
+        .setLngLat([point.longitude, point.latitude])
+        .addTo(map);
+
+      marker.on("dragend", () => {
+        const { lng, lat } = marker.getLngLat();
+        callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
+      });
+
+      marker.getElement().addEventListener("click", (event) => {
+        event.stopPropagation();
+        callbacks.current.onRemoveVia?.(index);
+      });
+      marker.getElement().title = "Tarpinis taškas. Tempkite arba spustelėkite, kad pašalintumėte.";
+      markers.push(marker);
+    }
+
+    return () => markers.forEach((marker) => marker.remove());
+  }, [ready, line, violations, via]);
 
   useEffect(() => {
     visibleLayersRef.current = visibleLayers;
@@ -187,7 +218,7 @@ export function RouteMap({
     }
   }, [visibleLayers]);
 
-  if (line.length < 2) return null;
+  if (!hasRoute) return null;
 
   return <div className="mt-3">
     <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-page px-3 py-2 text-sm">

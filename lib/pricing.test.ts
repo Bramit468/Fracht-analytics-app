@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { calcTrip } from "./calc";
 import { marginForPrice, priceForMargin, priceForProfit, pricePerKm } from "./pricing";
 
 describe("priceForMargin", () => {
@@ -59,5 +60,39 @@ describe("pricePerKm", () => {
 
   it("be kilometrų įkainio nėra", () => {
     expect(pricePerKm(100000, 0)).toBeNull();
+  });
+});
+
+describe("kaina be pajamų", () => {
+  it("kaina prašyti imama iš kaštų, kai pajamų dar nėra", () => {
+    // Greita kaina: pajamų laukas tuščias, reisas skaičiuojamas su 0 €. Kaštai
+    // nuo pajamų nepriklauso, todėl iš jų išeina ta pati kaina kaip iš žinomų
+    // kaštų, o marža be pajamų – „nėra", ne nulis.
+    const truck = {
+      dailyCents: {
+        depreciation: 5700, interest: 0, insuranceKasko: 400, insuranceCivil: 800, insuranceCmr: 200,
+        driverSalary: 14500, perDiem: 0, repairs: 2800, management: 0,
+      },
+      trailerMonthlyCents: 0,
+      workingDaysPerMonth: 22,
+    }; // 244 € per parą, be priekabos nuomos
+    const trip = calcTrip({
+      truck,
+      days: 2,
+      paidKm: 1000,
+      emptyKm: 0,
+      fuel: { litresPer100Km: 30, pricePerLitre: 1.5 },
+      adblue: { litresPer100Km: 2, pricePerLitre: 0.7 },
+      extras: { bridgesCents: 0, ferriesCents: 0, tunnelsCents: 0, parkingCents: 0 },
+      legs: [{ country: "Nemokami", km: 1000 }],
+      tariffs: [{ country: "Nemokami", rate: 0, rateType: "per_km" }],
+      revenue: { mode: "freight", freightPriceCents: 0 },
+    });
+
+    expect(trip.revenueCents).toBe(0);
+    expect(trip.marginPercent).toBeNull();
+    // 2 paros 488 € + kuras 450 € + AdBlue 14 € = 952 €; 952 / 0,8 = 1190 €.
+    expect(trip.totalCostCents).toBe(95200);
+    expect(priceForMargin(trip.totalCostCents, 20)).toBe(119000);
   });
 });

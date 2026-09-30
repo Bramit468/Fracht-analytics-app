@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { getSupabaseClient } from "../../../lib/supabase";
 import {
@@ -19,6 +20,8 @@ import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
+import { emptyKmByTruck } from "../../../lib/empty-km";
+import { defaultEmptyKm, pickDays, quoteNotes, type DaysSource } from "../../../lib/quick-quote";
 import { fetchTelematicsFill } from "./telematics";
 import { rateFill } from "@/lib/telematics-costs";
 import {
@@ -100,6 +103,14 @@ function paskutinesTrisdesimtDienu(): { from: string; to: string } {
   return { from: isoDate(dabar - 30 * 86_400_000), to: isoDate(dabar) };
 }
 
+/** Ką maršruto paieška grąžina greitai kainai: pati forma jau užpildyta. */
+interface RouteOutcome {
+  routeDays: number;
+  paidKm: number;
+  ferryUnknown: boolean;
+  approximate: boolean;
+}
+
 export function TripForm({
   tripId,
   copyFromId,
@@ -163,6 +174,21 @@ export function TripForm({
   const [tarpiniai, setTarpiniai] = useState<ViaPoint[]>([]);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
+  /**
+   * Greita kaina (#157). Visa, ko čia nėra, guli skiltyje „Pakeisti ranka“.
+   * Be PTV rakto ir taisant išsaugotą reisą ji atvira iškart: ten laukus
+   * pildo žmogus, o ne mygtukas.
+   */
+  const [detaliai, setDetaliai] = useState(!routeLookup || Boolean(tripId));
+  const [kainaSkaiciuojama, setKainaSkaiciuojama] = useState(false);
+  const [pastabos, setPastabos] = useState<string[]>([]);
+  /** Iš ko paimtos paros ir ar po to keistas maršrutas. `null` – rašė žmogus. */
+  const [dienuSaltinis, setDienuSaltinis] = useState<{ source: DaysSource; stale: boolean } | null>(null);
+  /** Rezultatas skaičiuotas be pajamų: antraštė – kiek prašyti, ne pelnas. */
+  const [bePajamu, setBePajamu] = useState(false);
+  /** Pradėtas furos normų pildymas; greita kaina jo laukia, kad neperrašytų. */
+  const normuPildymas = useRef<Promise<void>>(Promise.resolve());
+  const skaiciuotiMygtukas = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +242,14 @@ export function TripForm({
   }, [attempt]);
 
   /** Žemėlapio veiksmai: pridėti, perkelti ir pašalinti tarpinį tašką (#85). */
+  /**
+   * Tarpinis taškas keičia maršrutą, bet ne vairavimo laiko planą: paros, įrašytos
+   * greitos kainos, nebeatitinka kelio, kol kaina neperskaičiuota.
+   */
+  function markDaysStale() {
+    setDienuSaltinis((current) => current && { ...current, stale: true });
+  }
+
   function addVia(point: ViaPoint) {
     const change = addViaPoint(tarpiniai, point);
     if (!change.ok) {
@@ -223,18 +257,21 @@ export function TripForm({
       return;
     }
     setTarpiniai(change.points);
+    markDaysStale();
     void fillFromRoute(change.points);
   }
 
   function moveVia(index: number, point: ViaPoint) {
     const points = moveViaPoint(tarpiniai, index, point);
     setTarpiniai(points);
+    markDaysStale();
     void fillFromRoute(points);
   }
 
   function removeVia(index: number) {
     const points = removeViaPoint(tarpiniai, index);
     setTarpiniai(points);
+    markDaysStale();
     void fillFromRoute(points);
   }
 
@@ -309,9 +346,9 @@ export function TripForm({
    * Atskiras mygtukas: PTV tvarkaraštis eina per POST ir yra dar viena
    * užklausa, o kilometrai bei mokesčiai reikalingi kur kas dažniau.
    */
-  async function planDriverHours() {
+  async function planDriverHours(): Promise<number | null> {
     const form = formRef.current;
-    if (!form || planuoja) return;
+    if (!form || planuoja) return null;
 
     const value = (name: string) => {
       const field = form.elements.namedItem(name);
@@ -325,7 +362,7 @@ export function TripForm({
       const departure = departureIso(value("trip_date"), value("departure_time"));
       if (!departure) {
         setTvarkarascioKlaida("Įveskite reiso datą ir išvykimo laiką.");
-        return;
+        return null;
       }
 
       const result = await lookupSchedule(
@@ -340,11 +377,13 @@ export function TripForm({
 
       if (!result.ok) {
         setTvarkarascioKlaida(result.message);
-        return;
+        return null;
       }
       setTvarkarastis(result.schedule);
+      return result.schedule.days;
     } catch {
       setTvarkarascioKlaida("Nepavyko suplanuoti vairavimo laiko.");
+      return null;
     } finally {
       setPlanuoja(false);
     }
@@ -454,10 +493,15 @@ export function TripForm({
     }
   }
 
-  /** Užpildo km ir kelių mokesčius iš vilkiko maršruto. Reikšmės taisomos (#61). */
-  async function fillFromRoute(via: ViaPoint[] = tarpiniai) {
+  /**
+   * Užpildo km ir kelių mokesčius iš vilkiko maršruto. Reikšmės taisomos (#61).
+   *
+   * `write = false` – išsaugoto reiso redagavimas: rodoma, ką PTV siūlo, bet
+   * laukai nekeičiami, nes ten įrašyta tai, kas buvo tada.
+   */
+  async function fillFromRoute(via: ViaPoint[] = tarpiniai, write = true): Promise<RouteOutcome | null> {
     const form = formRef.current;
-    if (!form || skaiciuoja) return;
+    if (!form || skaiciuoja) return null;
 
     const value = (name: string) => {
       const field = form.elements.namedItem(name);
@@ -476,7 +520,7 @@ export function TripForm({
       const departureTime = value("departure_time");
       if (tripDate && !departureTime) {
         setMarsrutas("Įveskite išvykimo laiką.");
-        return;
+        return null;
       }
 
       // Svoriai keičia PTV kuro įvertį trečdaliu, todėl siunčiami kartu:
@@ -503,7 +547,7 @@ export function TripForm({
         // Su tarpiniais taškais paskutinis galiojantis maršrutas paliekamas
         // ekrane: kitaip nepavykęs paspaudimas nutrintų ir tai, kas veikė (#85).
         if (via.length === 0) setMarsrutoLinija([]);
-        return;
+        return null;
       }
 
       setTarpiniai(orderViaPoints(via, result.line));
@@ -512,24 +556,31 @@ export function TripForm({
       setEmisijos(result.emissions);
       setEmisijuSvoriai(result.weightsUsed);
 
-      for (const [name, filled] of Object.entries(result.fill)) {
-        if (name === "legKm") continue;
-        const field = form.elements.namedItem(name);
-        if (field instanceof HTMLInputElement) field.value = filled;
+      if (write) {
+        for (const [name, filled] of Object.entries(result.fill)) {
+          if (name === "legKm") continue;
+          const field = form.elements.namedItem(name);
+          if (field instanceof HTMLInputElement) field.value = filled;
+        }
       }
 
       const needsFerryPrice = result.ferryDetected && result.ferriesCents === 0;
       setNeivertintasKeltas(needsFerryPrice ? result.ferryNames : null);
-      const publicFare = needsFerryPrice
-        ? applyFerryEstimate(result.ferryNames, keltoIlgis, keltoKrovinys)
-        : null;
+      // Redaguojant tarifas tik paskaičiuojamas, bet į lauką neįrašomas.
+      const publicFare = !needsFerryPrice
+        ? null
+        : write
+          ? applyFerryEstimate(result.ferryNames, keltoIlgis, keltoKrovinys)
+          : estimateScandlinesFreightFare(result.ferryNames, Number(keltoIlgis), keltoKrovinys);
       if (!needsFerryPrice) setKeltoIvertis(null);
 
-      // Tikri mokesčiai pakeičia įkainio pagal šalis spėjimą, todėl atkarpa
-      // paliekama „Nemokami" – kitaip kaštai būtų suskaičiuoti dukart.
-      setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
-      setResult(null);
-      setSaved("");
+      if (write) {
+        // Tikri mokesčiai pakeičia įkainio pagal šalis spėjimą, todėl atkarpa
+        // paliekama „Nemokami" – kitaip kaštai būtų suskaičiuoti dukart.
+        setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
+        setResult(null);
+        setSaved("");
+      }
 
       const ispejimai = [
         result.violated && result.violations.length === 0 ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
@@ -560,10 +611,85 @@ export function TripForm({
         + `Iš viso ${needsFerryPrice && !publicFare ? "bus aišku įvedus kelto kainą" : formatCents(shownTollCents)}. Siūloma trukmė ${result.days} par. – `
         + `įrašykite patys, jei sutinkate. ${ispejimai}`.trim(),
       );
+
+      return {
+        routeDays: result.days,
+        paidKm: Number(result.fill.paid_km),
+        ferryUnknown: needsFerryPrice && !publicFare,
+        approximate: result.approximate,
+      };
     } catch {
       setMarsrutas("Nepavyko suskaičiuoti maršruto.");
+      return null;
     } finally {
       setSkaiciuoja(false);
+    }
+  }
+
+  /**
+   * Greita kaina (#157): vienas mygtukas vietoj trijų.
+   *
+   * Maršrutas ir vairavimo laiko planas skaičiuojami kartu ir vienas kito
+   * nestabdo: jei vienas nepavyksta, žmogus mato jo klaidą, o kitas vis tiek
+   * naudojamas. Laukus užpildo tie patys įrašymai kaip ir rankiniu keliu, o
+   * paskui vykdomas įprastas „Skaičiuoti“ – be pajamų, todėl rezultato
+   * antraštė yra kaina, kurios prašyti.
+   */
+  async function calculateQuote() {
+    const form = formRef.current;
+    if (!form || kainaSkaiciuojama) return;
+
+    setKainaSkaiciuojama(true);
+    setPastabos([]);
+    setError("");
+    try {
+      // Tik ką pasirinktos furos normas kraunasi fone; jų nelaukus, vėliau
+      // atėjusios jos perrašytų jau suskaičiuotą kainą.
+      await normuPildymas.current;
+
+      // Išsaugoto reiso laukai nekeičiami (#151 taisyklė): ten yra tai, kas buvo tada.
+      const write = !tripId;
+      const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write), planDriverHours()]);
+
+      const picked = pickDays(scheduleDays, route?.routeDays ?? null);
+      const truckId = form.elements.namedItem("truck_id");
+      const plate = trucks.find((truck) => truck.id === (truckId instanceof HTMLSelectElement ? truckId.value : ""))?.plate;
+      const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
+      const emptyKm = route ? defaultEmptyKm(route.paidKm, emptyShare) : 0;
+
+      if (write) {
+        const days = form.elements.namedItem("days");
+        if (days instanceof HTMLInputElement && picked.days !== null) days.value = String(picked.days);
+        setDienuSaltinis(picked.days !== null ? { source: picked.source, stale: false } : null);
+
+        if (route) {
+          const empty = form.elements.namedItem("empty_km");
+          if (empty instanceof HTMLInputElement) empty.value = String(emptyKm);
+          // Atkarpų suma privalo sutapti su apmokamais ir tuščiais km, o tuščių
+          // dabar yra. `flushSync`, nes skaičiavimas skaito DOM iškart po to.
+          flushSync(() => {
+            setLegs([{ id: nextId.current++, country: "Nemokami", km: String(Math.round((route.paidKm + emptyKm) * 100) / 100) }]);
+          });
+        }
+      }
+
+      setPastabos(quoteNotes({
+        applied: write,
+        routeOk: route !== null,
+        scheduleOk: scheduleDays !== null,
+        days: picked.days,
+        daysSource: picked.source,
+        emptyKm,
+        emptyShare,
+        ferryUnknown: route?.ferryUnknown ?? false,
+        approximateAddress: route?.approximate ?? false,
+      }));
+
+      // Įprastas skaičiavimas su visomis patikromis; trūkstamą lauką parodys
+      // ir atvers „Pakeisti ranka“.
+      form.requestSubmit(skaiciuotiMygtukas.current);
+    } finally {
+      setKainaSkaiciuojama(false);
     }
   }
 
@@ -588,6 +714,10 @@ export function TripForm({
       const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
       const truck = trucks.find(t => t.id === text("truck_id"));
       if (!truck) throw new Error("Pasirinkite furą.");
+      // Greitai kainai pajamų dar nėra – jos yra tai, ko ieškoma. Išsaugoti
+      // reiso be jų negalima: 0 € pajamų įrašytų neegzistuojantį nuostolį.
+      const hasRevenue = text("revenue") !== "";
+      if (action === "save" && !hasRevenue) throw new Error("Išsaugoti galima tik įrašius pajamas.");
       // Numerio, krypties ir datos skaičiavimas nenaudoja, o kainą dažnai
       // reikia pasitikrinti dar jų neturint. Įrašant reikalavimas lieka (#52).
       if (action === "save") {
@@ -602,14 +732,15 @@ export function TripForm({
         adblue_l_per_100km: number("adblue_l_per_100km"), adblue_price: number("adblue_price"),
         bridges_cents: cents("bridges_cents"), ferries_cents: cents("ferries_cents"), tunnels_cents: cents("tunnels_cents"), parking_cents: cents("parking_cents"),
         revenue_mode: mode === "freight" ? "freight" : "per_km",
-        freight_price_cents: mode === "freight" ? cents("revenue") : null,
-        rate_per_km: mode === "per_km" ? number("revenue") : null,
+        freight_price_cents: mode === "freight" ? (hasRevenue ? cents("revenue") : 0) : null,
+        rate_per_km: mode === "per_km" ? (hasRevenue ? number("revenue") : 0) : null,
       };
       if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
       const tripLegs = legs.map(({ id }) => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
       if (Math.abs(tripLegs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
       const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
       setResult(calculation);
+      setBePajamu(!hasRevenue);
       setApmokamiKm(trip.paid_km);
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
       setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
@@ -628,45 +759,97 @@ export function TripForm({
   if (loading) return <p role="status">{tripId ? "Kraunamas reisas…" : "Kraunamos furos ir kelių įkainiai…"}</p>;
   if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
-  return <form ref={formRef} onSubmit={submit} onChange={() => { setResult(null); setSaved(""); }} className="space-y-6">
+  const prasomaKaina = result ? priceForMargin(result.totalCostCents, Number(norimaMarza)) : null;
+
+  return <form
+    ref={formRef}
+    onSubmit={submit}
+    onChange={() => { setResult(null); setSaved(""); }}
+    onInvalidCapture={() => {
+      // Tuščias privalomas laukas uždarytoje skiltyje blokuotų siuntimą be
+      // jokio ženklo: atidarome ją ir iš naujo parodome, kurio lauko trūksta.
+      if (detaliai) return;
+      flushSync(() => setDetaliai(true));
+      formRef.current?.reportValidity();
+    }}
+    className="space-y-6"
+  >
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
       <Skiltis numeris={1} antraste="Kas ir kur veža">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => void prefillRates(event.target.value)} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
-          <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
+          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { normuPildymas.current = prefillRates(event.target.value); }} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+          <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
           <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
           <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
+          {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis svarbus:
+              20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
+          {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => setKrovinioSvoris(event.target.value)} placeholder="20" className={inputClass} /></label>}
+          {/* Marža kainos skaičiavimui, ne formos laukas: `stopPropagation`,
+              kad jos keitimas nenuvalytų jau parodyto rezultato. */}
+          <label>Norima marža (%)<input type="number" step="0.5" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
         </div>
-        {/* Mygtukas šalia laukų, kuriuos jis užpildo, o ne atskiroje dėžutėje viršuje. */}
         {routeLookup && <div className="mt-3">
-          <div className="flex flex-wrap items-center gap-4">
-            <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
-              {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
-            </button>
-            <label className="flex items-center gap-2 text-sm">
+          <button type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
+            {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
+          </button>
+          <p className="mt-2 text-sm text-muted">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam. Kita užpildoma pati; tai, kas spėjama, parašyta žemiau.</p>
+          {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
+            {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
+          </ul>}
+          {marsrutas && <p role="status" className="mt-2 text-sm text-ink">{marsrutas}</p>}
+          {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
+        </div>}
+        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
+          <h3 className="font-semibold">Kelto bilieto kaina</h3>
+          <p className="mt-1 text-sm text-ink">
+            PTV aptiko {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : "keltą"}, bet bilieto kainos nepateikė.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label>
+              Visas junginio ilgis (m)
               <input
-                type="checkbox"
-                checked={vengtiKeltu}
-                onChange={(event) => setVengtiKeltu(event.target.checked)}
+                type="number"
+                min="10"
+                max="26"
+                step="0.1"
+                value={keltoIlgis}
+                onChange={(event) => {
+                  const length = event.target.value;
+                  setKeltoIlgis(length);
+                  applyFerryEstimate(neivertintasKeltas, length, keltoKrovinys);
+                }}
+                className={inputClass}
               />
-              Vengti keltų
             </label>
-            {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis
-                svarbus: 20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
-            <label className="flex items-center gap-2 text-sm">
-              Krovinio svoris, t
-              <input
-                type="text"
-                inputMode="decimal"
-                value={krovinioSvoris}
-                onChange={(event) => setKrovinioSvoris(event.target.value)}
-                placeholder="20"
-                className={`${inputClass} w-24`}
-              />
+            <label>
+              Kelte
+              <select
+                value={keltoKrovinys}
+                onChange={(event) => {
+                  const load = event.target.value as FreightLoad;
+                  setKeltoKrovinys(load);
+                  applyFerryEstimate(neivertintasKeltas, keltoIlgis, load);
+                }}
+                className={inputClass}
+              >
+                <option value="loaded">Pakrauta</option>
+                <option value="empty">Tuščia</option>
+              </select>
             </label>
           </div>
-          <p className="mt-2 text-sm text-muted">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam.</p>
-          {marsrutas && <p role="status" className="mt-2 text-sm text-ink">{marsrutas}</p>}
+          {keltoIvertis ? <p className="mt-3 text-sm text-ink">
+            Į lauką „Keltai (€)“ įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong>:
+            bazė {formatCents(keltoIvertis.baseCents)} + BAF/GIR/ETS {formatCents(keltoIvertis.surchargeCents)}.
+          </p> : <p role="alert" className="mt-3 text-sm text-bad">
+            Šiam maršrutui arba ilgiui automatinio tarifo nėra. Kelto kainą įrašykite ranka.
+          </p>}
+          <p className="mt-2 text-xs text-muted">
+            Scandlines viešo krovininio tarifo įvertis ({SCANDLINES_TARIFF_PERIOD}), be PVM. Sutartinė kaina ir ADR, pločio ar svorio priemokos gali skirtis. {" "}
+            <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Bazinis tarifas</a>{" · "}
+            <a href={SCANDLINES_SURCHARGE_URL} target="_blank" rel="noreferrer" className="underline">Priemokos</a>
+          </p>
+        </div>}
+        {routeLookup && <div className="mt-3">
 
           {emisijos && <div className="mt-3 rounded-lg border bg-surface p-3 text-sm">
             <p className="font-semibold">PTV kuro įvertis pagal maršrutą</p>
@@ -713,6 +896,35 @@ export function TripForm({
             </ul>
             <p className="mt-2">Prieš išsaugodami patikrinkite pakrovimo ir iškrovimo taškus bei vilkiko parametrus.</p>
           </div>}
+        </div>}
+        {routeLookup && <div className="mt-3">
+          <RouteMap
+            line={marsrutoLinija}
+            violations={marsrutoPazeidimai}
+            via={tarpiniai}
+            onAddVia={addVia}
+            onMoveVia={moveVia}
+            onRemoveVia={removeVia}
+          />
+        </div>}
+      </Skiltis>
+
+      {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
+          skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
+          `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
+      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
+        <summary className="cursor-pointer font-semibold">Pakeisti ranka</summary>
+        <div className="mt-4 space-y-6">
+          {routeLookup && <div className="rounded-xl border p-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
+                {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
+              </button>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={vengtiKeltu} onChange={(event) => setVengtiKeltu(event.target.checked)} />
+                Vengti keltų
+              </label>
+            </div>
           {/* Skirtumas tarp PTV siūlomų kelių yra pinigai: tas pats Panevėžys–
               Oslas gali skirtis 133 € vien mokesčiais (#84). */}
           <div className="mt-4 border-t pt-3">
@@ -821,22 +1033,18 @@ export function TripForm({
             </div>}
           </div>
 
-          <RouteMap
-            line={marsrutoLinija}
-            violations={marsrutoPazeidimai}
-            via={tarpiniai}
-            onAddVia={addVia}
-            onMoveVia={moveVia}
-            onRemoveVia={removeVia}
-          />
-        </div>}
-      </Skiltis>
+          </div>}
 
       <Skiltis numeris={2} antraste="Kada ir kiek">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
+          <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
           <label>Išvykimo laikas maršrutui<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
-          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} /></label>)}
+          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : undefined} />
+            {name === "days" && dienuSaltinis && <span className="mt-1 block text-sm text-muted">
+              {dienuSaltinis.source === "schedule" ? "Iš PTV vairavimo laiko plano." : "Apytiksliai pagal kelio valandas – plano nėra."}
+              {dienuSaltinis.stale && <strong className="text-warn"> Maršrutas pakeistas – paspauskite „Skaičiuoti kainą“ iš naujo.</strong>}
+            </span>}
+          </label>)}
         </div>
         <p className="mt-2 text-sm text-muted">Išvykimo laikas naudojamas PTV eismui ir kelių apribojimams. Be datos PTV skaičiuoja išvykstant dabar. Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
       </Skiltis>
@@ -847,56 +1055,6 @@ export function TripForm({
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
         {normos && <p role="status" className="mt-2 text-sm text-muted">{normos}</p>}
-        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
-          <h3 className="font-semibold">Kelto bilieto kaina</h3>
-          <p className="mt-1 text-sm text-ink">
-            PTV aptiko {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : "keltą"}, bet bilieto kainos nepateikė.
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label>
-              Visas junginio ilgis (m)
-              <input
-                type="number"
-                min="10"
-                max="26"
-                step="0.1"
-                value={keltoIlgis}
-                onChange={(event) => {
-                  const length = event.target.value;
-                  setKeltoIlgis(length);
-                  applyFerryEstimate(neivertintasKeltas, length, keltoKrovinys);
-                }}
-                className={inputClass}
-              />
-            </label>
-            <label>
-              Kelte
-              <select
-                value={keltoKrovinys}
-                onChange={(event) => {
-                  const load = event.target.value as FreightLoad;
-                  setKeltoKrovinys(load);
-                  applyFerryEstimate(neivertintasKeltas, keltoIlgis, load);
-                }}
-                className={inputClass}
-              >
-                <option value="loaded">Pakrauta</option>
-                <option value="empty">Tuščia</option>
-              </select>
-            </label>
-          </div>
-          {keltoIvertis ? <p className="mt-3 text-sm text-ink">
-            Į lauką „Keltai (€)“ įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong>:
-            bazė {formatCents(keltoIvertis.baseCents)} + BAF/GIR/ETS {formatCents(keltoIvertis.surchargeCents)}.
-          </p> : <p role="alert" className="mt-3 text-sm text-bad">
-            Šiam maršrutui arba ilgiui automatinio tarifo nėra. Kelto kainą įrašykite ranka.
-          </p>}
-          <p className="mt-2 text-xs text-muted">
-            Scandlines viešo krovininio tarifo įvertis ({SCANDLINES_TARIFF_PERIOD}), be PVM. Sutartinė kaina ir ADR, pločio ar svorio priemokos gali skirtis. {" "}
-            <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Bazinis tarifas</a>{" · "}
-            <a href={SCANDLINES_SURCHARGE_URL} target="_blank" rel="noreferrer" className="underline">Priemokos</a>
-          </p>
-        </div>}
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm">Nuo<input name="tele_from" type="date" className={inputClass} /></label>
           <label className="text-sm">Iki<input name="tele_to" type="date" className={inputClass} /></label>
@@ -912,7 +1070,7 @@ export function TripForm({
       <Skiltis numeris={4} antraste="Kiek gaus">
         <div className="grid gap-4 sm:grid-cols-2">
           <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
-          <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" required type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>
+          <label>{mode === "freight" ? "Frachto kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} className={inputClass} /></label>
         </div>
       </Skiltis>
 
@@ -928,7 +1086,10 @@ export function TripForm({
         </div>
       </details>
 
-      <div className="flex gap-3"><button type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+        </div>
+      </details>
+
+      <div className="flex gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
 
       {error && <p role="alert" className="text-bad">{error}</p>}
       {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
@@ -936,17 +1097,31 @@ export function TripForm({
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
       {result && <section aria-label="Reiso rezultatai" className="rounded-xl border-2 border-line bg-surface p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="font-semibold">Reiso rezultatai</h2>
-          <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
-            {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
+        {/* Be pajamų „pelnas“ būtų minusas lygus kaštams ir klaidintų: čia
+            klausimas yra kiek prašyti, todėl tai ir yra antraštė. */}
+        {bePajamu ? <>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="font-semibold">Kaina, kurios prašyti</h2>
+            <p className="text-2xl font-bold tabular-nums">{prasomaKaina === null ? "—" : formatCents(prasomaKaina)}</p>
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            {prasomaKaina === null
+              ? "Tokia marža nepasiekiama — 100 % reikštų pajamas be kaštų."
+              : `Kaštai ${formatCents(result.totalCostCents)} · marža ${norimaMarza} %${pricePerKm(prasomaKaina, apmokamiKm) !== null ? ` · ${pricePerKm(prasomaKaina, apmokamiKm)!.toFixed(2)} €/km` : ""}`}
           </p>
-        </div>
-        <p className="mt-1 text-sm text-muted">
-          Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
-          {" · "}
-          {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
-        </p>
+        </> : <>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="font-semibold">Reiso rezultatai</h2>
+            <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
+              {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
+            </p>
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
+            {" · "}
+            {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
+          </p>
+        </>}
         {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
             nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
         {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
@@ -956,21 +1131,21 @@ export function TripForm({
         </p>}
 
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
-          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
+          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
 
         {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Būtent jo
             reikia kalbant su užsakovu, o ne ką tik suvestos kainos pelno. */}
         <div className="mt-4 border-t pt-4">
           <h3 className="font-semibold">Kiek prašyti</h3>
-          <div className="mt-2 flex flex-wrap items-end gap-3">
+          {!bePajamu && <div className="mt-2 flex flex-wrap items-end gap-3">
             <label className="text-sm">
               Norima marža (%)
               <input
                 type="number"
                 step="0.5"
                 value={norimaMarza}
-                onChange={(event) => setNorimaMarza(event.target.value)}
+                onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }}
                 className={`${inputClass} w-32`}
               />
             </label>
@@ -987,7 +1162,7 @@ export function TripForm({
                 </p>
               );
             })()}
-          </div>
+          </div>}
           <p className="mt-2 text-sm text-muted">
             Marža skaičiuojama nuo sąskaitos sumos, ne nuo kaštų: 20 % prie 800 € kaštų yra 1 000 €, ne 960 €.
           </p>

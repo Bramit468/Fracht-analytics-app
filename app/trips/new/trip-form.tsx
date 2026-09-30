@@ -20,6 +20,7 @@ import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../..
 import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { fetchTelematicsFill } from "./telematics";
+import { rateFill } from "@/lib/telematics-costs";
 import {
   lookupRoute,
   lookupRouteOptions,
@@ -92,6 +93,13 @@ function durationText(minutes: number): string {
   return hours > 0 ? `${hours} val. ${rest} min.` : `${rest} min.`;
 }
 
+/** Paskutinių 30 dienų rėžis. Už komponento ribų, nes render metu laiko imti negalima. */
+function paskutinesTrisdesimtDienu(): { from: string; to: string } {
+  const isoDate = (at: number) => new Date(at).toISOString().slice(0, 10);
+  const dabar = Date.now();
+  return { from: isoDate(dabar - 30 * 86_400_000), to: isoDate(dabar) };
+}
+
 export function TripForm({
   tripId,
   copyFromId,
@@ -114,6 +122,7 @@ export function TripForm({
   const [saving, setSaving] = useState(false);
   const [telematika, setTelematika] = useState("");
   const [pildoma, setPildoma] = useState(false);
+  const [normos, setNormos] = useState("");
   const [marsrutas, setMarsrutas] = useState("");
   const [skaiciuoja, setSkaiciuoja] = useState(false);
   const [vengtiKeltu, setVengtiKeltu] = useState(false);
@@ -355,6 +364,52 @@ export function TripForm({
     return estimate;
   }
 
+  /**
+   * Pasirinkus furą pasiūlo jos kuro ir AdBlue normas (#151).
+   *
+   * Imamos paskutinės 30 dienų: norma ir kaina yra furos savybė, kuri keičiasi
+   * lėtai, tad jų nereikia vesti ranka kiekvienam reisui. Kilometrai, paros ir
+   * keliai neliečiami — juos spėti pagal praeitą mėnesį būtų prasimanymas.
+   *
+   * Taisant išsaugotą reisą nedaroma nieko: ten įrašyta tai, kas buvo tada.
+   */
+  async function prefillRates(truckId: string) {
+    const form = formRef.current;
+    if (!form || tripId) return;
+
+    const plate = trucks.find((truck) => truck.id === truckId)?.plate ?? "";
+    if (!plate) {
+      setNormos("");
+      return;
+    }
+
+    const { from, to } = paskutinesTrisdesimtDienu();
+
+    try {
+      const result = await fetchTelematicsFill(plate, from, to);
+      // Tai patogumas, ne reikalavimas: neradus duomenų laukai lieka tušti.
+      if (!result.ok) {
+        setNormos("");
+        return;
+      }
+
+      const rates = Object.entries(rateFill(result.fill));
+      for (const [name, filled] of rates) {
+        const field = form.elements.namedItem(name);
+        if (field instanceof HTMLInputElement) field.value = filled;
+      }
+
+      setNormos(
+        rates.length > 0
+          ? `Kuro ir AdBlue normos – ${plate} paskutinių 30 d. faktas. Galite taisyti.`
+          : "",
+      );
+      setResult(null);
+    } catch {
+      setNormos("");
+    }
+  }
+
   /** Užpildo laukus faktiniais duomenimis. Vartotojas gali juos taisyti. */
   async function fillFromTelematics() {
     const form = formRef.current;
@@ -577,7 +632,7 @@ export function TripForm({
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
       <Skiltis numeris={1} antraste="Kas ir kur veža">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => void prefillRates(event.target.value)} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
           <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
           <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
           <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
@@ -791,6 +846,7 @@ export function TripForm({
           {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} /></label>)}
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
+        {normos && <p role="status" className="mt-2 text-sm text-muted">{normos}</p>}
         {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
           <p className="mt-1 text-sm text-ink">

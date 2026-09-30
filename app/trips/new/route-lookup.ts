@@ -1,12 +1,7 @@
 "use server";
 
+import { MIN_ADDRESS_QUERY } from "@/lib/address-suggest";
 import { parseRouteLine, thinRouteLine, type LineCoordinate } from "@/lib/route-line";
-import {
-  parseNominatim,
-  NOMINATIM_URL,
-  NOMINATIM_USER_AGENT,
-  type FoundAddress,
-} from "@/lib/nominatim";
 import {
   firstPlace,
   routeEstimate,
@@ -102,39 +97,31 @@ async function geocode(query: string, key: string) {
   return firstPlace(await geocodePayload(query, key));
 }
 
-/** Trumpiausia užklausa, kuriai apskritai verta kreiptis į paiešką. */
-const MIN_PAIESKA = 3;
-
 /**
- * Adreso paieška lietuviškai (#73).
+ * Pasirinkto pasiūlymo koordinatės (#73).
  *
- * Eina per serverį, nes Nominatim reikalauja atpažįstamo `User-Agent`, o
- * naršyklė jo nustatyti neleidžia. Ir jų taisyklės neleidžia siųsti užklausos
- * po kiekvieno klavišo — todėl paieška vyksta paspaudus mygtuką.
+ * PTV pasiūlymai koordinačių neturi, todėl pasirinkus geokoduojamas jų
+ * `searchText`. Tai viena užklausa už pasirinkimą, ne už klavišą.
  *
- * Tuščias sąrašas grąžinamas tyliai: paieška yra pagalba, ne veiksmas.
+ * `null`, jei nerasta: forma išlieka veikianti, o maršrutas geokoduos tekstą.
  */
-export async function searchAddress(query: string): Promise<FoundAddress[]> {
-  if (query.trim().length < MIN_PAIESKA) return [];
+export async function resolveAddress(
+  searchText: string,
+): Promise<Pick<GeocodedPlace, "latitude" | "longitude" | "formattedAddress"> | null> {
+  if (searchText.trim().length < MIN_ADDRESS_QUERY) return null;
 
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims) return [];
+  if (!data?.claims) return null;
+
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key) return null;
 
   try {
-    const url =
-      `${NOMINATIM_URL}?q=${encodeURIComponent(query)}` +
-      "&format=json&limit=8&accept-language=lt";
-
-    const response = await fetch(url, {
-      headers: { "User-Agent": NOMINATIM_USER_AGENT },
-      cache: "no-store",
-    });
-    if (!response.ok) return [];
-
-    return parseNominatim(await response.json());
+    const url = `${PTV_GEOCODING_URL}?searchText=${encodeURIComponent(searchText)}&language=lt`;
+    return firstPlace(await ptvJson(url, key));
   } catch {
-    return [];
+    return null;
   }
 }
 

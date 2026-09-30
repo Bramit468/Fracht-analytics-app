@@ -3,6 +3,8 @@ import { connection } from "next/server";
 
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { formatCents } from "@/lib/money";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { canUseTelematics } from "@/lib/telematics-access";
 import {
   parseCanDaily,
   parseSupplies,
@@ -122,7 +124,10 @@ export default async function TelematikaPage({
   await connection();
 
   const { from, to } = readRange(await searchParams);
-  const { eilutes, issues, klaida, supplies } = await loadCosts(from, to);
+  const allowed = await canUseTelematics(await createServerSupabaseClient());
+  const { eilutes, issues, klaida, supplies } = allowed
+    ? await loadCosts(from, to)
+    : { eilutes: [], klaida: "Telematika šiai įmonei neprijungta." };
 
   const kuroSalys = fuelPricesByCountry(supplies ?? []);
   const kuroMenesiai = fuelPricesByMonth(supplies ?? []);

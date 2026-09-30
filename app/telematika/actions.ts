@@ -1,6 +1,7 @@
 "use server";
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { canUseTelematics } from "@/lib/telematics-access";
 import { dailyArchiveRows, supplyArchiveRows } from "@/lib/telematics-archive";
 
 export interface ArchiveState {
@@ -38,6 +39,10 @@ export async function archiveTelematics(): Promise<ArchiveState> {
 
   if (!claims?.claims) {
     return { status: "error", message: "Prisijungimo sesija baigėsi. Prisijunkite dar kartą." };
+  }
+
+  if (!(await canUseTelematics(supabase))) {
+    return { status: "error", message: "Telematika šiai įmonei neprijungta." };
   }
 
   let daily, supplies;

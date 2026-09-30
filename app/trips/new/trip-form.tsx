@@ -510,7 +510,8 @@ export function TripForm({
 
     setSkaiciuoja(true);
     setMarsrutas("");
-    setMarsrutoLinija([]);
+    // Linija čia nevalom: ją išėmus žemėlapis išmontuojamas ir kuriamas iš naujo
+    // po kiekvieno tarpinio taško. Ji pakeičiama gavus rezultatą arba ištrinama klaidos atveju.
     setMarsrutoPazeidimai([]);
     setNeivertintasKeltas(null);
     setKeltoIvertis(null);
@@ -520,6 +521,7 @@ export function TripForm({
       const departureTime = value("departure_time");
       if (tripDate && !departureTime) {
         setMarsrutas("Įveskite išvykimo laiką.");
+        setMarsrutoLinija([]);
         return null;
       }
 

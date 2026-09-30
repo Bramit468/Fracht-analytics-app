@@ -1,21 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
-import { addressLabel, type FoundAddress } from "@/lib/nominatim";
+import { MIN_ADDRESS_QUERY, type AddressSuggestion } from "@/lib/address-suggest";
 
-import { searchAddress } from "./route-lookup";
+import { resolveAddress } from "./route-lookup";
+
+/** Pauzė po paskutinio klavišo prieš kreipiantis į paiešką. */
+const DEBOUNCE_MS = 300;
+/** Kiek ankstesnių paieškų atsiminti, kad ištrynus raidę nereikėtų kreiptis vėl. */
+const CACHE_LIMIT = 30;
 
 /**
- * Adreso laukas su paieška lietuviškai (#73).
+ * Adreso laukas su pasiūlymais rašant (#73).
  *
- * Paieška vyksta paspaudus mygtuką, o ne rašant: Nominatim viešo serverio
- * taisyklės neleidžia siųsti užklausos po kiekvieno klavišo. Mainais gaunama
- * visa Europa lietuviškai — „Oslas, Norvegija", „Hamburgas, Vokietija" — be
- * rakto, be serverio ir be mokesčio.
+ * Kai sustojama rašyti, po lauku atsiranda PTV pasiūlymai lietuviškai. Pasirinkus
+ * įsimenamos koordinatės, ir maršrutas skaičiuojamas nuo jų. Nepasirinkus laukas
+ * veikia kaip paprastas tekstas – maršrutas geokoduos tai, kas įrašyta.
  *
- * Pasirinkus įsimenamos koordinatės, ir maršrutas skaičiuojamas nuo jų.
- * Nepasirinkus laukas veikia kaip paprastas tekstas.
+ * Pasenusi užklausa nutraukiama `AbortController`, kad lėtesnis atsakymas į
+ * ankstesnį tekstą neperrašytų naujesnio.
  */
 export function AddressField({
   name,
@@ -30,38 +34,129 @@ export function AddressField({
   enabled: boolean;
   inputClass: string;
 }) {
+  const listId = useId();
   const [query, setQuery] = useState(defaultValue);
-  const [found, setFound] = useState<FoundAddress[]>([]);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
   const [point, setPoint] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function search() {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const controller = useRef<AbortController | undefined>(undefined);
+  const cache = useRef(new Map<string, AddressSuggestion[]>());
+  // Didėja su kiekvienu pasirinkimu ar pakeitimu; vėluojantis atsakymas, kurio
+  // numeris nebe tas, ignoruojamas.
+  const pick = useRef(0);
+
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    controller.current?.abort();
+  }, []);
+
+  function show(list: AddressSuggestion[]) {
+    setSuggestions(list);
+    setActive(-1);
+    setOpen(list.length > 0);
+    setBusy(false);
+    setMessage(list.length === 0 ? "Tokio adreso rasti nepavyko. Pabandykite trumpiau arba pridėkite miestą." : "");
+  }
+
+  async function load(text: string) {
+    const current = new AbortController();
+    controller.current = current;
     try {
-      const results = await searchAddress(query);
-      setFound(results);
-      if (results.length === 0) {
-        setMessage("Tokio adreso rasti nepavyko. Pabandykite trumpiau arba pridėkite miestą.");
-      }
+      const response = await fetch(`/api/address-search?q=${encodeURIComponent(text)}`, {
+        signal: current.signal,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const list = (await response.json()) as AddressSuggestion[];
+
+      const key = text.toLowerCase();
+      cache.current.set(key, list);
+      // Seniausias įrašas iškeliamas pirmas: Map išlaiko įdėjimo tvarką.
+      if (cache.current.size > CACHE_LIMIT) cache.current.delete(cache.current.keys().next().value as string);
+      show(list);
     } catch {
-      setMessage("Nepavyko pasiekti adresų paieškos.");
-    } finally {
+      // Nutraukta užklausa nieko nerodo: jos vietą jau užėmė naujesnė.
+      if (current.signal.aborted) return;
       setBusy(false);
+      setMessage("Nepavyko pasiekti adresų paieškos.");
     }
   }
 
-  function choose(address: FoundAddress) {
-    setQuery(addressLabel(address));
-    setPoint(`${address.latitude},${address.longitude}`);
-    setFound([]);
+  function onType(value: string) {
+    setQuery(value);
+    // Pakeitus tekstą pasirinkimas nebegalioja – kitaip maršrutas eitų
+    // į seną tašką, o laukelyje būtų matyti naujas adresas.
+    setPoint("");
     setMessage("");
+    pick.current += 1;
+    clearTimeout(timer.current);
+    controller.current?.abort();
+
+    const text = value.trim();
+    if (!enabled || text.length < MIN_ADDRESS_QUERY) {
+      setSuggestions([]);
+      setOpen(false);
+      setBusy(false);
+      return;
+    }
+
+    const cached = cache.current.get(text.toLowerCase());
+    if (cached) {
+      show(cached);
+      return;
+    }
+
+    setBusy(true);
+    timer.current = setTimeout(() => void load(text), DEBOUNCE_MS);
   }
 
+  async function choose(suggestion: AddressSuggestion) {
+    const id = ++pick.current;
+    setOpen(false);
+    setSuggestions([]);
+    setBusy(true);
+    setMessage("");
+
+    const place = await resolveAddress(suggestion.searchText);
+    if (id !== pick.current) return;
+
+    setBusy(false);
+    if (!place) {
+      setMessage("Nepavyko nustatyti adreso vietos. Pabandykite kitą pasiūlymą.");
+      return;
+    }
+    setQuery(place.formattedAddress || suggestion.caption);
+    setPoint(`${place.latitude},${place.longitude}`);
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!enabled) return;
+
+    if (event.key === "Enter") {
+      // Enter laukelyje reikštų formos pateikimą; čia jis renka pasiūlymą.
+      event.preventDefault();
+      if (open && suggestions[active]) void choose(suggestions[active]);
+    } else if (event.key === "ArrowDown" && suggestions.length > 0) {
+      event.preventDefault();
+      setOpen(true);
+      setActive((index) => (index + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+      event.preventDefault();
+      setOpen(true);
+      setActive((index) => (index <= 0 ? suggestions.length - 1 : index - 1));
+    } else if (event.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  const expanded = open && suggestions.length > 0;
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative flex flex-col gap-2">
       <label className="block">
         {label}
         <input
@@ -69,53 +164,49 @@ export function AddressField({
           type="text"
           value={query}
           autoComplete="off"
-          onChange={(event) => {
-            setQuery(event.target.value);
-            // Pakeitus tekstą pasirinkimas nebegalioja – kitaip maršrutas eitų
-            // į seną tašką, o laukelyje būtų matyti naujas adresas.
-            setPoint("");
-            setFound([]);
-          }}
-          onKeyDown={(event) => {
-            // Enter laukelyje reikštų formos pateikimą; čia jis reiškia paiešką.
-            if (enabled && event.key === "Enter") {
-              event.preventDefault();
-              void search();
-            }
-          }}
+          role={enabled ? "combobox" : undefined}
+          aria-expanded={enabled ? expanded : undefined}
+          aria-controls={enabled ? listId : undefined}
+          aria-autocomplete={enabled ? "list" : undefined}
+          aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined}
+          onChange={(event) => onType(event.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={() => setOpen(suggestions.length > 0)}
+          onBlur={() => setOpen(false)}
           className={inputClass}
         />
       </label>
 
-      {enabled && (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={busy || query.trim().length < 3}
-            onClick={() => void search()}
-            className="rounded-lg border bg-surface px-3 py-2 text-sm disabled:opacity-50"
-          >
-            {busy ? "Ieškoma…" : "Ieškoti adreso"}
-          </button>
-          {point && <span className="text-sm text-good">Adresas patvirtintas</span>}
-          {message && <span className="text-sm text-muted">{message}</span>}
+      {enabled && (busy || point || message) && (
+        <div className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+          {busy && <span className="text-muted">Ieškoma…</span>}
+          {!busy && point && <span className="text-good">Adresas patvirtintas</span>}
+          {!busy && message && <span className="text-muted">{message}</span>}
         </div>
       )}
 
-      {found.length > 0 && (
-        <ul className="overflow-hidden rounded-lg border bg-surface">
-          {found.map((address) => (
-            <li key={`${address.latitude},${address.longitude}`}>
-              <button
-                type="button"
-                onClick={() => choose(address)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-raised"
-              >
-                <span className="block">{address.label}</span>
-                {address.sublabel && (
-                  <span className="block text-xs text-muted">{address.sublabel}</span>
-                )}
-              </button>
+      {expanded && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border bg-surface shadow-lg"
+        >
+          {suggestions.map((suggestion, index) => (
+            <li
+              key={suggestion.searchText}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === active}
+              // Paspaudimas neturi atimti fokuso iš lauko, kitaip `onBlur`
+              // uždarytų sąrašą anksčiau, nei suveiktų `onClick`.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void choose(suggestion)}
+              className={`cursor-pointer px-3 py-2 text-left text-sm ${index === active ? "bg-raised" : "hover:bg-raised"}`}
+            >
+              <span className="block">{suggestion.caption}</span>
+              {suggestion.subCaption && (
+                <span className="block text-xs text-muted">{suggestion.subCaption}</span>
+              )}
             </li>
           ))}
         </ul>

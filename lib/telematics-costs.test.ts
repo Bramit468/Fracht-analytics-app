@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCanDaily,
   parseSupplies,
+  rateFill,
   summarizeActuals,
   tripFillFromActuals,
 } from "./telematics-costs";
@@ -317,5 +318,28 @@ describe("nieko nedingsta tyliai", () => {
       convertedRows: 0,
       convertedCents: 0,
     });
+  });
+});
+
+describe("rateFill", () => {
+  it("palieka tik furos normas, o reiso duomenų neduoda", () => {
+    const visas = tripFillFromActuals(santrauka());
+
+    // Kilometrai, paros ir keliai yra konkretaus reiso dalykas. Jei jie
+    // prasprūstų čia, pasirinkus furą jie tyliai perrašytų jau suvestą reisą.
+    expect(Object.keys(rateFill(visas)).sort()).toEqual([
+      "adblue_l_per_100km",
+      "adblue_price",
+      "fuel_l_per_100km",
+      "fuel_price",
+    ]);
+  });
+
+  it("tuščios reikšmės neperduodamos, kad neištrintų jau įvesto skaičiaus", () => {
+    const tuscias = tripFillFromActuals(
+      summarizeActuals([], [], "LOV 141", "2026-09-01", "2026-09-30"),
+    );
+
+    expect(rateFill(tuscias)).toEqual({ adblue_l_per_100km: "0", adblue_price: "0" });
   });
 });

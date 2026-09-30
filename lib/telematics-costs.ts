@@ -318,6 +318,31 @@ export interface TripFill {
   legKm: string;
 }
 
+/**
+ * Laukai, kurie yra furos, o ne reiso savybė (#151).
+ *
+ * Kuro norma ir kaina keičiasi lėtai, tad jas galima pasiūlyti vos pasirinkus
+ * furą. Kilometrai, paros ir keliai — konkretaus reiso duomenys, ir spėti jų
+ * pagal praeitą mėnesį negalima, todėl šitas sąrašas yra baigtinis.
+ */
+export const RATE_FIELDS = [
+  "fuel_l_per_100km",
+  "fuel_price",
+  "adblue_l_per_100km",
+  "adblue_price",
+] as const satisfies readonly (keyof TripFill)[];
+
+export type RateFill = Pick<TripFill, (typeof RATE_FIELDS)[number]>;
+
+/** Iš viso užpildymo palieka tik furos normas. Tuščios reikšmės praleidžiamos. */
+export function rateFill(fill: TripFill): Partial<RateFill> {
+  const rates: Partial<RateFill> = {};
+  for (const field of RATE_FIELDS) {
+    if (fill[field] !== "") rates[field] = fill[field];
+  }
+  return rates;
+}
+
 /** Dienų skaičius imtinai: "2026-09-01".."2026-09-03" = 3. */
 function spanDays(from: string, to: string): number {
   const diena = 86_400_000;

@@ -18,8 +18,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/trips/new", label: "Naujas reisas" },
   { href: "/trips/vyksta", label: "Vyksta dabar" },
   { href: "/trips/import", label: "Importas iš Excel" },
+  // Kaštai ir svoriai – skirtukai furų puslapyje, ne atskiri punktai (#169).
   { href: "/trucks", label: "Furos" },
-  { href: "/trucks/kastai", label: "Furų kaštai" },
   { href: "/telematika", label: "Faktiniai kaštai" },
   { href: "/imone", label: "Įmonė" },
 ];
@@ -27,8 +27,8 @@ export const NAV_ITEMS: NavItem[] = [
 /**
  * Kuris punktas pažymimas esamu.
  *
- * Imamas ilgiausias tinkantis adresas: `/trucks/kastai` turi pažymėti „Furų
- * kaštus“, o ne „Furas“, nors abu prasideda vienodai. Pagrindinis puslapis
+ * Imamas ilgiausias tinkantis adresas: `/trips/new` turi pažymėti „Naują
+ * reisą“, o ne „Reisus“, nors abu prasideda vienodai. Pagrindinis puslapis
  * lyginamas tiksliai — kitaip jis būtų pažymėtas visur.
  */
 export function activeNavHref(pathname: string): string | null {

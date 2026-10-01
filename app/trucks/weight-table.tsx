@@ -6,7 +6,7 @@ import { truckRowToFormValues, WEIGHT_FIELDS, WEIGHT_LABELS } from "@/lib/truck"
 import { weightFieldName } from "@/lib/truck-weights-bulk";
 import type { Truck } from "@/types/truck";
 
-import { saveTruckWeights, type SaveTruckCostsState } from "../actions";
+import { saveTruckWeights, type SaveTruckCostsState } from "./actions";
 
 const INITIAL_STATE: SaveTruckCostsState = { status: "idle" };
 

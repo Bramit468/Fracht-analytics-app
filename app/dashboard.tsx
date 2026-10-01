@@ -341,7 +341,7 @@ export function Dashboard() {
       column="Fura"
       rows={summarizeByTruck(trips).map(({ plate, ...totals }) => ({ label: plate, mono: true, ...totals }))}
       note="Didžioji kaštų dalis yra furos paros savikaina, todėl skirtumai tarp furų tiek verti, kiek tikslios jų savikainos."
-      action={{ href: "/trucks/kastai", label: "Tikslinti kaštus" }}
+      action={{ href: "/trucks?skiltis=kastai", label: "Tikslinti kaštus" }}
       onExport={() => downloadCsv(reportFileName("furos", todayForFileName()), trucksToCsv(summarizeByTruck(trips)))}
     />
     <MonthlyTrend trips={allTrips} today={today} />

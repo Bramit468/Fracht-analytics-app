@@ -14,7 +14,7 @@ import {
 } from "@/lib/truck-costs-bulk";
 import type { Truck } from "@/types/truck";
 
-import { saveTruckCosts, type SaveTruckCostsState } from "../actions";
+import { saveTruckCosts, type SaveTruckCostsState } from "./actions";
 
 const INITIAL_STATE: SaveTruckCostsState = { status: "idle" };
 

@@ -320,11 +320,13 @@ export function RouteMap({
       });
 
       const element = marker.getElement();
-      // Įvykiai čia sustabdomi, kad po žymekliu nesistumdytų ir nepriartėtų žemėlapis.
-      for (const name of ["mousedown", "touchstart", "dblclick"]) {
-        element.addEventListener(name, (event) => event.stopPropagation());
-      }
-      element.addEventListener("dblclick", () => callbacks.current.onRemoveVia?.(index));
+      // `mousedown`/`touchstart` čia stabdyti negalima: MapLibre žymeklio tempimą
+      // pradeda žemėlapio lygyje ir pats sustabdo stumdymą. Dvigubas spustelėjimas
+      // sustabdomas, kad po žymekliu nepriartėtų žemėlapis.
+      element.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        callbacks.current.onRemoveVia?.(index);
+      });
       element.style.cursor = "grab";
       element.style.touchAction = "none";
       element.title = "Tarpinis taškas. Tempkite arba spustelėkite du kartus, kad pašalintumėte.";

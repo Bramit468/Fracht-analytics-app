@@ -121,6 +121,15 @@ describe("costInsights – šalys", () => {
     expect(found[0].title).toContain("DE");
   });
 
+  it("pirkimų be šalies nevadina šalimi, bet sumą skaičiuoja", () => {
+    // 1000 l po 1,40 (PL) ir 1000 l po 1,60 be šalies: 3000 − 2000 × 1,40 = 200 €.
+    const found = costInsights([], [country("PL", 1000, 140_000), country("", 1000, 160_000)]);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].cents).toBe(20_000);
+    expect(found[0].title).not.toContain("nenurodyta");
+  });
+
   it("smulkmenų nerodo", () => {
     expect(costInsights([], [country("PL", 100, 14_000), country("DE", 100, 14_100)])).toEqual([]);
   });

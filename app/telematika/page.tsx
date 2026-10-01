@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 
-import { costInsights, MIN_KM_FOR_CONSUMPTION, type Insight } from "@/lib/cost-insights";
+import {
+  costInsights,
+  fleetFuelPricePerL,
+  MIN_KM_FOR_CONSUMPTION,
+  type Insight,
+} from "@/lib/cost-insights";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { todayInVilnius } from "@/lib/local-date";
 import { formatCents } from "@/lib/money";
@@ -133,6 +138,13 @@ export default async function TelematikaPage({
   const kuroSalys = fuelPricesByCountry(supplies ?? []);
   const kuroMenesiai = fuelPricesByMonth(supplies ?? []);
   const isvados = costInsights(eilutes, kuroSalys);
+  const kuroBeSalies = kuroSalys.find((row) => row.key === "") ?? null;
+  const kuroIsViso = {
+    purchases: kuroSalys.reduce((t, r) => t + r.purchases, 0),
+    litres: kuroSalys.reduce((t, r) => t + r.litres, 0),
+    costCents: kuroSalys.reduce((t, r) => t + r.costCents, 0),
+    pricePerL: fleetFuelPricePerL(kuroSalys),
+  };
 
   const bendra = {
     km: eilutes.reduce((t, r) => t + r.km, 0),
@@ -289,9 +301,11 @@ export default async function TelematikaPage({
                 </tr>
               </thead>
               <tbody>
-                {kuroSalys.map((row) => (
-                  <tr key={row.key || "nenurodyta"} className="border-b last:border-0">
-                    <td className="py-2 pr-4">{row.key || "Nenurodyta"}</td>
+                {/* Pirkimai be šalies eilutės neturi – ten nėra kur nuvažiuoti pilti,
+                    bet jų litrai ir suma lieka „Iš viso“ eilutėje (#173). */}
+                {kuroSalys.filter((row) => row.key !== "").map((row) => (
+                  <tr key={row.key} className="border-b last:border-0">
+                    <td className="py-2 pr-4">{row.key}</td>
                     <td className="py-2 pr-4 text-right tabular-nums">{row.purchases}</td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {Math.round(row.litres).toLocaleString("lt-LT")}
@@ -303,8 +317,29 @@ export default async function TelematikaPage({
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="border-t-2">
+                <tr className="font-semibold">
+                  <td className="py-2 pr-4">Iš viso</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">{kuroIsViso.purchases}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">
+                    {Math.round(kuroIsViso.litres).toLocaleString("lt-LT")}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums">{formatCents(kuroIsViso.costCents)}</td>
+                  <td className="py-2 text-right tabular-nums">
+                    {kuroIsViso.pricePerL === null ? "—" : kuroIsViso.pricePerL.toFixed(3)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
+
+          {kuroBeSalies && (
+            <p className="text-xs text-muted">
+              „Iš viso“ apima ir {kuroBeSalies.purchases} pylimus be nurodytos šalies (
+              {Math.round(kuroBeSalies.litres).toLocaleString("lt-LT")} l,{" "}
+              {formatCents(kuroBeSalies.costCents)}).
+            </p>
+          )}
 
           {kuroMenesiai.length > 1 && (
             <p className="text-sm text-muted">

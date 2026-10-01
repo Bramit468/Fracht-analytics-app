@@ -37,6 +37,7 @@ import {
 } from "../../../lib/ptv-schedule";
 import { AddressField } from "./address-field";
 import { RouteMap } from "./route-map";
+import { TripDurationPanel } from "./trip-duration-panel";
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
 import type { RouteEmissions } from "../../../lib/ptv-emissions";
@@ -172,6 +173,13 @@ export function TripForm({
   const [pasirinktas, setPasirinktas] = useState<string | null>(null);
   /** Tarpiniai taškai, per kuriuos vedamas maršrutas (#85). */
   const [tarpiniai, setTarpiniai] = useState<ViaPoint[]>([]);
+  /** Paskutinio maršruto km ir išvykimas (`YYYY-MM-DDTHH:MM`) – reiso trukmės įverčiui. */
+  const [marsrutoTrukmei, setMarsrutoTrukmei] = useState<{ km: number; departure?: string } | null>(null);
+  /** Tempimas baigiasi dažnai, o PTV užklausa kainuoja – laukiame, kol žmogus nustos. */
+  const viaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Taškai, atėję kol maršrutas dar skaičiuojamas; po jo skaičiuojama iš naujo. */
+  const pendingVia = useRef<ViaPoint[] | null>(null);
+  const routeBusy = useRef(false);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
   /**
@@ -250,29 +258,39 @@ export function TripForm({
     setDienuSaltinis((current) => current && { ...current, stale: true });
   }
 
+  /**
+   * Taškai išrikiuojami pagal liniją prieš užklausą: PTV veda per juos ta tvarka,
+   * kuria surašyti, tad netvarkingi taškai versų maršrutą grįžti atgal.
+   */
+  function changeVia(points: ViaPoint[]) {
+    const ordered = orderViaPoints(points, marsrutoLinija);
+    setTarpiniai(ordered);
+    markDaysStale();
+
+    clearTimeout(viaTimer.current);
+    viaTimer.current = setTimeout(() => {
+      if (routeBusy.current) pendingVia.current = ordered;
+      else void fillFromRoute(ordered);
+    }, 500);
+  }
+
+  useEffect(() => () => clearTimeout(viaTimer.current), []);
+
   function addVia(point: ViaPoint) {
     const change = addViaPoint(tarpiniai, point);
     if (!change.ok) {
       setMarsrutas(change.message);
       return;
     }
-    setTarpiniai(change.points);
-    markDaysStale();
-    void fillFromRoute(change.points);
+    changeVia(change.points);
   }
 
   function moveVia(index: number, point: ViaPoint) {
-    const points = moveViaPoint(tarpiniai, index, point);
-    setTarpiniai(points);
-    markDaysStale();
-    void fillFromRoute(points);
+    changeVia(moveViaPoint(tarpiniai, index, point));
   }
 
   function removeVia(index: number) {
-    const points = removeViaPoint(tarpiniai, index);
-    setTarpiniai(points);
-    markDaysStale();
-    void fillFromRoute(points);
+    changeVia(removeViaPoint(tarpiniai, index));
   }
 
   /**
@@ -501,13 +519,14 @@ export function TripForm({
    */
   async function fillFromRoute(via: ViaPoint[] = tarpiniai, write = true): Promise<RouteOutcome | null> {
     const form = formRef.current;
-    if (!form || skaiciuoja) return null;
+    if (!form || routeBusy.current) return null;
 
     const value = (name: string) => {
       const field = form.elements.namedItem(name);
       return field instanceof HTMLInputElement ? field.value : "";
     };
 
+    routeBusy.current = true;
     setSkaiciuoja(true);
     setMarsrutas("");
     // Linija čia nevalom: ją išėmus žemėlapis išmontuojamas ir kuriamas iš naujo
@@ -554,6 +573,10 @@ export function TripForm({
 
       setTarpiniai(orderViaPoints(via, result.line));
       setMarsrutoLinija(result.line);
+      setMarsrutoTrukmei({
+        km: result.km,
+        departure: tripDate && /^\d{2}:\d{2}$/.test(departureTime) ? `${tripDate}T${departureTime}` : undefined,
+      });
       setMarsrutoPazeidimai(result.violations);
       setEmisijos(result.emissions);
       setEmisijuSvoriai(result.weightsUsed);
@@ -622,7 +645,12 @@ export function TripForm({
       setMarsrutas("Nepavyko suskaičiuoti maršruto.");
       return null;
     } finally {
+      routeBusy.current = false;
       setSkaiciuoja(false);
+      // Tempimas baigtas skaičiuojant: be šito paskutinis taškas liktų be maršruto.
+      const next = pendingVia.current;
+      pendingVia.current = null;
+      if (next) void fillFromRoute(next, write);
     }
   }
 
@@ -872,6 +900,7 @@ export function TripForm({
             onMoveVia={moveVia}
             onRemoveVia={removeVia}
           />
+          {marsrutoTrukmei && <TripDurationPanel km={marsrutoTrukmei.km} departure={marsrutoTrukmei.departure} />}
         </div>}
       </Skiltis>
 

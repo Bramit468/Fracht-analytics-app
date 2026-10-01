@@ -1,5 +1,12 @@
-/** Duomenų bazės `trucks` lentelės eilutė (#17). */
-export interface Truck {
+import type { TruckProfile } from "../lib/truck-profile";
+
+/**
+ * Duomenų bazės `trucks` lentelės eilutė (#17).
+ *
+ * Kortelės laukai (`TruckProfile`, #164) neprivalomi ir tipe: kol migracija
+ * `0011` nepaleista, duomenų bazė jų negrąžina visai, ir tipas turi tai sakyti.
+ */
+export interface Truck extends TruckProfile {
   id: string;
   plate: string;
   depreciation_cents: number;

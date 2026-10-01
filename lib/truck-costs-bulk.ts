@@ -19,17 +19,25 @@ import {
   type TruckFormValues,
   type TruckWeightField,
 } from "./truck";
+import { PROFILE_FIELD_NAMES, type TruckProfileField } from "./truck-profile";
 import type { Truck, TruckInsert } from "../types/truck";
 
 /**
  * Kaštų laukai. Numeris čia neredaguojamas — jis taisomas furos formoje, o
  * svoriai (#86) nėra pinigai ir į kaštų lentelę nepatenka.
  */
-export type TruckCostField = Exclude<keyof TruckInsert, "plate" | TruckWeightField>;
+export type TruckCostField = Exclude<
+  keyof TruckInsert,
+  "plate" | TruckWeightField | TruckProfileField
+>;
 
+// Kortelės laukai (#164) – ne pinigai, todėl į kaštų lentelę nepatenka, kaip
+// ir svoriai.
 export const TRUCK_COST_FIELDS: readonly TruckCostField[] = TRUCK_FORM_FIELDS.filter(
   (field): field is TruckCostField =>
-    field !== "plate" && !(WEIGHT_FIELDS as readonly string[]).includes(field),
+    field !== "plate" &&
+    !(WEIGHT_FIELDS as readonly string[]).includes(field) &&
+    !(PROFILE_FIELD_NAMES as readonly string[]).includes(field),
 );
 
 /**

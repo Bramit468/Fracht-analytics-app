@@ -3,9 +3,11 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { calcDailyRate } from "@/lib/calc";
+import { todayInVilnius } from "@/lib/local-date";
 import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { truckRowToCalc } from "@/lib/truck";
+import { documentAlerts, documentAlertText } from "@/lib/truck-profile";
 import type { Truck } from "@/types/truck";
 
 import { TruckForm } from "./truck-form";
@@ -26,6 +28,7 @@ export default async function TrucksPage() {
     .select("*")
     .order("plate")
     .overrideTypes<Truck[], { merge: false }>();
+  const today = todayInVilnius();
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
@@ -69,7 +72,9 @@ export default async function TrucksPage() {
                     key={truck.id}
                     className="border-b border-line "
                   >
-                    <td className="py-2 pr-4 font-mono">{truck.plate}</td>
+                    <td className="py-2 pr-4">
+                      <TruckIdentity truck={truck} today={today} />
+                    </td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {formatCents(calcDailyRate(truckRowToCalc(truck)))}
                     </td>
@@ -95,5 +100,33 @@ export default async function TrucksPage() {
         <TruckForm />
       </section>
     </main>
+  );
+}
+
+/**
+ * Numeris, markė su modeliu ir dokumentai, kurie baigiasi per 30 dienų (#164).
+ * Pasibaigęs dokumentas raudonas: tokia fura legaliai važiuoti negali.
+ */
+function TruckIdentity({ truck, today }: { truck: Truck; today: string }) {
+  const description = [truck.make, truck.model].filter(Boolean).join(" ");
+  const alerts = documentAlerts(truck, today);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-mono">{truck.plate}</span>
+      {description && <span className="text-xs text-muted">{description}</span>}
+      {alerts.map((alert) => (
+        <span
+          key={alert.label}
+          className={
+            alert.days < 0
+              ? "w-fit rounded bg-bad-soft px-1.5 text-xs text-bad"
+              : "w-fit rounded bg-warn-soft px-1.5 text-xs text-warn"
+          }
+        >
+          {documentAlertText(alert)}
+        </span>
+      ))}
+    </div>
   );
 }

@@ -4,9 +4,11 @@ import { calcDailyRate } from "./calc";
 import {
   DAILY_COSTS,
   TRUCK_FORM_FIELDS,
+  isMissingColumnError,
   normalizePlate,
   parseTruckForm,
   readTruckFormValues,
+  truckPayload,
   truckRowToCalc,
   truckRowToFormValues,
   type TruckFormValues,
@@ -182,6 +184,71 @@ describe("truckRowToFormValues", () => {
     const values = truckRowToFormValues(parsed.value);
 
     expect(Object.keys(values).sort()).toEqual([...TRUCK_FORM_FIELDS].sort());
+  });
+});
+
+describe("truckPayload", () => {
+  const parsed = parseTruckForm(OMNIVA_FORM);
+  if (!parsed.ok) throw new Error("Omniva forma turi būti tvarkinga");
+  const value = parsed.value;
+
+  it("kuriant furą tuščių svorių nesiunčia", () => {
+    // Kol migracija 0010 nepaleista, nežinomas stulpelis atmestų visą įrašą,
+    // o tuščias svoris ir taip yra numatytoji reikšmė.
+    const payload = truckPayload(value, null);
+
+    expect(payload).not.toHaveProperty("empty_weight_kg");
+    expect(payload).not.toHaveProperty("total_permitted_weight_kg");
+    expect(payload.plate).toBe("NNN 888");
+  });
+
+  it("įvestą svorį siunčia", () => {
+    const payload = truckPayload({ ...value, empty_weight_kg: 15000 }, null);
+    expect(payload.empty_weight_kg).toBe(15000);
+  });
+
+  it("taisant be stulpelio tuščio svorio nesiunčia", () => {
+    const payload = truckPayload(value, new Set(["id", "plate"]));
+    expect(payload).not.toHaveProperty("empty_weight_kg");
+  });
+
+  it("taisant su stulpeliu tuščią svorį siunčia, kad jis išsivalytų", () => {
+    // Kitaip išvalytas svoris tyliai liktų senas, ir PTV skaičiuotų pagal jį.
+    const payload = truckPayload(value, new Set(["id", "plate", "empty_weight_kg"]));
+
+    expect(payload).toHaveProperty("empty_weight_kg", null);
+    expect(payload).not.toHaveProperty("total_permitted_weight_kg");
+  });
+
+  it("kaštų niekada neišmeta", () => {
+    const payload = truckPayload(value, null);
+    expect(payload.driver_salary_cents).toBe(14500);
+  });
+});
+
+describe("isMissingColumnError", () => {
+  it("atpažįsta Postgres ir PostgREST stulpelio klaidas", () => {
+    expect(isMissingColumnError({ code: "42703" })).toBe(true);
+    expect(isMissingColumnError({ code: "PGRST204" })).toBe(true);
+  });
+
+  it("kitų klaidų nelaiko trūkstamu stulpeliu", () => {
+    expect(isMissingColumnError({ code: "23505" })).toBe(false);
+    expect(isMissingColumnError(null)).toBe(false);
+  });
+});
+
+describe("truckRowToFormValues be 0010 stulpelių", () => {
+  it("nerašo „undefined“ į svorio lauką", () => {
+    const parsedRow = parseTruckForm(OMNIVA_FORM);
+    if (!parsedRow.ok) throw new Error("Omniva forma turi būti tvarkinga");
+    // Eilutė tokia, kokią grąžina duomenų bazė be 0010: svorių raktų nėra visai.
+    const beSvoriu: Record<string, unknown> = { ...parsedRow.value };
+    delete beSvoriu.empty_weight_kg;
+    delete beSvoriu.total_permitted_weight_kg;
+
+    const values = truckRowToFormValues(beSvoriu as typeof parsedRow.value);
+    expect(values.empty_weight_kg).toBe("");
   });
 });
 

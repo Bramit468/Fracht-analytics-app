@@ -25,7 +25,6 @@ import { defaultEmptyKm, pickDays, quoteNotes, type DaysSource } from "../../../
 import { fetchTelematicsFill } from "./telematics";
 import { rateFill } from "@/lib/telematics-costs";
 import {
-  lookupRoute,
   lookupRouteOptions,
   lookupSchedule,
   type RouteOptionResult,
@@ -36,13 +35,30 @@ import {
   type RouteSchedule,
 } from "../../../lib/ptv-schedule";
 import { AddressField } from "./address-field";
-import { RouteMap } from "./route-map";
+import { RouteMap, type MapStop } from "./route-map";
+import { RouteClient } from "./route-client";
+import { StopsEditor } from "./stops-editor";
 import { TripDurationPanel } from "./trip-duration-panel";
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
 import type { RouteEmissions } from "../../../lib/ptv-emissions";
 import {
+  STOP_TYPE_LABELS,
+  addStop,
+  buildWaypoints,
+  moveStop,
+  removeStop,
+  routedStops,
+  stopLetter,
+  stopsFromStored,
+  toStoredStops,
+  updateStop,
+  type Stop,
+  type StopType,
+} from "../../../lib/stops";
+import {
   addViaPoint,
+  legIndex,
   moveViaPoint,
   orderViaPoints,
   removeViaPoint,
@@ -175,11 +191,32 @@ export function TripForm({
   const [tarpiniai, setTarpiniai] = useState<ViaPoint[]>([]);
   /** Paskutinio maršruto km ir išvykimas (`YYYY-MM-DDTHH:MM`) – reiso trukmės įverčiui. */
   const [marsrutoTrukmei, setMarsrutoTrukmei] = useState<{ km: number; departure?: string } | null>(null);
+  /**
+   * Sustojimai – vienintelis šaltinis: formos laukai „Iš“ / „Į“, papildomi
+   * sustojimai ir padidinto žemėlapio šoninis skydelis skaito ir keičia šį sąrašą.
+   */
+  const [stops, setStops] = useState<Stop[]>([
+    { id: 0, type: "loading", address: "", point: "" },
+    { id: 1, type: "unloading", address: "", point: "" },
+  ]);
+  const nextStopId = useRef(2);
+  /** Sustojimų vietos, kurias PTV panaudojo paskutiniame maršrute – žymekliams. */
+  const [marsrutoSustojimai, setMarsrutoSustojimai] = useState<MapStop[]>([]);
+  /** Paskutinio maršruto suvestinė – rodoma čia pat, reiso bloke. */
+  const [santrauka, setSantrauka] = useState<{ km: number; travelMinutes: number; days: number; tollCents: number; delayMinutes: number } | null>(null);
   /** Tempimas baigiasi dažnai, o PTV užklausa kainuoja – laukiame, kol žmogus nustos. */
-  const viaTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  /** Taškai, atėję kol maršrutas dar skaičiuojamas; po jo skaičiuojama iš naujo. */
-  const pendingVia = useRef<ViaPoint[] | null>(null);
-  const routeBusy = useRef(false);
+  const routeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /**
+   * Nauja užklausa nutraukia ankstesnę, o atsakymai atpažįstami pagal numerį:
+   * pavėlavęs atsakymas į senesnį tašką niekada neperrašo naujesnio.
+   */
+  const [routeClient] = useState(() => new RouteClient());
+  const routeRun = useRef(0);
+  /** Palyginimas rodomas ir atnaujinamas pats, kol žmogus jo neišjungė. */
+  const [rodytiVariantus, setRodytiVariantus] = useState(false);
+  const rodytiVariantusRef = useRef(false);
+  /** PTV vairavimo laiko planas jau parodytas – tada jis atnaujinamas kartu su maršrutu. */
+  const planasParodytas = useRef(false);
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
   /**
@@ -222,6 +259,9 @@ export function TripForm({
               : copyForNewTrip(existing, new Date().toISOString().slice(0, 10));
 
             setDefaults(copy.defaults);
+            const loadedStops = stopsFromStored(existing.stops, copy.defaults.origin ?? "", copy.defaults.destination ?? "");
+            setStops(loadedStops);
+            nextStopId.current = loadedStops.length;
             setMode(copy.revenueMode);
             if (copy.legs.length) {
               setLegs(copy.legs.map((leg, index) => ({ id: index, ...leg })));
@@ -249,7 +289,6 @@ export function TripForm({
     return () => { cancelled = true; };
   }, [attempt]);
 
-  /** Žemėlapio veiksmai: pridėti, perkelti ir pašalinti tarpinį tašką (#85). */
   /**
    * Tarpinis taškas keičia maršrutą, bet ne vairavimo laiko planą: paros, įrašytos
    * greitos kainos, nebeatitinka kelio, kol kaina neperskaičiuota.
@@ -258,40 +297,95 @@ export function TripForm({
     setDienuSaltinis((current) => current && { ...current, stale: true });
   }
 
+  /** Perskaičiuoja maršrutą, kai žmogus nustoja tempti ar redaguoti. */
+  function scheduleRoute(via: ViaPoint[], stopList: Stop[], delay = 150) {
+    clearTimeout(routeTimer.current);
+    routeTimer.current = setTimeout(() => void fillFromRoute(via, !tripId, stopList), delay);
+  }
+
+  useEffect(() => () => {
+    clearTimeout(routeTimer.current);
+    routeClient.cancel();
+  }, [routeClient]);
+
   /**
-   * Taškai išrikiuojami pagal liniją prieš užklausą: PTV veda per juos ta tvarka,
-   * kuria surašyti, tad netvarkingi taškai versų maršrutą grįžti atgal.
+   * Taškai išrikiuojami pagal ruožą ir liniją prieš užklausą: PTV veda per juos
+   * ta tvarka, kuria surašyti, tad netvarkingi taškai versų maršrutą grįžti atgal.
    */
   function changeVia(points: ViaPoint[]) {
     const ordered = orderViaPoints(points, marsrutoLinija);
     setTarpiniai(ordered);
     markDaysStale();
-
-    clearTimeout(viaTimer.current);
-    viaTimer.current = setTimeout(() => {
-      if (routeBusy.current) pendingVia.current = ordered;
-      else void fillFromRoute(ordered);
-    }, 500);
+    scheduleRoute(ordered, stops);
   }
 
-  useEffect(() => () => clearTimeout(viaTimer.current), []);
-
-  function addVia(point: ViaPoint) {
-    const change = addViaPoint(tarpiniai, point);
+  /** Žemėlapio veiksmai: pridėti, perkelti ir pašalinti tarpinį tašką (#85). */
+  function addVia(point: ViaPoint): boolean {
+    const located = { ...point, leg: legIndex(marsrutoLinija, marsrutoSustojimai, point) };
+    const change = addViaPoint(tarpiniai, located);
     if (!change.ok) {
       setMarsrutas(change.message);
-      return;
+      return false;
     }
     changeVia(change.points);
+    return true;
   }
 
   function moveVia(index: number, point: ViaPoint) {
-    changeVia(moveViaPoint(tarpiniai, index, point));
+    changeVia(moveViaPoint(tarpiniai, index, { ...point, leg: legIndex(marsrutoLinija, marsrutoSustojimai, point) }));
   }
 
   function removeVia(index: number) {
     changeVia(removeViaPoint(tarpiniai, index));
   }
+
+  /**
+   * Sustojimų sąrašo pakeitimas. Eilės ir sudėties keitimas nuima tarpinius
+   * taškus: jie priklauso konkrečiam ruožui tarp dviejų sustojimų. Perskaičiuojama
+   * tik jei maršrutas jau buvo suskaičiuotas.
+   */
+  function changeStops(next: Stop[], { resetVia, recalc }: { resetVia: boolean; recalc: boolean }) {
+    setStops(next);
+    setResult(null);
+    setSaved("");
+    markDaysStale();
+
+    const via = resetVia ? [] : tarpiniai;
+    if (resetVia && tarpiniai.length > 0) {
+      setTarpiniai([]);
+      setMarsrutas("Tarpiniai taškai nuimti, nes pasikeitė sustojimai.");
+    }
+    if (recalc && marsrutoLinija.length > 0) scheduleRoute(via, next, 600);
+  }
+
+  /** Rašant adresą maršrutas neperskaičiuojamas – tik pasirinkus pasiūlymą. */
+  function updateStopAt(index: number, change: Partial<Pick<Stop, "type" | "address" | "point">>) {
+    changeStops(updateStop(stops, index, change), { resetVia: false, recalc: Boolean(change.point) });
+  }
+
+  function addStopOfType(type: StopType) {
+    changeStops(addStop(stops, nextStopId.current++, type), { resetVia: true, recalc: false });
+  }
+
+  function removeStopAt(index: number) {
+    const removed = stops[index];
+    changeStops(removeStop(stops, index), { resetVia: true, recalc: Boolean(removed?.address.trim() || removed?.point) });
+  }
+
+  function moveStopAt(index: number, delta: -1 | 1) {
+    changeStops(moveStop(stops, index, delta), { resetVia: true, recalc: true });
+  }
+
+  const stopsEditor = (includeEnds: boolean) => <StopsEditor
+    stops={stops}
+    includeEnds={includeEnds}
+    enabled={routeLookup}
+    inputClass={inputClass}
+    onUpdate={updateStopAt}
+    onAdd={addStopOfType}
+    onRemove={removeStopAt}
+    onMove={moveStopAt}
+  />;
 
   /**
    * Keli PTV keliai su kaštais (#84).
@@ -310,7 +404,6 @@ export function TripForm({
 
     setLyginama(true);
     setVariantuKlaida("");
-    setVariantai([]);
     setPasirinktas(null);
     try {
       const result = await lookupRouteOptions(
@@ -398,6 +491,7 @@ export function TripForm({
         return null;
       }
       setTvarkarastis(result.schedule);
+      planasParodytas.current = true;
       return result.schedule.days;
     } catch {
       setTvarkarascioKlaida("Nepavyko suplanuoti vairavimo laiko.");
@@ -516,25 +610,25 @@ export function TripForm({
    *
    * `write = false` – išsaugoto reiso redagavimas: rodoma, ką PTV siūlo, bet
    * laukai nekeičiami, nes ten įrašyta tai, kas buvo tada.
+   *
+   * Kviečiama ir tempiant: nauja užklausa nutraukia ankstesnę, todėl jokių eilių
+   * nėra – skaičiuojamas tik naujausias taškų sąrašas, o `null` reiškia, kad šią
+   * užklausą aplenkė kita.
    */
-  async function fillFromRoute(via: ViaPoint[] = tarpiniai, write = true): Promise<RouteOutcome | null> {
+  async function fillFromRoute(via: ViaPoint[] = tarpiniai, write = true, stopList: Stop[] = stops): Promise<RouteOutcome | null> {
     const form = formRef.current;
-    if (!form || routeBusy.current) return null;
+    if (!form) return null;
 
     const value = (name: string) => {
       const field = form.elements.namedItem(name);
       return field instanceof HTMLInputElement ? field.value : "";
     };
 
-    routeBusy.current = true;
+    const run = ++routeRun.current;
     setSkaiciuoja(true);
     setMarsrutas("");
-    // Linija čia nevalom: ją išėmus žemėlapis išmontuojamas ir kuriamas iš naujo
-    // po kiekvieno tarpinio taško. Ji pakeičiama gavus rezultatą arba ištrinama klaidos atveju.
-    setMarsrutoPazeidimai([]);
-    setNeivertintasKeltas(null);
-    setKeltoIvertis(null);
-    setEmisijos(null);
+    // Linijos čia nevalom: žemėlapis lieka gyvas, o sena linija matoma, kol ateis
+    // nauja. Ji pakeičiama gavus rezultatą arba ištrinama klaidos atveju.
     try {
       const tripDate = value("trip_date");
       const departureTime = value("departure_time");
@@ -549,30 +643,51 @@ export function TripForm({
       const selected = trucks.find((truck) => truck.id === value("truck_id"));
       const loadTonnes = Number(krovinioSvoris.replace(",", "."));
 
-      const result = await lookupRoute(
-        value("origin"),
-        value("destination"),
-        value("origin_point"),
-        value("destination_point"),
-        vengtiKeltu,
-        departureIso(tripDate, departureTime),
-        {
+      const routed = routedStops(stopList);
+      const outcome = await routeClient.lookup({
+        waypoints: buildWaypoints(stopList, via),
+        avoidFerries: vengtiKeltu,
+        departureAt: departureIso(tripDate, departureTime),
+        weights: {
           emptyWeightKg: selected?.empty_weight_kg ?? null,
           totalPermittedWeightKg: selected?.total_permitted_weight_kg ?? null,
           loadWeightKg: Number.isFinite(loadTonnes) && loadTonnes > 0 ? loadTonnes * 1000 : null,
         },
-        via,
-      );
+      });
+      // Aplenkta naujesnės užklausos: jos rezultatas rodomas, šios – ne.
+      if (!outcome || run !== routeRun.current) return null;
+
+      const { result } = outcome;
       if (!result.ok) {
         setMarsrutas(result.message);
         // Su tarpiniais taškais paskutinis galiojantis maršrutas paliekamas
         // ekrane: kitaip nepavykęs paspaudimas nutrintų ir tai, kas veikė (#85).
-        if (via.length === 0) setMarsrutoLinija([]);
+        if (via.length === 0) {
+          setMarsrutoLinija([]);
+          setMarsrutoSustojimai([]);
+          setSantrauka(null);
+        }
         return null;
       }
 
       setTarpiniai(orderViaPoints(via, result.line));
       setMarsrutoLinija(result.line);
+      setMarsrutoSustojimai(result.places.map((place, index) => {
+        const stop = routed[index];
+        return {
+          latitude: place.latitude,
+          longitude: place.longitude,
+          letter: stopLetter(stopList.indexOf(stop)),
+          title: `${STOP_TYPE_LABELS[stop.type]}: ${place.label || stop.address}`,
+        };
+      }));
+      setSantrauka({
+        km: result.km,
+        travelMinutes: result.travelMinutes,
+        days: result.days,
+        tollCents: result.tollCents,
+        delayMinutes: result.trafficDelayMinutes,
+      });
       setMarsrutoTrukmei({
         km: result.km,
         departure: tripDate && /^\d{2}:\d{2}$/.test(departureTime) ? `${tripDate}T${departureTime}` : undefined,
@@ -580,6 +695,7 @@ export function TripForm({
       setMarsrutoPazeidimai(result.violations);
       setEmisijos(result.emissions);
       setEmisijuSvoriai(result.weightsUsed);
+      setKeltoIvertis(null);
 
       if (write) {
         for (const [name, filled] of Object.entries(result.fill)) {
@@ -635,6 +751,10 @@ export function TripForm({
         + ispejimai,
       );
 
+      // Palyginimas atnaujinamas pats: pasikeitęs maršrutas – pasikeitę variantai.
+      if (rodytiVariantusRef.current) void compareRoutes();
+      if (planasParodytas.current && tripDate && departureTime) void planDriverHours();
+
       return {
         routeDays: result.days,
         paidKm: Number(result.fill.paid_km),
@@ -642,15 +762,10 @@ export function TripForm({
         approximate: result.approximate,
       };
     } catch {
-      setMarsrutas("Nepavyko suskaičiuoti maršruto.");
+      if (run === routeRun.current) setMarsrutas("Nepavyko suskaičiuoti maršruto.");
       return null;
     } finally {
-      routeBusy.current = false;
-      setSkaiciuoja(false);
-      // Tempimas baigtas skaičiuojant: be šito paskutinis taškas liktų be maršruto.
-      const next = pendingVia.current;
-      pendingVia.current = null;
-      if (next) void fillFromRoute(next, write);
+      if (run === routeRun.current) setSkaiciuoja(false);
     }
   }
 
@@ -677,7 +792,7 @@ export function TripForm({
 
       // Išsaugoto reiso laukai nekeičiami (#151 taisyklė): ten yra tai, kas buvo tada.
       const write = !tripId;
-      const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write), planDriverHours()]);
+      const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write, stops), planDriverHours()]);
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
       const truckId = form.elements.namedItem("truck_id");
@@ -762,6 +877,7 @@ export function TripForm({
         revenue_mode: mode === "freight" ? "freight" : "per_km",
         freight_price_cents: mode === "freight" ? (hasRevenue ? cents("revenue") : 0) : null,
         rate_per_km: mode === "per_km" ? (hasRevenue ? number("revenue") : 0) : null,
+        stops: toStoredStops(routedStops(stops)),
       };
       if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
       const tripLegs = legs.map(({ id }) => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
@@ -807,8 +923,8 @@ export function TripForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { normuPildymas.current = prefillRates(event.target.value); }} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
-          <AddressField name="origin" label="Iš" defaultValue={defaults.origin ?? ""} enabled={routeLookup} inputClass={inputClass} />
-          <AddressField name="destination" label="Į" defaultValue={defaults.destination ?? ""} enabled={routeLookup} inputClass={inputClass} />
+          <AddressField name="origin" label="Iš" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={inputClass} />
+          <AddressField name="destination" label="Į" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={inputClass} />
           {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis svarbus:
               20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
           {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => setKrovinioSvoris(event.target.value)} placeholder="20" className={inputClass} /></label>}
@@ -891,35 +1007,46 @@ export function TripForm({
             <p className="mt-2">Prieš išsaugodami patikrinkite pakrovimo ir iškrovimo taškus bei vilkiko parametrus.</p>
           </div>}
         </div>}
+        {routeLookup && <div className="mt-4">
+          <h3 className="font-medium">Papildomi sustojimai</h3>
+          <p className="mb-2 text-sm text-muted">Papildomas pakrovimas ar iškrovimas, CMR perdavimas, muitinė. Tipas išsaugomas su reisu.</p>
+          {stopsEditor(false)}
+        </div>}
         {routeLookup && <div className="mt-3">
           <RouteMap
             line={marsrutoLinija}
+            stops={marsrutoSustojimai}
             violations={marsrutoPazeidimai}
             via={tarpiniai}
+            busy={skaiciuoja}
+            sidePanel={<div>
+              <h3 className="mb-1 font-semibold">Sustojimai</h3>
+              <p className="mb-3 text-sm text-muted">Pakeitus adresą, tvarką ar pridėjus sustojimą, maršrutas perskaičiuojamas pats.</p>
+              {stopsEditor(true)}
+            </div>}
             onAddVia={addVia}
             onMoveVia={moveVia}
             onRemoveVia={removeVia}
           />
           {marsrutoTrukmei && <TripDurationPanel km={marsrutoTrukmei.km} departure={marsrutoTrukmei.departure} />}
         </div>}
-      </Skiltis>
-
-      {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
-          skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
-          `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
-      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
-        <summary className="cursor-pointer font-semibold">Pakeisti ranka</summary>
-        <div className="mt-4 space-y-6">
-          {routeLookup && <div className="rounded-xl border p-4">
+          {routeLookup && <div className="mt-3 rounded-xl border p-4">
             <div className="flex flex-wrap items-center gap-4">
               <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
-                {skaiciuoja ? "Skaičiuojama…" : "Skaičiuoti maršrutą iš adresų"}
+                {skaiciuoja ? "Skaičiuojama…" : marsrutoLinija.length > 0 ? "Perskaičiuoti maršrutą" : "Skaičiuoti maršrutą"}
               </button>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={vengtiKeltu} onChange={(event) => setVengtiKeltu(event.target.checked)} />
                 Vengti keltų
               </label>
             </div>
+            {/* Rezultatas čia pat: keičiasi kartu su maršrutu (tempiant, keičiant sustojimus). */}
+            {santrauka && <dl aria-live="polite" className={`mt-3 grid gap-x-6 gap-y-1 text-sm tabular-nums sm:grid-cols-4 ${skaiciuoja ? "opacity-60" : ""}`}>
+              <div><dt className="text-muted">Atstumas</dt><dd className="font-semibold">{Math.round(santrauka.km).toLocaleString("lt-LT")} km</dd></div>
+              <div><dt className="text-muted">Kelio laikas (PTV)</dt><dd className="font-semibold">{durationText(santrauka.travelMinutes)}{santrauka.delayMinutes > 0 && ` (+${santrauka.delayMinutes} min. eismas)`}</dd></div>
+              <div><dt className="text-muted">Siūlomos paros</dt><dd className="font-semibold">{santrauka.days}</dd></div>
+              <div><dt className="text-muted">Keliai</dt><dd className="font-semibold">{formatCents(santrauka.tollCents)}</dd></div>
+            </dl>}
             {/* PTV kuro įvertis – papildoma informacija, ne kainos dalis, todėl
                 laikomas čia, o ne pagrindiniame vaizde (#159). Pelnas
                 skaičiuojamas pagal formos normą, kol jos sąmoningai nepakeisi. */}
@@ -946,9 +1073,36 @@ export function TripForm({
           {/* Skirtumas tarp PTV siūlomų kelių yra pinigai: tas pats Panevėžys–
               Oslas gali skirtis 133 € vien mokesčiais (#84). */}
           <div className="mt-4 border-t pt-3">
-            <button type="button" disabled={lyginama} onClick={() => void compareRoutes()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
-              {lyginama ? "Lyginama…" : "Palyginti maršruto variantus"}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={lyginama}
+                onClick={() => {
+                  rodytiVariantusRef.current = true;
+                  setRodytiVariantus(true);
+                  void compareRoutes();
+                }}
+                className="rounded-lg border bg-surface p-3 disabled:opacity-50"
+              >
+                {lyginama ? "Lyginama…" : rodytiVariantus ? "Perskaičiuoti variantus" : "Palyginti maršruto variantus"}
+              </button>
+              {rodytiVariantus && <button
+                type="button"
+                onClick={() => {
+                  rodytiVariantusRef.current = false;
+                  setRodytiVariantus(false);
+                  setVariantai([]);
+                  setVariantuKlaida("");
+                }}
+                className="underline"
+              >
+                Slėpti palyginimą
+              </button>}
+            </div>
+            {rodytiVariantus && (routedStops(stops).length > 2 || tarpiniai.length > 0) && <p className="mt-2 text-sm text-muted">
+              Variantai skaičiuojami tarp pirmo ir paskutinio sustojimo, be papildomų sustojimų ir tarpinių taškų:
+              PTV alternatyvų su keliais taškais neteikia.
+            </p>}
             {variantuKlaida && <p role="alert" className="mt-2 text-sm text-bad">{variantuKlaida}</p>}
 
             {variantai.length > 0 && <ul className="mt-3 space-y-2">
@@ -986,6 +1140,9 @@ export function TripForm({
           {/* Trukmė iki šiol buvo spėjimas – kelio valandos iš devynių. Paros
               yra 58 % kaštų, tad klaida parose yra klaida pelne (#87). */}
           <div className="mt-4 border-t pt-3">
+            {(routedStops(stops).length > 2 || tarpiniai.length > 0) && <p className="mb-2 text-sm text-muted">
+              PTV vairavimo laiko planas skaičiuojamas tarp pirmo ir paskutinio sustojimo.
+            </p>}
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-sm">
                 Scenarijus
@@ -1051,6 +1208,14 @@ export function TripForm({
           </div>
 
           </div>}
+      </Skiltis>
+
+      {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
+          skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
+          `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
+      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
+        <summary className="cursor-pointer font-semibold">Pakeisti ranka</summary>
+        <div className="mt-4 space-y-6">
 
       <Skiltis numeris={2} antraste="Kada ir kiek">
         <div className="grid gap-4 sm:grid-cols-2">

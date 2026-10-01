@@ -2,18 +2,12 @@
  * Maršruto linija žemėlapiui (#74).
  *
  * PTV grąžina liniją kaip GeoJSON tekstą — Panevėžys–Oslas yra apie 418 KB
- * koordinačių. Į naršyklę tiek siųsti neverta: ekrane, kur visas maršrutas
- * telpa į kelis šimtus taškų pločio langą, skirtumo nesimato.
- *
- * Todėl taškai retinami. Pradžia ir pabaiga visada išlaikomos — kitaip linija
- * nustotų siekti pakrovimo ar iškrovimo vietos.
+ * koordinačių. Siunčiama ne visa, bet ir ne retinta „kas n-tas“: žr.
+ * `simplifyRouteLine`.
  */
 
 /** [ilguma, platuma] — tokia tvarka, kaip GeoJSON. */
 export type LineCoordinate = [number, number];
-
-/** Kiek taškų užtenka, kad linija ekrane atrodytų glotni. */
-export const TASKU_RIBA = 400;
 
 function coordinate(value: unknown): LineCoordinate | null {
   if (!Array.isArray(value) || value.length < 2) return null;
@@ -52,27 +46,71 @@ export function parseRouteLine(polyline: unknown): LineCoordinate[] {
   return points;
 }
 
+/** 5 ženklai po kablelio yra ~1 m: ekrane to neįmanoma pastebėti. */
+const COORDINATE_DECIMALS = 5;
+/** Kiek metrų linija gali nukrypti nuo PTV geometrijos. Kelio posūkių tai nepaliečia. */
+export const SIMPLIFY_TOLERANCE_M = 3;
+
+const METRES_PER_DEGREE = 111_320;
+
+function round(value: number): number {
+  const factor = 10 ** COORDINATE_DECIMALS;
+  return Math.round(value * factor) / factor;
+}
+
 /**
- * Palieka ne daugiau kaip `limit` taškų, imdama kas n-tąjį.
+ * Linija be tiesioginių atkarpų tarp retų taškų.
  *
- * Pradžia ir pabaiga išlaikomos visada: be jų linija nutrūktų prieš pasiekiant
- * adresą, ir atrodytų, kad maršrutas skaičiuotas ne ten.
+ * Anksčiau imtas kas n-tas taškas (iki 400): Panevėžys–Oslas iš 15 009 taškų
+ * virto 396, ir linija nukrypdavo nuo kelio iki 2 km. Douglas–Peucker išmeta tik
+ * tuos taškus, kurie yra ne toliau kaip `tolerance` metrų nuo tiesės, tad
+ * posūkiai išlieka, o ištiesinti ruožai pigiai nusiunčiami.
+ *
+ * Pradžia ir pabaiga išlaikomos visada: kitaip linija nutrūktų prieš adresą.
  */
-export function thinRouteLine(points: LineCoordinate[], limit = TASKU_RIBA): LineCoordinate[] {
-  if (points.length <= limit || limit < 2) return points;
+export function simplifyRouteLine(
+  points: LineCoordinate[],
+  tolerance = SIMPLIFY_TOLERANCE_M,
+): LineCoordinate[] {
+  const rounded = points.map(([lon, lat]): LineCoordinate => [round(lon), round(lat)]);
+  if (rounded.length < 3) return rounded;
 
-  const step = Math.ceil(points.length / (limit - 1));
-  const thinned: LineCoordinate[] = [];
+  // Plokščia projekcija: iki kelių tūkstančių km maršruto metrų paklaidai to užtenka.
+  const scale = Math.cos((rounded[0][1] * Math.PI) / 180);
+  const x = rounded.map(([lon]) => lon * scale * METRES_PER_DEGREE);
+  const y = rounded.map(([, lat]) => lat * METRES_PER_DEGREE);
 
-  for (let i = 0; i < points.length; i += step) {
-    thinned.push(points[i]);
+  const keep = new Uint8Array(rounded.length);
+  keep[0] = 1;
+  keep[rounded.length - 1] = 1;
+
+  // Be rekursijos: 15 000 taškų ilgame tiesiame kelyje neturi išnaudoti steko.
+  const stack: [number, number][] = [[0, rounded.length - 1]];
+  while (stack.length > 0) {
+    const [from, to] = stack.pop()!;
+    const dx = x[to] - x[from];
+    const dy = y[to] - y[from];
+    const length = Math.hypot(dx, dy);
+
+    let farthest = -1;
+    let farthestDistance = tolerance;
+    for (let i = from + 1; i < to; i++) {
+      const distance = length === 0
+        ? Math.hypot(x[i] - x[from], y[i] - y[from])
+        : Math.abs(dy * (x[i] - x[from]) - dx * (y[i] - y[from])) / length;
+      if (distance > farthestDistance) {
+        farthestDistance = distance;
+        farthest = i;
+      }
+    }
+
+    if (farthest !== -1) {
+      keep[farthest] = 1;
+      stack.push([from, farthest], [farthest, to]);
+    }
   }
 
-  const last = points[points.length - 1];
-  const kept = thinned[thinned.length - 1];
-  if (kept[0] !== last[0] || kept[1] !== last[1]) thinned.push(last);
-
-  return thinned;
+  return rounded.filter((_, index) => keep[index] === 1);
 }
 
 /** Kraštinės, kad žemėlapis iškart parodytų visą maršrutą. */

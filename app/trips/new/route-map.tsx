@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Map as MapLibreMap,
   Marker,
   NavigationControl,
   Popup,
   setWorkerUrl,
+  type ExpressionSpecification,
   type GeoJSONSource,
   type LngLat,
 } from "maplibre-gl";
@@ -16,7 +17,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
 import type { PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
-import type { ViaPoint } from "@/lib/via-points";
+import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
 
 // MapLibre 6 worker turi importuoti greta esantį shared modulį. Next.js
 // sugeneruotas worker URL Vercel aplinkoje to modulio neturėjo, todėl
@@ -43,8 +44,27 @@ function mapLayerId(layer: PtvMapLayer): string {
 
 type Basemap = "roads" | "satellite";
 
-/** Vektorinis kelių žemėlapis (OpenFreeMap): be rakto, aiškūs keliai ir pavadinimai. */
+/**
+ * Kelių žemėlapis (OpenFreeMap „Liberty“): OpenStreetMap duomenys, be rakto ir be
+ * mokesčio. „Google Maps“ plytelių naudoti negalima – jų licencija leidžia jas
+ * rodyti tik per „Google“ SDK. „Liberty“ spalvos artimos: oranžiniai greitkeliai,
+ * geltoni magistraliniai keliai, balti gatvių tinklai.
+ */
 const ROADS_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+
+/**
+ * Stilius gerai atrodo artinant, bet toli (visas Panevėžys–Oslas maršrutas)
+ * keliai tampa plonytėmis linijomis. Čia jie sustorinami tik mažuose masteliuose;
+ * spalvos ir sluoksnių tvarka lieka stiliaus.
+ */
+const ROAD_EMPHASIS: { id: string; minzoom: number; width: [number, number][]; color?: string }[] = [
+  { id: "road_motorway_casing", minzoom: 3, width: [[3, 2.2], [5, 2.8], [8, 4], [12, 7], [16, 20]], color: "#d9822b" },
+  { id: "road_motorway", minzoom: 3, width: [[3, 1.2], [5, 1.8], [8, 2.6], [12, 5], [16, 16]], color: "#ffae42" },
+  { id: "road_trunk_primary_casing", minzoom: 4, width: [[4, 1.8], [5, 2.2], [8, 3.4], [12, 6], [16, 18]], color: "#c9a02f" },
+  { id: "road_trunk_primary", minzoom: 4, width: [[4, 0.9], [5, 1.2], [8, 2.2], [12, 4.5], [16, 14]], color: "#ffe066" },
+  { id: "road_secondary_tertiary_casing", minzoom: 7, width: [[7, 1.6], [10, 2.4], [12, 4.2], [16, 13]] },
+  { id: "road_secondary_tertiary", minzoom: 7, width: [[7, 0.8], [10, 1.4], [12, 3], [16, 11]] },
+];
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
 // Palydovinis vaizdas be kelių nepraktiškas, todėl ant viršaus dedami keliai ir vietovardžiai.
@@ -53,6 +73,17 @@ const SATELLITE_LAYERS: { id: string; path: string; attribution?: string }[] = [
   { id: "sat-roads", path: "Reference/World_Transportation" },
   { id: "sat-labels", path: "Reference/World_Boundaries_and_Places" },
 ];
+
+/** Maršruto linija: ryški tamsiai mėlyna su balta apvadą, kad matytųsi virš bet kurio kelio. */
+const ROUTE_COLOR = "#1d4ed8";
+const PREVIEW_COLOR = "#7c3aed";
+const zoomWidth = (stops: [number, number][], extra = 0) => [
+  "interpolate", ["linear"], ["zoom"],
+  ...stops.flatMap(([zoom, width]) => [zoom, width + extra]),
+] as ExpressionSpecification;
+const ROUTE_WIDTH = [[3, 3], [8, 4.5], [12, 6.5], [16, 10]] as [number, number][];
+const CASING_EXTRA = 3;
+const HOVER_EXTRA = 2;
 
 /** Mažiau nei tiek pikselių nuvilkta linija laikoma paprastu spustelėjimu, o ne taško pridėjimu. */
 const MIN_DRAG_PX = 5;
@@ -67,38 +98,63 @@ const LOCALE = {
   "CooperativeGesturesHandler.MobileHelpText": "Žemėlapį judinkite dviem pirštais",
 };
 
+/** Sustojimo ženklas: pakrovimas, iškrovimas, papildomi. Laukai – iš maršruto atsakymo. */
+export interface MapStop {
+  latitude: number;
+  longitude: number;
+  letter: string;
+  title: string;
+}
+
+const STOP_COLORS = { first: "#16a34a", last: "#dc2626", middle: "#475569" } as const;
+
 interface Pointer {
   lngLat: LngLat;
   point: { x: number; y: number };
 }
 
+function lineFeature(coordinates: number[][]) {
+  return { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates } };
+}
+
 /**
  * Maršrutas žemėlapyje (#74).
  *
- * MapLibre ir OpenStreetMap plytelės — be rakto ir be mokesčio. Linija ateina
- * iš PTV, tad rodomas tas pats kelias, pagal kurį suskaičiuoti kilometrai ir
- * mokesčiai, o ne panašus lengvojo automobilio maršrutas.
+ * Linija ateina iš PTV, tad rodomas tas pats kelias, pagal kurį suskaičiuoti
+ * kilometrai ir mokesčiai, o ne panašus lengvojo automobilio maršrutas.
  *
  * Maršrutą redaguoja tempimas: linijos taškas nutempiamas ten, kur reikia, ir
- * tampa tarpiniu tašku (#85).
+ * tampa tarpiniu tašku (#85). Tempiant maršrutas **perbraižomas vietoje**
+ * (`route-preview`, be tinklo užklausos): tik paleidus pelę prašomas tikras
+ * PTV maršrutas. Tempimo metu React būsena nekeičiama – viskas vyksta
+ * žemėlapio šaltiniuose, todėl forma neperpiešiama.
  */
-export function RouteMap({
+function RouteMapView({
   line,
+  stops = [],
   violations = [],
   via = [],
+  busy = false,
+  sidePanel,
   onAddVia,
   onMoveVia,
   onRemoveVia,
 }: {
   line: LineCoordinate[];
+  /** Sustojimai: žymekliai su raidėmis A, B, C… */
+  stops?: MapStop[];
   violations?: RouteViolation[];
   /** Tarpiniai taškai, per kuriuos vedamas maršrutas (#85). */
   via?: ViaPoint[];
-  onAddVia?: (point: ViaPoint) => void;
+  /** Skaičiuojamas naujas maršrutas: žemėlapis lieka gyvas, rodomas tik indikatorius. */
+  busy?: boolean;
+  /** Rodomas tik padidintame žemėlapyje, šone. */
+  sidePanel?: ReactNode;
+  /** `false` – taškas nepriimtas (riba ar dublis): tempimo peržiūra nuimama. */
+  onAddVia?: (point: ViaPoint) => boolean | void;
   onMoveVia?: (index: number, point: ViaPoint) => void;
   onRemoveVia?: (index: number) => void;
 }) {
-  const wrapper = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -110,14 +166,22 @@ export function RouteMap({
   // žmogus jau yra priartinęs, ir šokimas atgal sugadintų kitą tempimą.
   const hasFitted = useRef(false);
   const viaCount = useRef(via.length);
-  // Atgaliniai iškvietimai laikomi `ref`, kad žemėlapio įvykiai visada kviestų
-  // naujausią funkciją, o pats žemėlapis nebūtų kuriamas iš naujo.
+  // Atgaliniai iškvietimai ir naujausi duomenys laikomi `ref`, kad žemėlapio
+  // įvykiai visada matytų naujausią reikšmę, o pats žemėlapis nebūtų kuriamas iš naujo.
   const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia });
+  const latest = useRef({ line, stops, via });
 
   useEffect(() => {
     callbacks.current = { onAddVia, onMoveVia, onRemoveVia };
+    latest.current = { line, stops, via };
     viaCount.current = via.length;
-  }, [onAddVia, onMoveVia, onRemoveVia, via.length]);
+  }, [onAddVia, onMoveVia, onRemoveVia, line, stops, via]);
+
+  const markerHooks = useRef<{
+    startPreview: (at: number, excludeVia: number | null) => void;
+    movePreview: (lngLat: LngLat) => void;
+    endPreview: () => void;
+  } | null>(null);
 
   const [ready, setReady] = useState(false);
   const hasRoute = line.length >= 2;
@@ -145,6 +209,13 @@ export function RouteMap({
     resizeObserver.observe(container.current);
 
     map.on("load", () => {
+      for (const { id, minzoom, width, color } of ROAD_EMPHASIS) {
+        if (!map.getLayer(id)) continue;
+        map.setLayerZoomRange(id, minzoom, 24);
+        map.setPaintProperty(id, "line-width", zoomWidth(width));
+        if (color) map.setPaintProperty(id, "line-color", color);
+      }
+
       // Palydovas guli virš vektorinio žemėlapio, bet po PTV sluoksniais ir maršrutu.
       for (const { id, path, attribution } of SATELLITE_LAYERS) {
         map.addSource(id, {
@@ -180,60 +251,111 @@ export function RouteMap({
         });
       }
 
+      const round = { "line-cap": "round", "line-join": "round" } as const;
       map.addSource("route", { type: "geojson", data: EMPTY_COLLECTION });
+      map.addLayer({
+        id: "route-casing",
+        type: "line",
+        source: "route",
+        layout: round,
+        paint: { "line-color": "#ffffff", "line-width": zoomWidth(ROUTE_WIDTH, CASING_EXTRA) },
+      });
       map.addLayer({
         id: "route",
         type: "line",
         source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#2563eb", "line-width": 4 },
+        layout: round,
+        paint: { "line-color": ROUTE_COLOR, "line-width": zoomWidth(ROUTE_WIDTH) },
       });
-      // Nematomas platus sluoksnis: į 4 px liniją pataikyti pirštu neįmanoma.
+      // Nematomas platus sluoksnis: į kelių pikselių liniją pataikyti pirštu neįmanoma.
       map.addLayer({
         id: "route-hit",
         type: "line",
         source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
+        layout: round,
         paint: { "line-color": "#000000", "line-width": 24, "line-opacity": 0 },
       });
-      // Taškas, kuris seka žymeklį tempiant liniją.
-      map.addSource("drag-ghost", { type: "geojson", data: EMPTY_COLLECTION });
+      // Tempiamas ruožas: vietinis vaizdas be užklausos.
+      map.addSource("route-preview", { type: "geojson", data: EMPTY_COLLECTION });
       map.addLayer({
-        id: "drag-ghost",
-        type: "circle",
-        source: "drag-ghost",
-        paint: {
-          "circle-radius": 8,
-          "circle-color": "#7c3aed",
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 3,
-        },
+        id: "route-preview-casing",
+        type: "line",
+        source: "route-preview",
+        layout: round,
+        paint: { "line-color": "#ffffff", "line-width": zoomWidth(ROUTE_WIDTH, CASING_EXTRA) },
+      });
+      map.addLayer({
+        id: "route-preview",
+        type: "line",
+        source: "route-preview",
+        layout: round,
+        paint: { "line-color": PREVIEW_COLOR, "line-width": zoomWidth(ROUTE_WIDTH), "line-dasharray": [2, 1.2] },
       });
 
+      // Tarpinių taškų žymekliai naudoja tą pačią peržiūrą. Skelbiama tik po
+      // `load`: anksčiau stiliaus keisti negalima.
+      markerHooks.current = { startPreview, movePreview, endPreview };
       setReady(true);
     });
+
+    // Tempimas: tik šaltinio duomenys keičiami, ne React būsena.
+    const preview = {
+      source: () => map.getSource("route-preview") as GeoJSONSource | undefined,
+      frame: 0,
+      next: null as number[][] | null,
+      /** Linijos indeksai ir taškas, nuo kurių braižoma: gaunami tempimo pradžioje. */
+      anchors: null as [LineCoordinate, LineCoordinate] | null,
+    };
+
+    function startPreview(at: number, excludeVia: number | null) {
+      const { line: current, stops: currentStops, via: currentVia } = latest.current;
+      const indices = [
+        ...currentStops.map((stop) => nearestLineIndex(current, stop)),
+        ...currentVia.flatMap((point, index) => (index === excludeVia ? [] : [nearestLineIndex(current, point)])),
+      ];
+      const [from, to] = anchorsAround(current.length, indices, at);
+      preview.anchors = [current[from], current[to]];
+      for (const id of ["route", "route-casing"]) map.setPaintProperty(id, "line-opacity", 0.3);
+    }
+
+    function movePreview(lngLat: LngLat) {
+      if (!preview.anchors) return;
+      preview.next = [preview.anchors[0], [lngLat.lng, lngLat.lat], preview.anchors[1]];
+      if (preview.frame) return;
+      // Ne dažniau kaip kartą per kadrą: pelė gali siųsti kelis įvykius per 16 ms.
+      preview.frame = requestAnimationFrame(() => {
+        preview.frame = 0;
+        if (preview.next) preview.source()?.setData(lineFeature(preview.next));
+      });
+    }
+
+    function endPreview() {
+      cancelAnimationFrame(preview.frame);
+      preview.frame = 0;
+      preview.next = null;
+      preview.anchors = null;
+      preview.source()?.setData(EMPTY_COLLECTION);
+      for (const id of ["route", "route-casing"]) map.setPaintProperty(id, "line-opacity", 1);
+    }
 
     // Linijos tempimas veikia tik ant maršruto, o `preventDefault` sustabdo
     // žemėlapio stumdymą. Visur kitur tempimas stumdo žemėlapį kaip įprasta.
     // Taškas pridedamas tik paleidus, tad PTV užklausa viena, o ne po kiekvieno judesio.
     let dragging = false;
     const canvas = map.getCanvas();
+    const lineWidth = (extra: number) => zoomWidth(ROUTE_WIDTH, extra);
 
     function beginDrag(kind: "mouse" | "touch", start: Pointer) {
       dragging = true;
       canvas.style.cursor = "grabbing";
       let last = start.lngLat;
       let moved = false;
+      startPreview(nearestLineIndex(latest.current.line, { latitude: start.lngLat.lat, longitude: start.lngLat.lng }), null);
 
       const move = (event: Pointer) => {
         last = event.lngLat;
         moved ||= Math.hypot(event.point.x - start.point.x, event.point.y - start.point.y) >= MIN_DRAG_PX;
-        if (!moved) return;
-        (map.getSource("drag-ghost") as GeoJSONSource | undefined)?.setData({
-          type: "Feature",
-          properties: {},
-          geometry: { type: "Point", coordinates: [last.lng, last.lat] },
-        });
+        if (moved) movePreview(last);
       };
 
       const moveEvent = kind === "mouse" ? "mousemove" : "touchmove";
@@ -242,22 +364,29 @@ export function RouteMap({
         map.off(moveEvent, move);
         dragging = false;
         canvas.style.cursor = "";
-        map.setPaintProperty("route", "line-width", 4);
-        (map.getSource("drag-ghost") as GeoJSONSource | undefined)?.setData(EMPTY_COLLECTION);
+        map.setPaintProperty("route", "line-width", lineWidth(0));
+        map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA));
         // Paskutinė žinoma vieta: `touchend` pats koordinačių dažnai neturi.
-        if (moved) callbacks.current.onAddVia?.({ latitude: last.lat, longitude: last.lng });
+        // Peržiūra paliekama, kol ateis tikras maršrutas: nuvalius ji sušoktų
+        // atgal į seną kelią. Ją nuvalo kitas `line` atnaujinimas.
+        const accepted = moved
+          ? callbacks.current.onAddVia?.({ latitude: last.lat, longitude: last.lng })
+          : false;
+        if (accepted === false || accepted === undefined) endPreview();
       });
     }
 
     map.on("mouseenter", "route-hit", () => {
       if (dragging) return;
       canvas.style.cursor = "grab";
-      map.setPaintProperty("route", "line-width", 7);
+      map.setPaintProperty("route", "line-width", lineWidth(HOVER_EXTRA));
+      map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA + HOVER_EXTRA));
     });
     map.on("mouseleave", "route-hit", () => {
       if (dragging) return;
       canvas.style.cursor = "";
-      map.setPaintProperty("route", "line-width", 4);
+      map.setPaintProperty("route", "line-width", lineWidth(0));
+      map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA));
     });
     map.on("mousedown", "route-hit", (event) => {
       event.preventDefault();
@@ -271,42 +400,59 @@ export function RouteMap({
     });
 
     return () => {
+      cancelAnimationFrame(preview.frame);
       hasFitted.current = false;
       resizeObserver.disconnect();
       mapRef.current = null;
+      markerHooks.current = null;
       setReady(false);
       map.remove();
     };
   }, [hasRoute]);
 
-  // Maršruto linija keičiasi tik duomenimis.
+  // Maršruto linija keičiasi tik duomenimis; tai vienintelis sluoksnis, kuris perpiešiamas.
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || line.length < 2) return;
 
-    (map.getSource("route") as GeoJSONSource | undefined)?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: line },
-    });
+    (map.getSource("route") as GeoJSONSource | undefined)?.setData(lineFeature(line));
+    // Tikras maršrutas atėjo: tempimo peržiūra nebereikalinga.
+    markerHooks.current?.endPreview();
 
     if (hasFitted.current && viaCount.current > 0) return;
     const bounds = routeBounds(line);
     if (bounds) {
-      map.fitBounds(bounds, { padding: 40, duration: 0 });
+      // Viršuje paliekama vietos mygtukui „Padidinti“; `maxZoom` – kad trumpas
+      // reisas neatsidurtų ties pavieniais namais.
+      map.fitBounds(bounds, { padding: { top: 56, left: 48, right: 56, bottom: 40 }, maxZoom: 13, duration: 0 });
       hasFitted.current = true;
     }
   }, [ready, line]);
 
-  // Žymekliai yra paprasti DOM elementai, todėl juos pigiau perkurti nei sekti pokyčius.
+  // Skaičiavimas baigėsi (net nesėkmingai): peržiūra, kuri laukė rezultato, nuimama.
+  useEffect(() => {
+    if (!busy) markerHooks.current?.endPreview();
+  }, [busy]);
+
+  // Sustojimai ir apribojimai keičiasi retai (tik gavus maršrutą), todėl juos
+  // pigiau perkurti nei sekti pokyčius. Tarpiniai taškai – atskirai, žemiau.
   useEffect(() => {
     const map = mapRef.current;
-    if (!ready || !map || line.length < 2) return;
+    if (!ready || !map) return;
 
     const markers: Marker[] = [];
 
-    for (const [point, color] of [[line[0], "#16a34a"], [line[line.length - 1], "#dc2626"]] as const) {
-      markers.push(new Marker({ color }).setLngLat(point).addTo(map));
+    for (const [index, stop] of stops.entries()) {
+      const color = index === 0 ? STOP_COLORS.first : index === stops.length - 1 ? STOP_COLORS.last : STOP_COLORS.middle;
+      const marker = new Marker({ color }).setLngLat([stop.longitude, stop.latitude]);
+      const element = marker.getElement();
+      const label = document.createElement("span");
+      label.textContent = stop.letter;
+      // Smeigtuko galvutės viduryje yra baltas skritulys, tad raidė tamsi.
+      label.style.cssText = "position:absolute;left:0;top:8px;width:27px;text-align:center;color:#111827;font:700 10px/11px sans-serif;pointer-events:none";
+      element.append(label);
+      element.title = stop.title;
+      markers.push(marker.addTo(map));
     }
 
     for (const violation of violations) {
@@ -319,19 +465,24 @@ export function RouteMap({
       );
     }
 
-    // Tarpiniai taškai: tempiami, o dukart spustelėjus – pašalinami. Maršrutas
-    // perskaičiuojamas tik paleidus pelę, todėl užklausų audros nėra (#85).
+    return () => markers.forEach((marker) => marker.remove());
+  }, [ready, stops, violations]);
+
+  // Tarpiniai taškai: paprasti apskritimai su balta apvadą, kad skirtųsi nuo
+  // sustojimų smeigtukų. Tempiami, o dukart spustelėjus – pašalinami.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+
+    const markers: Marker[] = [];
+
     for (const [index, point] of via.entries()) {
-      const marker = new Marker({ color: "#7c3aed", draggable: Boolean(callbacks.current.onMoveVia) })
-        .setLngLat([point.longitude, point.latitude])
-        .addTo(map);
-
-      marker.on("dragend", () => {
-        const { lng, lat } = marker.getLngLat();
-        callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
-      });
-
-      const element = marker.getElement();
+      // Išorinis 32 px elementas – tai, ką pagriebia pelė ar pirštas; matomas tik 14 px taškas.
+      const element = document.createElement("div");
+      element.style.cssText = "width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none";
+      const dot = document.createElement("div");
+      dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${PREVIEW_COLOR};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)`;
+      element.append(dot);
       // `mousedown`/`touchstart` čia stabdyti negalima: MapLibre žymeklio tempimą
       // pradeda žemėlapio lygyje ir pats sustabdo stumdymą. Dvigubas spustelėjimas
       // sustabdomas, kad po žymekliu nepriartėtų žemėlapis.
@@ -339,14 +490,26 @@ export function RouteMap({
         event.stopPropagation();
         callbacks.current.onRemoveVia?.(index);
       });
-      element.style.cursor = "grab";
-      element.style.touchAction = "none";
       element.title = "Tarpinis taškas. Tempkite arba spustelėkite du kartus, kad pašalintumėte.";
+
+      const marker = new Marker({ element, draggable: Boolean(callbacks.current.onMoveVia) })
+        .setLngLat([point.longitude, point.latitude])
+        .addTo(map);
+
+      marker.on("dragstart", () => {
+        const { lng, lat } = marker.getLngLat();
+        markerHooks.current?.startPreview(nearestLineIndex(latest.current.line, { latitude: lat, longitude: lng }), index);
+      });
+      marker.on("drag", () => markerHooks.current?.movePreview(marker.getLngLat()));
+      marker.on("dragend", () => {
+        const { lng, lat } = marker.getLngLat();
+        callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
+      });
       markers.push(marker);
     }
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [ready, line, violations, via]);
+  }, [ready, via]);
 
   useEffect(() => {
     basemapRef.current = basemap;
@@ -368,7 +531,8 @@ export function RouteMap({
     if (!expanded) return;
 
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpanded(false);
+      // Esc adreso pasiūlymų sąraše uždaro sąrašą, o ne žemėlapį.
+      if (event.key === "Escape" && !(event.target instanceof HTMLInputElement)) setExpanded(false);
     };
     window.addEventListener("keydown", onKey);
     const overflow = document.body.style.overflow;
@@ -394,10 +558,7 @@ export function RouteMap({
 
   if (!hasRoute) return null;
 
-  return <div
-    ref={wrapper}
-    className={expanded ? "fixed inset-0 z-50 flex flex-col bg-page p-3" : "mt-3"}
-  >
+  return <div className={expanded ? "fixed inset-0 z-50 flex flex-col bg-page p-3" : "mt-3"}>
     <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-page px-3 py-2 text-sm">
       <legend className="px-1 font-medium text-ink">Žemėlapio sluoksniai</legend>
       {MAP_LAYERS.map(({ layer, label }) => <label key={layer} className="flex cursor-pointer items-center gap-2">
@@ -413,24 +574,32 @@ export function RouteMap({
         Palydovinis vaizdas
       </label>
     </fieldset>
-    <div
-      className={expanded
-        ? "relative min-h-0 flex-1 overflow-hidden rounded-lg border"
-        : "relative h-80 min-h-48 resize-y overflow-hidden rounded-lg border"}
-    >
-      <div ref={container} className="h-full w-full" aria-label="Maršrutas žemėlapyje" />
-      <button
-        type="button"
-        onClick={() => setExpanded((current) => !current)}
-        aria-label={expanded ? "Sumažinti žemėlapį" : "Padidinti žemėlapį"}
-        className="absolute left-2 top-2 z-10 rounded-md border bg-surface px-3 py-2 text-sm font-medium shadow"
+    <div className={expanded ? "flex min-h-0 flex-1 gap-3" : ""}>
+      <div
+        className={expanded
+          ? "relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border"
+          : "relative h-[26rem] min-h-48 resize-y overflow-hidden rounded-lg border"}
       >
-        {expanded ? "Sumažinti (Esc)" : "Padidinti"}
-      </button>
+        <div ref={container} className="h-full w-full" aria-label="Maršrutas žemėlapyje" />
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          aria-label={expanded ? "Sumažinti žemėlapį" : "Padidinti žemėlapį"}
+          className="absolute left-2 top-2 z-10 rounded-md border bg-surface px-3 py-2 text-sm font-medium shadow"
+        >
+          {expanded ? "Sumažinti (Esc)" : "Padidinti"}
+        </button>
+        {busy && <p role="status" className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-full border bg-surface px-3 py-1 text-sm shadow">
+          Skaičiuojamas maršrutas…
+        </p>}
+      </div>
+      {expanded && sidePanel && <aside aria-label="Sustojimai" className="w-80 shrink-0 overflow-y-auto rounded-lg border bg-surface p-3">
+        {sidePanel}
+      </aside>}
     </div>
     {onAddVia && <p className="mt-2 text-sm text-muted">
-      Pagriebkite maršruto liniją ir nutempkite – maršrutas eis per tą vietą. Tempiant kitur,
-      žemėlapis slenka. Mastelis: +/− mygtukai arba Ctrl + ratukas (telefone – du pirštai).
+      Pagriebkite maršruto liniją ir nutempkite – maršrutas eis per tą vietą (violetinis taškas).
+      Tempiant kitur, žemėlapis slenka. Mastelis: +/− mygtukai arba Ctrl + ratukas (telefone – du pirštai).
       Mygtukas „Padidinti“ atidaro žemėlapį per visą ekraną.
     </p>}
     {via.length > 0 && <ul className="mt-2 flex flex-wrap gap-2 text-sm">
@@ -443,3 +612,5 @@ export function RouteMap({
     </ul>}
   </div>;
 }
+
+export const RouteMap = memo(RouteMapView);

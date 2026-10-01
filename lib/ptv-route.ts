@@ -310,6 +310,39 @@ export function routeRequestUrl(
   return url.toString();
 }
 
+/**
+ * Žmogui rodomas adresas be PTV kaukių.
+ *
+ * Kai PTV pašto kodo nežino, jis rašo `*****` („***** Vilnius“, „2**** Hamburg“),
+ * o visas pavadinimas eina į lauką kaip yra. Pašto kodas rodomas tik tada, kai
+ * jis tikras ir pilnas; šalis pridedama, kad „Vilnius“ nepriklausytų nuo
+ * konteksto.
+ */
+export function placeLabel(location: Record<string, unknown>): string {
+  const address = (location.address ?? {}) as Record<string, unknown>;
+  const part = (key: string) => text(address[key])?.trim() ?? "";
+
+  const city = part("city");
+  if (city === "") {
+    // Neišskaidytas adresas: išmetami tik kaukių žodžiai, o likusi dalis lieka.
+    return (text(location.formattedAddress) ?? "")
+      .split(/\s+/)
+      .filter((word) => !word.includes("*"))
+      .join(" ")
+      .replace(/^[,\s]+|[,\s]+$/g, "");
+  }
+
+  const postalCode = part("postalCode");
+  const countryCode = part("countryCode");
+  // Pašto kodo paieška: „FR-51100 Reims“, kaip jį rašo vadybininkai.
+  if (text(location.locationType) === "POSTAL_CODE" && countryCode && postalCode && !postalCode.includes("*")) {
+    return `${countryCode}-${postalCode} ${city}`;
+  }
+  const street = [part("street"), part("houseNumber")].filter(Boolean).join(" ");
+  const locality = [postalCode.includes("*") ? "" : postalCode, city].filter(Boolean).join(" ");
+  return [street, locality, part("countryName")].filter(Boolean).join(", ");
+}
+
 function toPlace(row: unknown): GeocodedPlace | null {
   if (typeof row !== "object" || row === null) return null;
   const location = row as Record<string, unknown>;
@@ -321,7 +354,7 @@ function toPlace(row: unknown): GeocodedPlace | null {
   return {
     latitude,
     longitude,
-    formattedAddress: text(location.formattedAddress) ?? "",
+    formattedAddress: placeLabel(location),
     locationType: text(location.locationType) ?? "",
   };
 }

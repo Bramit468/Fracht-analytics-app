@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   firstPlace,
+  placeLabel,
   placeSuggestions,
   routeEstimate,
   routeFill,
@@ -51,6 +52,31 @@ const ROUTE = {
     { combinedTransport: { name: "Gedser - Rostock", type: "BOAT", accessType: "EXIT" } },
   ],
 };
+
+describe("placeLabel", () => {
+  const address = (fields: Record<string, string>) => ({ address: { countryName: "Lietuva", ...fields } });
+
+  it("kaukuotą pašto kodą (PTV „*****“) išmeta ir prideda šalį", () => {
+    expect(placeLabel({ formattedAddress: "***** Vilnius", ...address({ postalCode: "*****", city: "Vilnius" }) }))
+      .toBe("Vilnius, Lietuva");
+    expect(placeLabel({ formattedAddress: "2**** Hamburg", ...address({ postalCode: "2****", city: "Hamburg", countryName: "Vokietija" }) }))
+      .toBe("Hamburg, Vokietija");
+  });
+
+  it("tikras pašto kodas ir gatvė paliekami", () => {
+    expect(placeLabel(address({ street: "Gedimino prospektas", houseNumber: "9", postalCode: "01103", city: "Vilnius" })))
+      .toBe("Gedimino prospektas 9, 01103 Vilnius, Lietuva");
+  });
+
+  it("be išskaidyto adreso išmeta tik kaukių žodžius", () => {
+    expect(placeLabel({ formattedAddress: "01001* Vilnius" })).toBe("Vilnius");
+    expect(placeLabel({ formattedAddress: "Klaipėdos gatvė 45, 35218 Panevėžys" })).toBe("Klaipėdos gatvė 45, 35218 Panevėžys");
+  });
+
+  it("niekada neparodo žvaigždutės", () => {
+    expect(placeLabel({ formattedAddress: "*****", ...address({ postalCode: "*****", city: "Oslas" }) })).not.toContain("*");
+  });
+});
 
 describe("firstPlace", () => {
   it("paima koordinates ir tai, ką PTV suprato", () => {
@@ -359,5 +385,15 @@ describe("suggestedDays", () => {
     // Nulis parų reikštų, kad fura tą dieną nieko nekainavo.
     expect(suggestedDays(0.5)).toBe(1);
     expect(suggestedDays(0)).toBe(1);
+  });
+});
+
+describe("placeLabel pašto kodui", () => {
+  it("pašto kodo rezultatas rašomas „FR-51100 Reims“", () => {
+    expect(placeLabel({
+      formattedAddress: "51100 Reims",
+      locationType: "POSTAL_CODE",
+      address: { countryName: "Prancūzija", countryCode: "FR", postalCode: "51100", city: "Reims" },
+    })).toBe("FR-51100 Reims");
   });
 });

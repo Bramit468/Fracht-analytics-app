@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  FullscreenControl,
   Map as MapLibreMap,
   Marker,
   NavigationControl,
@@ -41,6 +40,19 @@ const DEFAULT_VISIBLE_LAYERS: Record<PtvMapLayer, boolean> = {
 function mapLayerId(layer: PtvMapLayer): string {
   return `ptv-${layer}`;
 }
+
+type Basemap = "roads" | "satellite";
+
+/** Vektorinis kelių žemėlapis (OpenFreeMap): be rakto, aiškūs keliai ir pavadinimai. */
+const ROADS_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+// Palydovinis vaizdas be kelių nepraktiškas, todėl ant viršaus dedami keliai ir vietovardžiai.
+const SATELLITE_LAYERS: { id: string; path: string; attribution?: string }[] = [
+  { id: "sat-imagery", path: "World_Imagery", attribution: "Esri, Maxar, Earthstar Geographics" },
+  { id: "sat-roads", path: "Reference/World_Transportation" },
+  { id: "sat-labels", path: "Reference/World_Boundaries_and_Places" },
+];
 
 /** Mažiau nei tiek pikselių nuvilkta linija laikoma paprastu spustelėjimu, o ne taško pridėjimu. */
 const MIN_DRAG_PX = 5;
@@ -90,6 +102,8 @@ export function RouteMap({
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [basemap, setBasemap] = useState<Basemap>("roads");
+  const basemapRef = useRef(basemap);
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_VISIBLE_LAYERS);
   const visibleLayersRef = useRef(visibleLayers);
   // Vaizdas pritaikomas tik pirmą kartą ir keičiant adresus; tempiant liniją
@@ -116,19 +130,7 @@ export function RouteMap({
 
     const map = new MapLibreMap({
       container: container.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            // Privaloma pagal OSM naudojimo sąlygas.
-            attribution: "&copy; OpenStreetMap",
-          },
-        },
-        layers: [{ id: "osm", type: "raster", source: "osm" }],
-      },
+      style: ROADS_STYLE,
       // Pradinė reikšmė, kurią iškart pakeičia `fitBounds`.
       center: [0, 50],
       zoom: 4,
@@ -138,18 +140,28 @@ export function RouteMap({
     mapRef.current = map;
 
     map.addControl(new NavigationControl(), "top-right");
-    // Per visą ekraną rodomas apvalkalas, ne tik žemėlapis, kad liktų ir sluoksnių
-    // pasirinkimas. MapLibre per visą ekraną pats išjungia cooperativeGestures.
-    const fullscreen = new FullscreenControl({ container: wrapper.current ?? undefined });
-    fullscreen.on("fullscreenstart", () => setExpanded(true));
-    fullscreen.on("fullscreenend", () => setExpanded(false));
-    map.addControl(fullscreen, "top-right");
-
     // Konteineris keičia dydį ir be lango: tempiamas kampas, visas ekranas.
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(container.current);
 
     map.on("load", () => {
+      // Palydovas guli virš vektorinio žemėlapio, bet po PTV sluoksniais ir maršrutu.
+      for (const { id, path, attribution } of SATELLITE_LAYERS) {
+        map.addSource(id, {
+          type: "raster",
+          tiles: [`${ESRI}/${path}/MapServer/tile/{z}/{y}/{x}`],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution,
+        });
+        map.addLayer({
+          id,
+          type: "raster",
+          source: id,
+          layout: { visibility: basemapRef.current === "satellite" ? "visible" : "none" },
+        });
+      }
+
       for (const { layer, opacity } of MAP_LAYERS) {
         const id = mapLayerId(layer);
         map.addSource(id, {
@@ -337,6 +349,37 @@ export function RouteMap({
   }, [ready, line, violations, via]);
 
   useEffect(() => {
+    basemapRef.current = basemap;
+    const map = mapRef.current;
+    if (!ready || !map) return;
+
+    for (const { id } of SATELLITE_LAYERS) {
+      map.setLayoutProperty(id, "visibility", basemap === "satellite" ? "visible" : "none");
+    }
+  }, [ready, basemap]);
+
+  // Per visą ekraną puslapio slinkti nebereikia, todėl ratukas keičia mastelį, o Esc grįžta.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (ready && map) {
+      if (expanded) map.cooperativeGestures.disable();
+      else map.cooperativeGestures.enable();
+    }
+    if (!expanded) return;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [ready, expanded]);
+
+  useEffect(() => {
     visibleLayersRef.current = visibleLayers;
     const map = mapRef.current;
     if (!map) return;
@@ -353,7 +396,7 @@ export function RouteMap({
 
   return <div
     ref={wrapper}
-    className={expanded ? "flex h-full flex-col bg-page p-3" : "mt-3"}
+    className={expanded ? "fixed inset-0 z-50 flex flex-col bg-page p-3" : "mt-3"}
   >
     <fieldset className="mb-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border bg-page px-3 py-2 text-sm">
       <legend className="px-1 font-medium text-ink">Žemėlapio sluoksniai</legend>
@@ -365,18 +408,30 @@ export function RouteMap({
         />
         {label}
       </label>)}
+      <label className="flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={basemap === "satellite"} onChange={(event) => setBasemap(event.target.checked ? "satellite" : "roads")} />
+        Palydovinis vaizdas
+      </label>
     </fieldset>
     <div
-      ref={container}
       className={expanded
-        ? "min-h-0 w-full flex-1 overflow-hidden rounded-lg border"
-        : "h-80 min-h-48 w-full resize-y overflow-hidden rounded-lg border"}
-      aria-label="Maršrutas žemėlapyje"
-    />
+        ? "relative min-h-0 flex-1 overflow-hidden rounded-lg border"
+        : "relative h-80 min-h-48 resize-y overflow-hidden rounded-lg border"}
+    >
+      <div ref={container} className="h-full w-full" aria-label="Maršrutas žemėlapyje" />
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        aria-label={expanded ? "Sumažinti žemėlapį" : "Padidinti žemėlapį"}
+        className="absolute left-2 top-2 z-10 rounded-md border bg-surface px-3 py-2 text-sm font-medium shadow"
+      >
+        {expanded ? "Sumažinti (Esc)" : "Padidinti"}
+      </button>
+    </div>
     {onAddVia && <p className="mt-2 text-sm text-muted">
       Pagriebkite maršruto liniją ir nutempkite – maršrutas eis per tą vietą. Tempiant kitur,
       žemėlapis slenka. Mastelis: +/− mygtukai arba Ctrl + ratukas (telefone – du pirštai).
-      Mygtukas viršuje dešinėje padidina žemėlapį per visą ekraną.
+      Mygtukas „Padidinti“ atidaro žemėlapį per visą ekraną.
     </p>}
     {via.length > 0 && <ul className="mt-2 flex flex-wrap gap-2 text-sm">
       {via.map((point, index) => <li key={`${point.latitude}-${point.longitude}`} className="flex items-center gap-2 rounded-lg border bg-surface px-2 py-1">

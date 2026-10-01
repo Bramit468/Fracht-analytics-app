@@ -175,6 +175,42 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
 }
 
 /**
+ * Ką siųsti į duomenų bazę (#161).
+ *
+ * Svorių stulpeliai atsirado su migracija `0010`. Kol ji nepaleista, PostgREST
+ * atmeta **visą** įrašą, jei jame yra nežinomas stulpelis — net kai reikšmė
+ * tuščia. Taip nuo #117 nebuvo galima nei pridėti, nei pataisyti nė vienos
+ * furos, nors svoriai yra tik papildoma informacija.
+ *
+ * Todėl tuščias svoris nesiunčiamas ten, kur jo nebuvimas nieko nepakeičia:
+ *
+ * - kuriant furą (`existingColumns === null`) — tuščia ir taip yra numatytoji
+ *   reikšmė;
+ * - taisant, kai stulpelio dar nėra — nėra ką išvalyti.
+ *
+ * Jei stulpelis jau yra, tuščia reikšmė **siunčiama**: kitaip išvalytas svoris
+ * tyliai liktų senas, ir PTV skaičiuotų pagal jį.
+ */
+export function truckPayload(
+  value: TruckInsert,
+  existingColumns: ReadonlySet<string> | null,
+): Partial<TruckInsert> {
+  const payload: Partial<TruckInsert> = { ...value };
+
+  for (const field of WEIGHT_FIELDS) {
+    const known = existingColumns === null ? false : existingColumns.has(field);
+    if (value[field] === null && !known) delete payload[field];
+  }
+
+  return payload;
+}
+
+/** PostgREST / Postgres klaida, kai užklausoje yra neegzistuojantis stulpelis. */
+export function isMissingColumnError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "42703" || error?.code === "PGRST204";
+}
+
+/**
  * Įrašytą furą paverčia formos reikšmėmis — taisymo formai užpildyti (#39).
  *
  * Sumos grąžinamos į eurus tokiu pavidalu, kokį `parseTruckForm` perskaito
@@ -190,7 +226,9 @@ export function truckRowToFormValues(row: TruckInsert): TruckFormValues {
       values[field] = String(row.working_days_per_month);
     } else if (field === "empty_weight_kg" || field === "total_permitted_weight_kg") {
       // Nežinomas svoris lieka tuščias laukas, o ne „0“ — nulis būtų netiesa.
-      values[field] = row[field] === null ? "" : String(row[field]);
+      // `undefined` – kai duomenų bazė dar neturi stulpelio (0010 nepaleista):
+      // be šito lauke atsirastų žodis „undefined“ (#161).
+      values[field] = row[field] == null ? "" : String(row[field]);
     } else {
       values[field] = centsToInput(row[field]);
     }

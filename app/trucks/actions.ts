@@ -4,8 +4,10 @@ import { refresh } from "next/cache";
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import {
+  isMissingColumnError,
   parseTruckForm,
   readTruckFormValues,
+  truckPayload,
   type TruckFormErrors,
   type TruckFormValues,
 } from "@/lib/truck";
@@ -85,11 +87,36 @@ export async function saveTruck(
     };
   }
 
+  // Taisant pirma žiūrima, kokius stulpelius duomenų bazė jau turi: kol
+  // migracija 0010 nepaleista, tuščių svorių siųsti negalima (#161).
+  let existingColumns: ReadonlySet<string> | null = null;
+  if (truckId) {
+    const { data: current } = await supabase
+      .from("trucks")
+      .select("*")
+      .eq("id", truckId)
+      .maybeSingle();
+    existingColumns = new Set(Object.keys(current ?? {}));
+  }
+
+  const payload = truckPayload(parsed.value, existingColumns);
+
   // `select` grąžina paliestas eilutes: taip matyti, ar taisoma fura apskritai
   // pasiekiama, o ne tik ar užklausa nenulūžo.
   const { data, error } = truckId
-    ? await supabase.from("trucks").update(parsed.value).eq("id", truckId).select("id")
-    : await supabase.from("trucks").insert(parsed.value).select("id");
+    ? await supabase.from("trucks").update(payload).eq("id", truckId).select("id")
+    : await supabase.from("trucks").insert(payload).select("id");
+
+  if (isMissingColumnError(error)) {
+    console.error("Duomenų bazei trūksta stulpelio", error);
+    return {
+      status: "error",
+      message:
+        "Duomenų bazėje dar nėra svorių stulpelių — Supabase paleiskite migraciją 0010. " +
+        "Iki tol svorių laukus palikite tuščius, ir fura išsisaugos.",
+      values,
+    };
+  }
 
   if (error?.code === UNIQUE_VIOLATION) {
     return {
@@ -244,6 +271,16 @@ export async function saveTruckWeights(
   );
 
   const failed = results.filter((result) => result.error !== null);
+
+  // Kol migracija 0010 nepaleista, svorių stulpelių nėra visai — pasakome
+  // tiesiai, ką daryti, o ne „nepavyko įrašyti“ prie kiekvienos furos (#161).
+  if (failed.some((result) => isMissingColumnError(result.error))) {
+    return {
+      status: "error",
+      message: "Duomenų bazėje dar nėra svorių stulpelių — Supabase paleiskite migraciją 0010.",
+      values,
+    };
+  }
 
   if (failed.length > 0) {
     for (const result of failed) {

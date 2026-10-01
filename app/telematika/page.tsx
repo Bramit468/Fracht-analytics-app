@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 
+import { costInsights, MIN_KM_FOR_CONSUMPTION, type Insight } from "@/lib/cost-insights";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
+import { todayInVilnius } from "@/lib/local-date";
 import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
@@ -14,33 +16,32 @@ import {
   type Supply,
   type SupplyIssues,
 } from "@/lib/telematics-costs";
-import {
-  fuelPricesByCountry,
-  fuelPricesByMonth,
-  savingsAtCheapestCents,
-} from "@/lib/fuel-prices";
+import { fuelPricesByCountry, fuelPricesByMonth } from "@/lib/fuel-prices";
 
 import { ArchiveButton } from "./archive-button";
 import { ExportButtons } from "./export-buttons";
 
 export const metadata: Metadata = {
-  title: "Faktiniai kaštai | Bramit",
+  title: "Analizė | Bramit",
 };
 
 const DIENU_PAGAL_NUTYLEJIMA = 30;
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** Laikotarpis iš adreso, o be jo – paskutinės 30 dienų. */
+/**
+ * Laikotarpis iš adreso, o be jo – paskutinės 30 dienų. „Šiandien“ – Vilniaus
+ * laiku: serveris dirba UTC, ir po vidurnakčio laikotarpis baigtųsi vakar.
+ */
 function readRange(params: Record<string, string | string[] | undefined>) {
   const one = (name: string) => {
     const value = params[name];
     return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
   };
-  const to = one("to") ?? isoDate(new Date());
-  const from = one("from") ?? isoDate(new Date(Date.now() - DIENU_PAGAL_NUTYLEJIMA * 86_400_000));
+  const to = one("to") ?? todayInVilnius();
+  const from =
+    one("from") ??
+    new Date(Date.parse(`${to}T00:00:00Z`) - DIENU_PAGAL_NUTYLEJIMA * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
   return from <= to ? { from, to } : { from: to, to: from };
 }
 
@@ -131,7 +132,7 @@ export default async function TelematikaPage({
 
   const kuroSalys = fuelPricesByCountry(supplies ?? []);
   const kuroMenesiai = fuelPricesByMonth(supplies ?? []);
-  const galimaSutaupyti = savingsAtCheapestCents(kuroSalys);
+  const isvados = costInsights(eilutes, kuroSalys);
 
   const bendra = {
     km: eilutes.reduce((t, r) => t + r.km, 0),
@@ -145,11 +146,10 @@ export default async function TelematikaPage({
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
       <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Faktiniai kaštai</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Analizė</h1>
         <p className="text-sm text-muted">
-          Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų. „Iš viso“
-          apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra: telematika
-          jų su fura nesieja.
+          Faktiniai kaštai ir kur galima sutaupyti. Kilometrai ir kuras – iš vilkikų skaitiklių,
+          kaštai – iš tikrų pirkimų.
         </p>
       </header>
 
@@ -180,18 +180,22 @@ export default async function TelematikaPage({
         </button>
       </form>
 
-      <section className="flex flex-col gap-2 rounded-lg border border-line p-4 ">
-        <p className="text-sm text-muted">
-          Telematika laiko tik paskutinius ~3 mėnesius. Išsaugoti duomenys lieka pas jus
-          ir tada, kai tiekėjas juos pamirš.
-        </p>
-        <ArchiveButton />
-      </section>
-
       {klaida && (
         <p role="alert" className="text-sm text-bad">
           {klaida}
         </p>
+      )}
+
+      {eilutes.length > 0 && <Isvados isvados={isvados} />}
+
+      {eilutes.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-medium">Kaštai pagal furą</h2>
+          <p className="text-sm text-muted">
+            „Iš viso“ apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra:
+            telematika jų su fura nesieja.
+          </p>
+        </div>
       )}
 
       {eilutes.length > 0 && (
@@ -302,14 +306,6 @@ export default async function TelematikaPage({
             </table>
           </div>
 
-          {galimaSutaupyti > 0 && (
-            <p className="rounded-lg bg-warn-soft p-3 text-sm text-warn">
-              Jei visas kuras būtų pirktas pigiausios šalies kaina, laikotarpio sąskaita būtų{" "}
-              <strong>{formatCents(galimaSutaupyti)}</strong> mažesnė. Tai ne pažadas, o dydžio
-              matas: dalis pylimų neišvengiami ten, kur fura tuo metu yra.
-            </p>
-          )}
-
           {kuroMenesiai.length > 1 && (
             <p className="text-sm text-muted">
               Kaina per mėnesius:{" "}
@@ -348,6 +344,56 @@ export default async function TelematikaPage({
           šiek tiek skiriasi.
         </p>
       )}
+
+      <section className="flex flex-col gap-2 rounded-lg border border-line p-4">
+        <p className="text-sm text-muted">
+          Telematika laiko tik paskutinius ~3 mėnesius. Išsaugoti duomenys lieka pas jus
+          ir tada, kai tiekėjas juos pamirš.
+        </p>
+        <ArchiveButton />
+      </section>
     </main>
+  );
+}
+
+/**
+ * Išvados viršuje, nes dėl jų puslapis ir atidaromas (#171). Sumos nesudedamos
+ * į vieną „galite sutaupyti“: furos kaina ir šalies kaina iš dalies persidengia.
+ */
+function Isvados({ isvados }: { isvados: Insight[] }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-lg font-medium">Kur galima sutaupyti</h2>
+      {isvados.length === 0 ? (
+        <p className="text-sm text-muted">
+          Šiam laikotarpiui išsiskiriančių furų ar brangių pylimų nerasta.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {isvados.map((isvada) => (
+            <li
+              key={`${isvada.kind}-${isvada.plate ?? ""}`}
+              className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
+            >
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">{isvada.title}</p>
+                <p className="text-sm text-muted">{isvada.detail}</p>
+              </div>
+              <p className="shrink-0 text-right">
+                <span className="block text-lg font-semibold tabular-nums text-bad">
+                  {formatCents(isvada.cents)}
+                </span>
+                <span className="text-xs text-muted">per laikotarpį</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-muted">
+        Sumos – dydžio matas, ne pažadas: furos veža skirtingus krovinius skirtingais keliais.
+        Sąnaudos lyginamos tik furų, nuvažiavusių bent{" "}
+        {MIN_KM_FOR_CONSUMPTION.toLocaleString("lt-LT")} km.
+      </p>
+    </section>
   );
 }

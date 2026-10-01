@@ -24,7 +24,8 @@ Next-specific code.
 
 ## Layout
 
-- `app/` holds routes: `trips/`, `trucks/` (incl. `kastai/` bulk costs),
+- `app/` holds routes: `trips/`, `trucks/` (list, bulk costs and weights as
+  `?skiltis=` tabs; `kastai/` only redirects),
   `telematika/`, `imone/` (company + invitations), `api/`, `auth/`, `login/`.
 - `lib/` holds pure business logic, each file next to its `*.test.ts`:
   `calc`, `money`, `telematics-*`, `ptv-*`, `dashboard`, `ferry-pricing`, etc.

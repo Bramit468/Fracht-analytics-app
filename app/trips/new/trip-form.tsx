@@ -1144,7 +1144,7 @@ export function TripForm({
         {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
           Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura — greičiausiai
           nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
-          <Link href="/trucks/kastai" className="font-semibold underline">Patikslinti kaštus</Link>
+          <Link href="/trucks?skiltis=kastai" className="font-semibold underline">Patikslinti kaštus</Link>
         </p>}
 
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">

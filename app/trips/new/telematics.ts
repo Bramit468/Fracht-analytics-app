@@ -11,6 +11,7 @@ import {
 } from "@/lib/telematics-costs";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { canUseTelematics } from "@/lib/telematics-access";
 
 export type TelematicsFillResult =
   | {
@@ -47,6 +48,10 @@ export async function fetchTelematicsFill(
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) {
     return { ok: false, message: "Prisijunkite iš naujo." };
+  }
+
+  if (!(await canUseTelematics(supabase))) {
+    return { ok: false, message: "Telematika šiai įmonei neprijungta." };
   }
 
   if (!plate || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {

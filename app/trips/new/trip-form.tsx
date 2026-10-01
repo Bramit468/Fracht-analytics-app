@@ -933,9 +933,26 @@ export function TripForm({
           <label>Norima marža (%)<input type="number" step="0.5" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
         </div>
         {routeLookup && <div className="mt-3">
-          <button type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
-            {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
-          </button>
+          {/* Maršrutas skaičiuojamas čia pat prie adresų, be jokių išskleidžiamų skiltių. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
+              {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
+            </button>
+            <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
+              {skaiciuoja ? "Skaičiuojama…" : marsrutoLinija.length > 0 ? "Perskaičiuoti maršrutą" : "Skaičiuoti maršrutą"}
+            </button>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={vengtiKeltu} onChange={(event) => setVengtiKeltu(event.target.checked)} />
+              Vengti keltų
+            </label>
+          </div>
+          {/* Rezultatas čia pat: keičiasi kartu su maršrutu (tempiant, keičiant sustojimus). */}
+          {santrauka && <dl aria-live="polite" className={`mt-3 grid gap-x-6 gap-y-1 text-sm tabular-nums sm:grid-cols-4 ${skaiciuoja ? "opacity-60" : ""}`}>
+            <div><dt className="text-muted">Atstumas</dt><dd className="font-semibold">{Math.round(santrauka.km).toLocaleString("lt-LT")} km</dd></div>
+            <div><dt className="text-muted">Kelio laikas (PTV)</dt><dd className="font-semibold">{durationText(santrauka.travelMinutes)}{santrauka.delayMinutes > 0 && ` (+${santrauka.delayMinutes} min. eismas)`}</dd></div>
+            <div><dt className="text-muted">Siūlomos paros</dt><dd className="font-semibold">{santrauka.days}</dd></div>
+            <div><dt className="text-muted">Keliai</dt><dd className="font-semibold">{formatCents(santrauka.tollCents)}</dd></div>
+          </dl>}
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
             {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
           </ul>}
@@ -1031,22 +1048,6 @@ export function TripForm({
           {marsrutoTrukmei && <TripDurationPanel km={marsrutoTrukmei.km} departure={marsrutoTrukmei.departure} />}
         </div>}
           {routeLookup && <div className="mt-3 rounded-xl border p-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <button type="button" disabled={skaiciuoja} onClick={() => void fillFromRoute()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
-                {skaiciuoja ? "Skaičiuojama…" : marsrutoLinija.length > 0 ? "Perskaičiuoti maršrutą" : "Skaičiuoti maršrutą"}
-              </button>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={vengtiKeltu} onChange={(event) => setVengtiKeltu(event.target.checked)} />
-                Vengti keltų
-              </label>
-            </div>
-            {/* Rezultatas čia pat: keičiasi kartu su maršrutu (tempiant, keičiant sustojimus). */}
-            {santrauka && <dl aria-live="polite" className={`mt-3 grid gap-x-6 gap-y-1 text-sm tabular-nums sm:grid-cols-4 ${skaiciuoja ? "opacity-60" : ""}`}>
-              <div><dt className="text-muted">Atstumas</dt><dd className="font-semibold">{Math.round(santrauka.km).toLocaleString("lt-LT")} km</dd></div>
-              <div><dt className="text-muted">Kelio laikas (PTV)</dt><dd className="font-semibold">{durationText(santrauka.travelMinutes)}{santrauka.delayMinutes > 0 && ` (+${santrauka.delayMinutes} min. eismas)`}</dd></div>
-              <div><dt className="text-muted">Siūlomos paros</dt><dd className="font-semibold">{santrauka.days}</dd></div>
-              <div><dt className="text-muted">Keliai</dt><dd className="font-semibold">{formatCents(santrauka.tollCents)}</dd></div>
-            </dl>}
             {/* PTV kuro įvertis – papildoma informacija, ne kainos dalis, todėl
                 laikomas čia, o ne pagrindiniame vaizde (#159). Pelnas
                 skaičiuojamas pagal formos normą, kol jos sąmoningai nepakeisi. */}

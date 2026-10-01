@@ -243,6 +243,10 @@ export async function runRouteLookup(
     if (cause instanceof PtvError) {
       console.error("PTV atmetė užklausą", cause.status, cause.body);
 
+      // PTV dienos limitą grąžina 403, bet raktas čia geras: žinutė turi pasakyti tiesą.
+      if (cause.body.includes("QUOTA_EXCEEDED") || cause.status === 429) {
+        return { ok: false, message: "Pasiektas PTV užklausų limitas (dienos arba mėnesio). Maršrutų skaičiavimas veiks, kai limitas atsinaujins." };
+      }
       if (cause.status === 401 || cause.status === 403) {
         return {
           ok: false,

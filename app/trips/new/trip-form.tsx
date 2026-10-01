@@ -587,9 +587,8 @@ export function TripForm({
       const ispejimai = [
         result.violated && result.violations.length === 0 ? "PTV nerado vilkikui tinkamo kelio – patikrinkite maršrutą." : "",
         result.approximate ? "Adresas rastas tik iki miesto, tad km apytiksliai." : "",
-        needsFerryPrice && publicFare
-          ? `Kelto ${publicFare.route} viešo tarifo įvertis ${formatCents(publicFare.totalCents)} įtrauktas (${publicFare.billedMetres} m, ${publicFare.load === "loaded" ? "pakrauta" : "tuščia"}).`
-          : "",
+        // Viešo kelto tarifo įvertis rodomas kelto skiltyje žemiau — čia jo
+        // nekartojame (#159).
         needsFerryPrice && !publicFare
           ? `Keltas aptiktas${result.ferryNames.length ? ` (${result.ferryNames.join(", ")})` : ""}, bet automatinio tarifo nėra — įrašykite kainą lauke „Keltai (€)“.`
           : "",
@@ -604,14 +603,13 @@ export function TripForm({
       const shownFerryCents = publicFare?.totalCents ?? result.ferriesCents;
       const shownTollCents = result.bridgesCents + shownFerryCents + result.tunnelsCents;
 
+      // Viena trumpa eilutė (#159): kelio suskaidymas į tiltus, keltus ir
+      // tunelius matomas laukuose skiltyje „Pakeisti ranka“, o paros jau
+      // įrašytos pačios ir jų šaltinis parašytas prie lauko.
       setMarsrutas(
-        `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km)} km, `
-        + `kelionė ${durationText(result.travelMinutes)} (${result.trafficMode === "REALISTIC" ? "gyvas eismas" : "tipinis eismas"}), `
-        + `eismo vėlavimas ${result.trafficDelayMinutes} min., `
-        + `keliai / tiltai ${formatCents(result.bridgesCents)}, `
-        + `keltai ${needsFerryPrice && !publicFare ? "kaina nežinoma" : formatCents(shownFerryCents)}, tuneliai ${formatCents(result.tunnelsCents)}. `
-        + `Iš viso ${needsFerryPrice && !publicFare ? "bus aišku įvedus kelto kainą" : formatCents(shownTollCents)}. Siūloma trukmė ${result.days} par. – `
-        + `įrašykite patys, jei sutinkate. ${ispejimai}`.trim(),
+        `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km).toLocaleString("lt-LT")} km, `
+        + `keliai ${needsFerryPrice && !publicFare ? "— kelto kaina nežinoma" : formatCents(shownTollCents)}. `
+        + ispejimai,
       );
 
       return {
@@ -794,7 +792,6 @@ export function TripForm({
           <button type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
             {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
           </button>
-          <p className="mt-2 text-sm text-muted">Kilometrai ir keliai suskaičiuojami 40 t vilkikui, ne lengvajam. Kita užpildoma pati; tai, kas spėjama, parašyta žemiau.</p>
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
             {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
           </ul>}
@@ -846,45 +843,12 @@ export function TripForm({
             Šiam maršrutui arba ilgiui automatinio tarifo nėra. Kelto kainą įrašykite ranka.
           </p>}
           <p className="mt-2 text-xs text-muted">
-            Scandlines viešo krovininio tarifo įvertis ({SCANDLINES_TARIFF_PERIOD}), be PVM. Sutartinė kaina ir ADR, pločio ar svorio priemokos gali skirtis. {" "}
-            <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Bazinis tarifas</a>{" · "}
+            Scandlines viešas tarifas ({SCANDLINES_TARIFF_PERIOD}), be PVM; sutartinė kaina gali skirtis.{" "}
+            <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Tarifas</a>{" · "}
             <a href={SCANDLINES_SURCHARGE_URL} target="_blank" rel="noreferrer" className="underline">Priemokos</a>
           </p>
         </div>}
         {routeLookup && <div className="mt-3">
-
-          {emisijos && <div className="mt-3 rounded-lg border bg-surface p-3 text-sm">
-            <p className="font-semibold">PTV kuro įvertis pagal maršrutą</p>
-            <p className="mt-1 tabular-nums">
-              {emisijos.fuelLitres.toFixed(0)} l
-              {emisijos.litresPer100Km !== null && ` (${emisijos.litresPer100Km.toFixed(1)} l/100 km)`}
-              {" · CO₂e "}{emisijos.co2eWellToWheelTonnes.toFixed(2)} t
-              <span className="text-muted"> (iš jų važiuojant {emisijos.co2eTankToWheelTonnes.toFixed(2)} t)</span>
-            </p>
-            <p className="mt-1 text-muted">
-              {emisijuSvoriai
-                ? "Skaičiuota pagal nurodytus svorius ir kelio profilį."
-                : "Svoriai nenurodyti, tad PTV ėmė numatytuosius. Įrašykite furos svorius ir krovinį — įvertis pasikeis."}
-            </p>
-            {/* Pelnas ir toliau skaičiuojamas pagal įvestą normą. PTV skaičių
-                galima perimti tik sąmoningai, kad formulė nepasikeistų tyliai. */}
-            <button
-              type="button"
-              onClick={() => {
-                const field = formRef.current?.elements.namedItem("fuel_l_per_100km");
-                if (field instanceof HTMLInputElement && emisijos.litresPer100Km !== null) {
-                  field.value = emisijos.litresPer100Km.toFixed(2);
-                  setResult(null);
-                  setSaved("");
-                }
-              }}
-              disabled={emisijos.litresPer100Km === null}
-              className="mt-2 underline disabled:opacity-50"
-            >
-              Įrašyti į „Kuro sąnaudos“
-            </button>
-            <span className="ml-2 text-muted">Pelnas skaičiuojamas pagal įvestą normą, kol jos nepakeisite.</span>
-          </div>}
           {marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 rounded-lg border border-warn bg-warn-soft p-4 text-sm text-ink">
             <p className="font-semibold">PTV aptiko maršruto apribojimų:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -927,6 +891,29 @@ export function TripForm({
                 Vengti keltų
               </label>
             </div>
+            {/* PTV kuro įvertis – papildoma informacija, ne kainos dalis, todėl
+                laikomas čia, o ne pagrindiniame vaizde (#159). Pelnas
+                skaičiuojamas pagal formos normą, kol jos sąmoningai nepakeisi. */}
+            {emisijos && <p className="mt-3 text-sm tabular-nums">
+              PTV kuro įvertis: {emisijos.fuelLitres.toFixed(0)} l
+              {emisijos.litresPer100Km !== null && ` (${emisijos.litresPer100Km.toFixed(1)} l/100 km)`}
+              {" · CO₂e "}{emisijos.co2eWellToWheelTonnes.toFixed(2)} t
+              {!emisijuSvoriai && <span className="text-muted"> · be furos svorių</span>}
+              {emisijos.litresPer100Km !== null && <button
+                type="button"
+                onClick={() => {
+                  const field = formRef.current?.elements.namedItem("fuel_l_per_100km");
+                  if (field instanceof HTMLInputElement && emisijos.litresPer100Km !== null) {
+                    field.value = emisijos.litresPer100Km.toFixed(2);
+                    setResult(null);
+                    setSaved("");
+                  }
+                }}
+                className="ml-2 underline"
+              >
+                Naudoti
+              </button>}
+            </p>}
           {/* Skirtumas tarp PTV siūlomų kelių yra pinigai: tas pats Panevėžys–
               Oslas gali skirtis 133 € vien mokesčiais (#84). */}
           <div className="mt-4 border-t pt-3">
@@ -1031,7 +1018,6 @@ export function TripForm({
               >
                 Įrašyti {tvarkarastis.days} par. į trukmę
               </button>
-              <span className="ml-2 text-muted">Kol neįrašysite, kaštai skaičiuojami pagal formoje esančią trukmę.</span>
             </div>}
           </div>
 
@@ -1048,7 +1034,6 @@ export function TripForm({
             </span>}
           </label>)}
         </div>
-        <p className="mt-2 text-sm text-muted">Išvykimo laikas naudojamas PTV eismui ir kelių apribojimams. Be datos PTV skaičiuoja išvykstant dabar. Paros lemia furos kaštus — jie skaičiuojami už kiekvieną parą, net stovint.</p>
       </Skiltis>
 
       <Skiltis numeris={3} antraste="Kiek išleis">
@@ -1064,9 +1049,10 @@ export function TripForm({
             {pildoma ? "Imama…" : "Užpildyti iš telematikos"}
           </button>
         </div>
-        <p className="mt-2 text-sm text-muted">Paims tikrus tos furos km, kurą ir sumokėtus kelius per nurodytą laikotarpį.</p>
         {telematika && <p role="status" className="mt-2 text-sm text-ink">{telematika}</p>}
-        <p className="mt-3 text-sm text-muted">Vairuotojo, draudimo, nusidėvėjimo ir priekabos kaštai imami iš furos paros savikainos — atskirai vesti nereikia.</p>
+        {/* Vienintelis paaiškinimas, kurį verta palikti: be jo žmogus ieško,
+            kur įvesti vairuotojo atlyginimą, ir gali jį įskaičiuoti dukart. */}
+        <p className="mt-3 text-sm text-muted">Vairuotojas, draudimas ir nusidėvėjimas — jau furos paros savikainoje.</p>
       </Skiltis>
 
       <Skiltis numeris={4} antraste="Kiek gaus">
@@ -1081,7 +1067,7 @@ export function TripForm({
           todėl skiltis suskleista ir nebeblaško. */}
       <details className="rounded-xl border p-4">
         <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis</summary>
-        <p className="mt-2 text-sm text-muted">Reikalinga tik tada, kai kelių kaina skaičiuojama pagal šalių įkainius. Suvedus tikrus mokesčius, čia lieka viena „Nemokami“ eilutė su visais kilometrais.</p>
+        <p className="mt-2 text-sm text-muted">Tik kai keliai skaičiuojami pagal šalių įkainius.</p>
         <div className="mt-3 space-y-3">
           {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
           <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
@@ -1091,7 +1077,7 @@ export function TripForm({
         </div>
       </details>
 
-      <div className="flex gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+      <div className="flex gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti pelną</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
 
       {error && <p role="alert" className="text-bad">{error}</p>}
       {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
@@ -1136,10 +1122,11 @@ export function TripForm({
           {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
 
-        {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Būtent jo
-            reikia kalbant su užsakovu, o ne ką tik suvestos kainos pelno. */}
-        <div className="mt-4 border-t pt-4">
-          <h3 className="font-semibold">Kiek prašyti</h3>
+        {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Kai pajamų
+            nėra, kaina jau parodyta antraštėje — antrą kartą jos nekartojame
+            (#159). Tuščio skyriaus su linija be turinio irgi nerodome. */}
+        {(!bePajamu || istorija) && <div className="mt-4 border-t pt-4">
+          {!bePajamu && <h3 className="font-semibold">Kiek prašyti</h3>}
           {!bePajamu && <div className="mt-2 flex flex-wrap items-end gap-3">
             <label className="text-sm">
               Norima marža (%)
@@ -1165,9 +1152,6 @@ export function TripForm({
               );
             })()}
           </div>}
-          <p className="mt-2 text-sm text-muted">
-            Marža skaičiuojama nuo sąskaitos sumos, ne nuo kaštų: 20 % prie 800 € kaštų yra 1 000 €, ne 960 €.
-          </p>
 
           {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
               kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
@@ -1187,13 +1171,13 @@ export function TripForm({
               </span>
               {istorija.medianMarginPercent !== null && <span className="text-muted"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
             </p>
-            <p className="mt-1 text-muted">
-              {istorija.matchType === "route"
-                ? "Mediana, ne vidurkis: vienas keistas reisas jos nepatraukia."
-                : "Tiksliai šios krypties dar nebuvo — tai kitų reisų į tą pačią vietą kainos, tad tik atskaitos taškas."}
-            </p>
+            {/* Tik tada, kai tai ne ta pati kryptis: kitaip žmogus palaikytų
+                kitos krypties kainas šios krypties kaina. */}
+            {istorija.matchType !== "route" && <p className="mt-1 text-muted">
+              Šios krypties dar nebuvo — tai kitų reisų į tą pačią vietą kainos.
+            </p>}
           </div>}
-        </div>
+        </div>}
       </section>}
     </fieldset>
   </form>;

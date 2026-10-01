@@ -8,6 +8,12 @@
 
 import type { Truck as CalcTruck, TruckDailyCosts } from "./calc";
 import { centsToInput, parseEuroToCents } from "./money";
+import {
+  parseTruckProfile,
+  profileToFormValues,
+  PROFILE_FIELD_NAMES,
+  type TruckProfileField,
+} from "./truck-profile";
 import type { TruckInsert } from "../types/truck";
 
 type CentsColumn = Extract<keyof TruckInsert, `${string}_cents`>;
@@ -60,7 +66,21 @@ export const TRUCK_FORM_FIELDS: readonly TruckFormField[] = [
   "trailer_monthly_cents",
   "working_days_per_month",
   ...WEIGHT_FIELDS,
+  ...PROFILE_FIELD_NAMES,
 ];
+
+/**
+ * Stulpeliai, kurių duomenų bazė gali dar neturėti: svoriai atsirado su `0010`,
+ * kortelė – su `0011`. Tušti jie nesiunčiami, kol stulpelio nėra (#161, #164).
+ */
+const OPTIONAL_COLUMNS: readonly (TruckWeightField | TruckProfileField)[] = [
+  ...WEIGHT_FIELDS,
+  ...PROFILE_FIELD_NAMES,
+];
+
+function isProfileField(field: TruckFormField): field is TruckProfileField {
+  return (PROFILE_FIELD_NAMES as readonly string[]).includes(field);
+}
 
 export const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
 
@@ -158,6 +178,11 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
     errors.empty_weight_kg = "Tuščias vilkikas negali sverti daugiau už leistiną bendrą masę.";
   }
 
+  // Kortelė (#164) tikrinama savo taisyklėmis, bet klaidos rodomos kartu su
+  // visomis kitomis — kad žmogui nereikėtų siųsti formos kelis kartus.
+  const profile = parseTruckProfile(values);
+  Object.assign(errors, profile.errors);
+
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
@@ -165,6 +190,7 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
   return {
     ok: true,
     value: {
+      ...profile.value,
       plate,
       ...daily,
       trailer_monthly_cents: trailerMonthly,
@@ -197,9 +223,10 @@ export function truckPayload(
 ): Partial<TruckInsert> {
   const payload: Partial<TruckInsert> = { ...value };
 
-  for (const field of WEIGHT_FIELDS) {
+  // Tas pats galioja ir kortelės laukams iš `0011` (#164).
+  for (const field of OPTIONAL_COLUMNS) {
     const known = existingColumns === null ? false : existingColumns.has(field);
-    if (value[field] === null && !known) delete payload[field];
+    if (value[field] == null && !known) delete payload[field];
   }
 
   return payload;
@@ -218,9 +245,13 @@ export function isMissingColumnError(error: { code?: string } | null | undefined
  * ženklu nebeperskaitoma.
  */
 export function truckRowToFormValues(row: TruckInsert): TruckFormValues {
-  const values: TruckFormValues = {};
+  // Kortelė turi savo tipus (datos, pasirinkimai, kableliai), todėl jos
+  // laukus verčia `truck-profile` (#164).
+  const values: TruckFormValues = { ...profileToFormValues(row) };
   for (const field of TRUCK_FORM_FIELDS) {
-    if (field === "plate") {
+    if (isProfileField(field)) {
+      continue;
+    } else if (field === "plate") {
       values[field] = row.plate;
     } else if (field === "working_days_per_month") {
       values[field] = String(row.working_days_per_month);

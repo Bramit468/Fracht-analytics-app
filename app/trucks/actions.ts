@@ -112,8 +112,8 @@ export async function saveTruck(
     return {
       status: "error",
       message:
-        "Duomenų bazėje dar nėra svorių stulpelių — Supabase paleiskite migraciją 0010. " +
-        "Iki tol svorių laukus palikite tuščius, ir fura išsisaugos.",
+        "Duomenų bazėje dar nėra naujų furos laukų — Supabase paleiskite migracijas 0010 ir 0011. " +
+        "Iki tol užpildykite tik numerį ir kaštus, ir fura išsisaugos.",
       values,
     };
   }

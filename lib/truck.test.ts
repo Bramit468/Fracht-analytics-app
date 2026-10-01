@@ -13,6 +13,7 @@ import {
   truckRowToFormValues,
   type TruckFormValues,
 } from "./truck";
+import { PROFILE_FIELD_NAMES } from "./truck-profile";
 
 /** Vilkikas NNN 888 iš Omniva Excel'io, taip kaip vartotojas jį įvestų. */
 const OMNIVA_FORM: TruckFormValues = {
@@ -31,7 +32,12 @@ const OMNIVA_FORM: TruckFormValues = {
   // Svoriai nežinomi: forma turi juos priimti tuščius (#86).
   empty_weight_kg: "",
   total_permitted_weight_kg: "",
+  // Kortelė neužpildyta – taip, kaip ją siunčia nepaliesta forma (#164).
+  ...Object.fromEntries(PROFILE_FIELD_NAMES.map((field) => [field, ""])),
 };
+
+/** Neužpildyta kortelė po patikros: visi laukai `null`, ne tuščias tekstas. */
+const EMPTY_PROFILE = Object.fromEntries(PROFILE_FIELD_NAMES.map((field) => [field, null]));
 
 describe("parseTruckForm", () => {
   it("Omniva fura: eurai paverčiami centais", () => {
@@ -54,6 +60,7 @@ describe("parseTruckForm", () => {
         working_days_per_month: 22,
         empty_weight_kg: null,
         total_permitted_weight_kg: null,
+        ...EMPTY_PROFILE,
       },
     });
   });

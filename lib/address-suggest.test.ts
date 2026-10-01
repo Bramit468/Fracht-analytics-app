@@ -9,6 +9,14 @@ describe("parseSuggestions", () => {
     expect(parseSuggestions({ suggestions: [HAMBURGAS] })).toEqual([HAMBURGAS]);
   });
 
+  it("išmeta kaukuotus pašto kodus su žvaigždute", () => {
+    const [row] = parseSuggestions({
+      suggestions: [{ caption: "01001* Vilnius", subCaption: "Lietuva ***** Vilniaus", searchText: "x" }],
+    });
+    expect(row.caption).toBe("Vilnius");
+    expect(row.subCaption).toBe("Lietuva Vilniaus");
+  });
+
   it("praleidžia įrašus be pavadinimo arba be paieškos teksto", () => {
     const payload = {
       suggestions: [
@@ -36,5 +44,17 @@ describe("parseSuggestions", () => {
     expect(parseSuggestions(null)).toEqual([]);
     expect(parseSuggestions({})).toEqual([]);
     expect(parseSuggestions({ suggestions: "ne sąrašas" })).toEqual([]);
+  });
+});
+
+describe("pašto kodų pasiūlymai", () => {
+  it("„51100 FR“ rodo kaip „FR-51100“, o miestas lieka pavadinime žemiau", () => {
+    const [row] = parseSuggestions({ suggestions: [{ caption: "51100 FR", subCaption: "Grand Est Marne Reims", searchText: "x" }] });
+    expect(row.caption).toBe("FR-51100");
+    expect(row.subCaption).toBe("Grand Est Marne Reims");
+  });
+
+  it("paprasto miesto pavadinimo nekeičia", () => {
+    expect(parseSuggestions({ suggestions: [{ caption: "Reims", subCaption: "Prancūzija", searchText: "y" }] })[0].caption).toBe("Reims");
   });
 });

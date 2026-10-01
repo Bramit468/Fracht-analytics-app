@@ -16,6 +16,12 @@ import type { LineCoordinate } from "./route-line";
 export interface ViaPoint {
   latitude: number;
   longitude: number;
+  /**
+   * Tarp kurių sustojimų taškas guli: 0 – tarp pirmo ir antro, 1 – tarp antro ir
+   * trečio. Be šito PTV tarpinius taškus paimtų ne tarp tų sustojimų, kuriems jie
+   * skirti. Nenurodžius – pirmas ruožas.
+   */
+  leg?: number;
 }
 
 /** Daugiau taškų reiškia ne tikslesnį maršrutą, o ilgesnę užklausą. */
@@ -69,8 +75,40 @@ export function orderViaPoints(points: ViaPoint[], line: LineCoordinate[]): ViaP
 
   return [...points]
     .map((point) => ({ point, index: nearestLineIndex(line, point) }))
-    .sort((a, b) => a.index - b.index)
+    .sort((a, b) => (a.point.leg ?? 0) - (b.point.leg ?? 0) || a.index - b.index)
     .map((row) => row.point);
+}
+
+/**
+ * Kuriame ruože (tarp kurių sustojimų) yra taškas.
+ *
+ * `stopPoints` – visi sustojimai maršruto tvarka. Ruožas = kiek tarpinių
+ * sustojimų taškas jau praėjo linijoje.
+ */
+export function legIndex(line: LineCoordinate[], stopPoints: ViaPoint[], point: ViaPoint): number {
+  if (line.length < 2 || stopPoints.length < 3) return 0;
+
+  const at = nearestLineIndex(line, point);
+  let leg = 0;
+  for (const stop of stopPoints.slice(1, -1)) {
+    if (nearestLineIndex(line, stop) <= at) leg += 1;
+  }
+  return leg;
+}
+
+/**
+ * Tempiant liniją perbraižomas tik tas ruožas, kuriame laikomasi: nuo
+ * ankstesnio iki kito maršruto taško. `waypointIndices` – taškų vietos linijoje.
+ * Grąžinami linijos indeksai [nuo, iki].
+ */
+export function anchorsAround(lineLength: number, waypointIndices: number[], at: number): [number, number] {
+  let from = 0;
+  let to = lineLength - 1;
+  for (const index of waypointIndices) {
+    if (index <= at) from = Math.max(from, index);
+    else to = Math.min(to, index);
+  }
+  return [from, to];
 }
 
 export function addViaPoint(points: ViaPoint[], point: ViaPoint): ViaChange {

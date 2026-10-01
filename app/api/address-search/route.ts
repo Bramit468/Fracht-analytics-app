@@ -1,4 +1,5 @@
 import { MIN_ADDRESS_QUERY, PTV_SUGGESTIONS_URL, parseSuggestions } from "@/lib/address-suggest";
+import { normalizeAddressQuery, parsePostalQuery } from "@/lib/postal-code";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 /**
@@ -13,6 +14,8 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 export async function GET(request: Request) {
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   if (query.length < MIN_ADDRESS_QUERY) return Response.json([]);
+  // „FR51“ PTV supainioja su Airijos kodu: neišsamo pašto kodo neieškome.
+  if (parsePostalQuery(query)?.partial) return Response.json([]);
 
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
@@ -22,7 +25,7 @@ export async function GET(request: Request) {
   if (!key) return Response.json({ error: "PTV paslauga nesukonfigūruota." }, { status: 503 });
 
   try {
-    const url = `${PTV_SUGGESTIONS_URL}?searchText=${encodeURIComponent(query)}&language=lt`;
+    const url = `${PTV_SUGGESTIONS_URL}?searchText=${encodeURIComponent(normalizeAddressQuery(query))}&language=lt`;
     const upstream = await fetch(url, {
       headers: { apiKey: key },
       cache: "no-store",

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   addViaPoint,
+  anchorsAround,
+  legIndex,
   formatViaPoint,
   moveViaPoint,
   nearestLineIndex,
@@ -115,5 +117,38 @@ describe("formatViaPoint ir parseViaPoints", () => {
 
   it("tuščias tekstas duoda tuščią sąrašą", () => {
     expect(parseViaPoints("")).toEqual([]);
+  });
+});
+
+describe("legIndex ir orderViaPoints su sustojimais", () => {
+  // A (Panevėžys) → B (Kaunas) → C (Varšuva)
+  const stops = [PANEVEZYS, KAUNAS, VARSUVA];
+  const tarpKaunoIrVarsuvos = { latitude: 53.2, longitude: 23.2 };
+  const tarpPanevezioIrKauno = { latitude: 55.6, longitude: 24.3 };
+
+  it("randa ruožą pagal tai, ar taškas už tarpinio sustojimo", () => {
+    expect(legIndex(LINE, stops, tarpPanevezioIrKauno)).toBe(0);
+    expect(legIndex(LINE, stops, tarpKaunoIrVarsuvos)).toBe(1);
+  });
+
+  it("be tarpinių sustojimų visada pirmas ruožas", () => {
+    expect(legIndex(LINE, [PANEVEZYS, VARSUVA], tarpKaunoIrVarsuvos)).toBe(0);
+  });
+
+  it("rikiuoja pirma pagal ruožą, tada pagal vietą linijoje", () => {
+    const antras = { ...tarpKaunoIrVarsuvos, leg: 1 };
+    const pirmas = { ...tarpPanevezioIrKauno, leg: 0 };
+    expect(orderViaPoints([antras, pirmas], LINE)).toEqual([pirmas, antras]);
+  });
+});
+
+describe("anchorsAround", () => {
+  it("grąžina ankstesnį ir kitą maršruto tašką aplink tempiamą vietą", () => {
+    expect(anchorsAround(100, [0, 40, 99], 55)).toEqual([40, 99]);
+    expect(anchorsAround(100, [0, 40, 99], 20)).toEqual([0, 40]);
+  });
+
+  it("be taškų – visa linija", () => {
+    expect(anchorsAround(100, [], 50)).toEqual([0, 99]);
   });
 });

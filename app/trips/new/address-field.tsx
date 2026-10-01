@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { MIN_ADDRESS_QUERY, type AddressSuggestion } from "@/lib/address-suggest";
+import { MIN_POSTAL_DIGITS, parsePostalQuery } from "@/lib/postal-code";
 
 import { resolveAddress } from "./route-lookup";
 
@@ -18,28 +19,37 @@ const CACHE_LIMIT = 30;
  * įsimenamos koordinatės, ir maršrutas skaičiuojamas nuo jų. Nepasirinkus laukas
  * veikia kaip paprastas tekstas – maršrutas geokoduos tai, kas įrašyta.
  *
+ * Laukas valdomas iš išorės (`value`, `point`): sustojimų sąrašas yra vienas
+ * šaltinis, o tas pats adresas redaguojamas ir formoje, ir padidintame
+ * žemėlapyje. `name` nurodomas tik tada, kai laukas yra formos dalis.
+ *
  * Pasenusi užklausa nutraukiama `AbortController`, kad lėtesnis atsakymas į
  * ankstesnį tekstą neperrašytų naujesnio.
  */
 export function AddressField({
   name,
   label,
-  defaultValue,
+  value,
+  point,
+  onChange,
   enabled,
   inputClass,
 }: {
-  name: "origin" | "destination";
+  /** Formos laukas (`origin`, `destination`); papildomi sustojimai formos nesiunčia. */
+  name?: "origin" | "destination";
   label: string;
-  defaultValue: string;
+  value: string;
+  /** „55.7,24.3“ pasirinkus pasiūlymą, kitaip tuščia. */
+  point: string;
+  onChange: (value: string, point: string) => void;
   enabled: boolean;
   inputClass: string;
 }) {
   const listId = useId();
-  const [query, setQuery] = useState(defaultValue);
+  const query = value;
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [point, setPoint] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -86,21 +96,29 @@ export function AddressField({
     }
   }
 
-  function onType(value: string) {
-    setQuery(value);
+  function onType(next: string) {
     // Pakeitus tekstą pasirinkimas nebegalioja – kitaip maršrutas eitų
     // į seną tašką, o laukelyje būtų matyti naujas adresas.
-    setPoint("");
+    onChange(next, "");
     setMessage("");
     pick.current += 1;
     clearTimeout(timer.current);
     controller.current?.abort();
 
-    const text = value.trim();
+    const text = next.trim();
     if (!enabled || text.length < MIN_ADDRESS_QUERY) {
       setSuggestions([]);
       setOpen(false);
       setBusy(false);
+      return;
+    }
+
+    // „FR51“: per mažai, kad pasakytume kodą ir miestą – geriau paprašyti daugiau nei rodyti spėjimus.
+    if (parsePostalQuery(text)?.partial) {
+      setSuggestions([]);
+      setOpen(false);
+      setBusy(false);
+      setMessage(`Pašto kodas per trumpas: įveskite bent ${MIN_POSTAL_DIGITS} skaitmenis, pvz. FR-51100.`);
       return;
     }
 
@@ -129,8 +147,7 @@ export function AddressField({
       setMessage("Nepavyko nustatyti adreso vietos. Pabandykite kitą pasiūlymą.");
       return;
     }
-    setQuery(place.formattedAddress || suggestion.caption);
-    setPoint(`${place.latitude},${place.longitude}`);
+    onChange(place.formattedAddress || suggestion.caption, `${place.latitude},${place.longitude}`);
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -212,7 +229,7 @@ export function AddressField({
         </ul>
       )}
 
-      <input type="hidden" name={`${name}_point`} value={point} />
+      {name && <input type="hidden" name={`${name}_point`} value={point} />}
     </div>
   );
 }

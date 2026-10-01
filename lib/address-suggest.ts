@@ -10,6 +10,8 @@
  * po kiekvieno klavišo.
  */
 
+import { parsePostalQuery } from "./postal-code";
+
 export const PTV_SUGGESTIONS_URL = "https://api.myptv.com/geocoding/v1/suggestions/by-text";
 
 /** Trumpiausia užklausa, kuriai verta kreiptis į paiešką. */
@@ -28,6 +30,11 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** PTV nežinomą pašto kodą kaukuoja žvaigždutėmis („01001*“): rodomi tik pilni žodžiai. */
+function withoutMasks(value: string): string {
+  return value.split(/\s+/).filter((word) => !word.includes("*")).join(" ");
+}
+
 /** PTV atsakymą paverčia pasirinkimo sąrašu; blogus įrašus praleidžia. */
 export function parseSuggestions(payload: unknown, limit = 6): AddressSuggestion[] {
   if (typeof payload !== "object" || payload === null) return [];
@@ -40,13 +47,19 @@ export function parseSuggestions(payload: unknown, limit = 6): AddressSuggestion
   for (const row of rows) {
     if (typeof row !== "object" || row === null) continue;
     const item = row as Record<string, unknown>;
-    const caption = text(item.caption);
+    const caption = withoutMasks(text(item.caption));
     const searchText = text(item.searchText);
     // Be `searchText` pasirinkimo nebūtų kuo paversti į tašką.
     if (caption === "" || searchText === "" || seen.has(searchText)) continue;
     seen.add(searchText);
 
-    found.push({ caption, subCaption: text(item.subCaption), searchText });
+    // PTV pašto kodą rašo „51100 FR“, o vadybininkai – „FR-51100“; miestas lieka eilutėje žemiau.
+    const postal = parsePostalQuery(caption);
+    found.push({
+      caption: postal && !postal.partial ? postal.normalized : caption,
+      subCaption: withoutMasks(text(item.subCaption)),
+      searchText,
+    });
     if (found.length >= limit) break;
   }
 

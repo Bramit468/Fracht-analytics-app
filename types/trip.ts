@@ -11,6 +11,7 @@
  */
 
 import type { Truck as TruckCosts } from "../lib/calc";
+import type { StoredStop } from "../lib/stops";
 
 /** Kaip gaunamos reiso pajamos. */
 export type RevenueMode = "per_km" | "freight";
@@ -59,6 +60,13 @@ export interface Trip {
    * todėl vėliau pataisyta fura seno reiso pelno nebekeičia.
    */
   truck_costs: TruckCosts;
+
+  /**
+   * Sustojimai su tipais (migracija 0012). Skaičiavimas jų kol kas nenaudoja:
+   * jie išsaugomi ir pateikiami (`countStopsByType`). Senuose reisuose arba
+   * kol migracija netaikyta lauko nėra.
+   */
+  stops?: StoredStop[];
 
   created_at: string;
 }

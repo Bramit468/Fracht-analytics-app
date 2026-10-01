@@ -10,7 +10,7 @@ import { truckRowToCalc } from "@/lib/truck";
 import { documentAlerts, documentAlertText } from "@/lib/truck-profile";
 import type { Truck } from "@/types/truck";
 
-import { TruckForm } from "./truck-form";
+import { NewTruckPanel } from "./new-truck-panel";
 import { TruckRowActions } from "./truck-row-actions";
 
 export const metadata: Metadata = {
@@ -39,6 +39,8 @@ export default async function TrucksPage() {
         </p>
       </header>
 
+      <NewTruckPanel />
+
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium">Sąrašas</h2>
@@ -51,7 +53,7 @@ export default async function TrucksPage() {
             Nepavyko nuskaityti furų: {error.message}
           </p>
         ) : data.length === 0 ? (
-          <p className="text-sm text-muted">Furų dar nėra. Pridėkite pirmą žemiau.</p>
+          <p className="text-sm text-muted">Furų dar nėra. Spauskite „Pridėti furą“.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -93,11 +95,6 @@ export default async function TrucksPage() {
             </table>
           </div>
         )}
-      </section>
-
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Nauja fura</h2>
-        <TruckForm />
       </section>
     </main>
   );

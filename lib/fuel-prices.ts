@@ -70,12 +70,17 @@ export function fuelPricesByMonth(supplies: Supply[]): FuelPriceRow[] {
  *
  * Tai ne pažadas, o dydžio matas: dalis pylimų neišvengiami ten, kur fura tuo
  * metu yra. Bet jei skirtumas siekia tūkstančius, verta planuoti pylimus.
+ *
+ * Pirkimai be šalies įskaičiuojami į bendrą sumą ir litrus – už juos irgi
+ * sumokėta. Bet pigiausia kaina imama tik iš žinomų šalių: kaina „niekur“
+ * nėra vieta, kur būtų galima nuvažiuoti pilti (#173).
  */
 export function savingsAtCheapestCents(rows: FuelPriceRow[]): number {
   const priced = rows.filter((row) => row.pricePerL !== null && row.litres > 0);
-  if (priced.length < 2) return 0;
+  const known = priced.filter((row) => row.key !== "");
+  if (priced.length < 2 || known.length === 0) return 0;
 
-  const cheapest = priced.reduce((best, row) =>
+  const cheapest = known.reduce((best, row) =>
     (row.pricePerL ?? 0) < (best.pricePerL ?? 0) ? row : best,
   );
 

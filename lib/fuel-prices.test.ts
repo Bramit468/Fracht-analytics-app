@@ -108,6 +108,19 @@ describe("savingsAtCheapestCents", () => {
     expect(savingsAtCheapestCents(rows)).toBe(0);
   });
 
+  it("pirkimai be šalies įskaičiuojami, bet pigiausia kaina – tik iš žinomų šalių", () => {
+    // 100 l po 1,70 € (DEU), 100 l po 1,50 € (POL), 100 l po 1,60 € (šalis nežinoma).
+    // Pigiausia žinoma – 1,50 €: 480 € − 300 l × 1,50 € = 30 €.
+    // Be pirkimų be šalies būtų tik 20 € – jie nepamesti.
+    const rows = fuelPricesByCountry([
+      supply({ country: "DEU", quantity: 100, costCents: 17000 }),
+      supply({ country: "POL", quantity: 100, costCents: 15000 }),
+      supply({ country: null, quantity: 100, costCents: 16000 }),
+    ]);
+
+    expect(savingsAtCheapestCents(rows)).toBe(3000);
+  });
+
   it("tuščio sąrašo nesugadina", () => {
     expect(savingsAtCheapestCents([])).toBe(0);
   });

@@ -133,17 +133,21 @@ function countryInsight(byCountry: FuelPriceRow[]): Insight[] {
   const cents = savingsAtCheapestCents(byCountry);
   if (cents < MIN_INSIGHT_CENTS) return [];
 
-  const priced = byCountry.filter((row) => row.pricePerL !== null && row.litres > 0);
+  // Pirkimai be šalies suma įskaičiuoti, bet pavadinti jų nėra kaip (#173).
+  const known = byCountry.filter((row) => row.key !== "" && row.pricePerL !== null && row.litres > 0);
   const price = (row: FuelPriceRow) => row.pricePerL as number;
-  const cheapest = priced.reduce((best, row) => (price(row) < price(best) ? row : best));
-  const dearest = priced.reduce((worst, row) => (price(row) > price(worst) ? row : worst));
-  const name = (row: FuelPriceRow) => row.key || "šalis nenurodyta";
+  const cheapest = known.reduce((best, row) => (price(row) < price(best) ? row : best));
+  const dearest = known.reduce((worst, row) => (price(row) > price(worst) ? row : worst));
+  const title =
+    cheapest === dearest
+      ? `Kuras ${cheapest.key} – ${decimal(price(cheapest), 3)} €/l, kiti pylimai brangesni`
+      : `Kuras pigiausias – ${cheapest.key} (${decimal(price(cheapest), 3)} €/l), brangiausias – ${dearest.key} (${decimal(price(dearest), 3)} €/l)`;
 
   return [
     {
       kind: "country",
       plate: null,
-      title: `Kuras pigiausias – ${name(cheapest)} (${decimal(price(cheapest), 3)} €/l), brangiausias – ${name(dearest)} (${decimal(price(dearest), 3)} €/l)`,
+      title,
       detail:
         `Tiek kainuotų viską pirkti pigiausios šalies kaina. Visko nesutaupysite – dalis pylimų ` +
         `neišvengiami ten, kur fura yra, – bet planuojant pylimus pigesnėse šalyse dalį galima.`,

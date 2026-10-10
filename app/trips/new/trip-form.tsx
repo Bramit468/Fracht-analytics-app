@@ -15,6 +15,8 @@ import {
 import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerKm } from "../../../lib/pricing";
+import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
+import { fetchMinMarginPercent } from "../../../lib/company-settings";
 import { truckRowToCalc } from "../../../lib/truck";
 import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
@@ -170,6 +172,8 @@ export function TripForm({
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
   const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
+  /** Įmonės minimali marža (#181). `null` – riba nenustatyta. */
+  const [minMarza, setMinMarza] = useState<number | null>(null);
   /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
   const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
   /** Krovinio svoris tonomis – tik PTV užklausai, reise nesaugomas (#86). */
@@ -241,14 +245,16 @@ export function TripForm({
       try {
         const client = getSupabaseClient();
         const source = tripId ?? copyFromId;
-        const [t, c, existing] = await Promise.all([
+        const [t, c, existing, riba] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
           source ? getTripWithLegs(source) : null,
+          fetchMinMarginPercent(client),
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
         if (!cancelled) {
+          setMinMarza(riba);
           setTrucks(t.data as Truck[]);
           setTariffs(c.data.map(row => ({ country: row.country, rate: Number(row.rate), rateType: row.rate_type })));
           if (existing) {
@@ -1314,6 +1320,30 @@ export function TripForm({
           <Link href="/trucks?skiltis=kastai" className="font-semibold underline">Patikslinti kaštus</Link>
         </p>}
 
+        {/* Įmonės riba (#181): be jos per pigus užsakymas priimamas, nes skaičius
+            tik parodomas, bet niekas jo nepažymi. */}
+        {!bePajamu && (() => {
+          const check = checkMargin({
+            marginPercent: result.marginPercent,
+            minMarginPercent: minMarza,
+            totalCostCents: result.totalCostCents,
+            revenueCents: result.revenueCents,
+          });
+          if (check.status !== "below") return null;
+          const uzKm = check.priceAtMinCents === null ? null : pricePerKm(check.priceAtMinCents, apmokamiKm);
+          return <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
+            Marža žemiau įmonės ribos {formatMinMargin(check.minMarginPercent)}.
+            {check.priceAtMinCents !== null && <>
+              {" "}Ribai pasiekti kaina turėtų būti bent <strong>{formatCents(check.priceAtMinCents)}</strong>
+              {uzKm !== null && ` (${uzKm.toFixed(2)} €/km)`}
+              {check.shortfallCents !== null && check.shortfallCents > 0 && <> – {formatCents(check.shortfallCents)} daugiau</>}.
+            </>}
+          </p>;
+        })()}
+        {bePajamu && targetBelowMin(Number(norimaMarza), minMarza) && minMarza !== null && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
+          Norima marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
+        </p>}
+
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
           {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
@@ -1347,6 +1377,9 @@ export function TripForm({
                 </p>
               );
             })()}
+            {minMarza !== null && targetBelowMin(Number(norimaMarza), minMarza) && <p className="text-sm text-bad">
+              Žemiau įmonės ribos {formatMinMargin(minMarza)}.
+            </p>}
           </div>}
 
           {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą

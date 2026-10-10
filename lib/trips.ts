@@ -14,6 +14,8 @@ export interface TripSummary {
   destination: string;
   tripDate: string;
   truckPlate: string;
+  /** Užsakovas (#183). `null` arba nėra – reisas be užsakovo. */
+  customerId?: string | null;
   paidKm: number;
   /** Kiek parų fura užimta – pelnui per parą (#179). */
   days: number;
@@ -70,6 +72,7 @@ export function buildTripSummaries(
       destination: trip.destination,
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
+      customerId: trip.customer_id ?? null,
       paidKm: trip.paid_km,
       days: trip.days,
       emptyKm: trip.empty_km,

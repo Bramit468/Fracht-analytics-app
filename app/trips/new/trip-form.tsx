@@ -17,6 +17,7 @@ import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
 import { fetchMinMarginPercent } from "../../../lib/company-settings";
+import { ensureCustomer, listCustomers, parseCustomerName, type Customer } from "../../../lib/customers";
 import { truckRowToCalc } from "../../../lib/truck";
 import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
@@ -174,6 +175,9 @@ export function TripForm({
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
   /** Įmonės minimali marža (#181). `null` – riba nenustatyta. */
   const [minMarza, setMinMarza] = useState<number | null>(null);
+  /** Užsakovai (#183). `customersAvailable` – ar migracija 0014 paleista. */
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersAvailable, setCustomersAvailable] = useState(false);
   /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
   const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
   /** Krovinio svoris tonomis – tik PTV užklausai, reise nesaugomas (#86). */
@@ -245,16 +249,20 @@ export function TripForm({
       try {
         const client = getSupabaseClient();
         const source = tripId ?? copyFromId;
-        const [t, c, existing, riba] = await Promise.all([
+        const [t, c, existing, riba, uzsakovai] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
           source ? getTripWithLegs(source) : null,
           fetchMinMarginPercent(client),
+          // Užsakovų sąrašo klaida neturi užblokuoti reiso skaičiavimo.
+          listCustomers(client).catch(() => ({ customers: [], available: false })),
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
         if (!cancelled) {
           setMinMarza(riba);
+          setCustomers(uzsakovai.customers);
+          setCustomersAvailable(uzsakovai.available);
           setTrucks(t.data as Truck[]);
           setTariffs(c.data.map(row => ({ country: row.country, rate: Number(row.rate), rateType: row.rate_type })));
           if (existing) {
@@ -895,12 +903,28 @@ export function TripForm({
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
       setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
       if (action !== "save") return;
+      const customerName = parseCustomerName(text("customer_name"));
+      if (!customerName.ok) throw new Error(customerName.error);
       busy.current = true;
       setSaving(true);
-      const persisted = await saveTrip({ ...trip, id: tripId }, tripLegs);
-      setSaved(tripId
+      // Naujas užsakovas sukuriamas tik išsaugant, ne skaičiuojant: kitaip
+      // kiekvienas bandymas su klaidingu pavadinimu paliktų šiukšlę sąraše.
+      let customerId: string | null = null;
+      if (customersAvailable && customerName.value !== null) {
+        const customer = await ensureCustomer(getSupabaseClient(), customers, customerName.value);
+        customerId = customer.id;
+        if (!customers.some((existing) => existing.id === customer.id)) {
+          setCustomers((current) => [...current, customer].sort((a, b) => a.name.localeCompare(b.name, "lt")));
+        }
+      }
+      const persisted = await saveTrip({ ...trip, id: tripId, ...(customersAvailable ? { customer_id: customerId } : {}) }, tripLegs);
+      // Lentelė jau yra, bet funkcija sena (0014 paleista tik iš dalies) –
+      // užsakovas tyliai nepatektų į reisą, todėl pasakome.
+      const customerLost = customerId !== null && persisted.customer_id !== customerId;
+      setSaved((tripId
         ? `Reiso ${persisted.trip_number} pakeitimai išsaugoti.`
-        : `Reisas ${persisted.trip_number} išsaugotas.`);
+        : `Reisas ${persisted.trip_number} išsaugotas.`)
+        + (customerLost ? " Užsakovas neišsaugotas – Supabase iki galo paleiskite migraciją 0014." : ""));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti reiso. Patikrinkite ryšį su duomenų baze ir ar pritaikyta migracija 0004.");
     } finally { busy.current = false; setSaving(false); }
@@ -929,6 +953,21 @@ export function TripForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { normuPildymas.current = prefillRates(event.target.value); }} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
+          {/* Užsakovas renkamas iš sąrašo arba įrašomas naujas – jis sukuriamas
+              išsaugant reisą (#183). Kol migracija 0014 nepaleista, lauko nėra. */}
+          {customersAvailable && <label>Užsakovas
+            <input
+              name="customer_name"
+              list="uzsakovu-sarasas"
+              autoComplete="off"
+              placeholder="Pasirinkite arba įrašykite naują"
+              defaultValue={customers.find((customer) => customer.id === defaults.customer_id)?.name ?? ""}
+              className={inputClass}
+            />
+            <datalist id="uzsakovu-sarasas">
+              {customers.map((customer) => <option key={customer.id} value={customer.name} />)}
+            </datalist>
+          </label>}
           <AddressField name="origin" label="Iš" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={inputClass} />
           <AddressField name="destination" label="Į" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={inputClass} />
           {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis svarbus:

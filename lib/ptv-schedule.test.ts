@@ -132,6 +132,27 @@ describe("routeSchedule", () => {
     expect(routeSchedule(PAYLOAD)?.stops.some((stop) => stop.minutes === 0)).toBe(false);
   });
 
+  it("perskaito sienų kirtimus ir išvykimo šalį (#187)", () => {
+    // Įvykių forma – iš tikro PTV atsakymo su BORDER_EVENTS (2026-10-10).
+    const schedule = routeSchedule({
+      scheduleReport: { startTime: "2026-10-12T06:00:00+03:00", endTime: "2026-10-14T06:35:41+03:00" },
+      events: [
+        { startsAt: "2026-10-12T06:00:00+03:00", countryCode: "LT", schedule: { scheduleTypes: ["SERVICE"], duration: 0 } },
+        { startsAt: "2026-10-12T08:41:08+03:00", countryCode: "PL", border: { countryCode: "PL" } },
+        { startsAt: "2026-10-12T10:30:00+03:00", countryCode: "PL", schedule: { scheduleTypes: ["BREAK"], duration: 2700 } },
+        { startsAt: "2026-10-13T06:51:16+03:00", countryCode: "DE", border: { countryCode: "DE" } },
+      ],
+    });
+
+    expect(schedule?.startCountry).toBe("LT");
+    expect(schedule?.borders).toEqual([
+      { startsAt: "2026-10-12T08:41:08+03:00", countryCode: "PL" },
+      { startsAt: "2026-10-13T06:51:16+03:00", countryCode: "DE" },
+    ]);
+    // Sienos kirtimas – ne poilsis.
+    expect(schedule?.stops).toHaveLength(1);
+  });
+
   it("be ataskaitos grąžina null", () => {
     expect(routeSchedule({ distance: 100 })).toBeNull();
     expect(routeSchedule(null)).toBeNull();

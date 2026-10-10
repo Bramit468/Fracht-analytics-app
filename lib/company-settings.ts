@@ -1,20 +1,39 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { isMissingColumnError } from "./truck";
+export interface CompanySettings {
+  /** Minimali marža (#181). `null` – riba nenustatyta. */
+  minMarginPercent: number | null;
+  /** Kiek dienpinigių normos moka įmonė (#187). `null` – pagal šalis neskaičiuojama. */
+  perDiemPercent: number | null;
+}
+
+/** PostgREST `numeric` gali grąžinti ir tekstu. */
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
 
 /**
- * Įmonės minimali marža (#181). `null` – riba nenustatyta arba migracija 0013
- * dar nepaleista: tada programa elgiasi kaip anksčiau, be įspėjimų.
+ * Įmonės nustatymai. Imama `*`, o ne stulpelių sąrašas: kol atitinkama
+ * migracija (0013, 0016) nepaleista, stulpelio nėra, ir nustatymas tiesiog
+ * `null` – programa elgiasi kaip anksčiau.
  *
  * Įmonės eilutė matoma tik viena – sava (RLS), todėl filtro nereikia.
  */
-export async function fetchMinMarginPercent(client: SupabaseClient): Promise<number | null> {
-  const { data, error } = await client.from("companies").select("min_margin_percent").maybeSingle();
+export async function fetchCompanySettings(client: SupabaseClient): Promise<CompanySettings> {
+  const { data, error } = await client.from("companies").select("*").maybeSingle();
   if (error) {
-    if (!isMissingColumnError(error)) console.error("Nepavyko nuskaityti minimalios maržos", error);
-    return null;
+    console.error("Nepavyko nuskaityti įmonės nustatymų", error);
+    return { minMarginPercent: null, perDiemPercent: null };
   }
-  const value = (data as { min_margin_percent: number | string | null } | null)?.min_margin_percent;
-  // PostgREST `numeric` gali grąžinti ir tekstu.
-  return value === null || value === undefined ? null : Number(value);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    minMarginPercent: numberOrNull(row.min_margin_percent),
+    perDiemPercent: numberOrNull(row.per_diem_percent),
+  };
+}
+
+export async function fetchMinMarginPercent(client: SupabaseClient): Promise<number | null> {
+  return (await fetchCompanySettings(client)).minMarginPercent;
 }

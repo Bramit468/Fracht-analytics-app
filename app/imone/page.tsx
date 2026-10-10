@@ -6,12 +6,13 @@ import {
   type CompanyInvitation,
   type CompanyMember,
 } from "@/lib/invitations";
-import { fetchMinMarginPercent } from "@/lib/company-settings";
+import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
+import { saveMinMargin, savePerDiemPercent } from "./actions";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
-import { MinMarginForm } from "./min-margin-form";
+import { SettingForm } from "./setting-form";
 
 export const metadata: Metadata = {
   title: "Įmonė | Bramit",
@@ -27,7 +28,7 @@ export default async function ImonePage() {
 
   const supabase = await createServerSupabaseClient();
 
-  const [memberResult, inviteResult, minMargin] = await Promise.all([
+  const [memberResult, inviteResult, settings] = await Promise.all([
     supabase
       .from("company_member_emails")
       .select("user_id,email,role,created_at")
@@ -37,7 +38,7 @@ export default async function ImonePage() {
       .from("company_invitations")
       .select("email,invited_at,accepted_at")
       .overrideTypes<CompanyInvitation[], { merge: false }>(),
-    fetchMinMarginPercent(supabase),
+    fetchCompanySettings(supabase),
   ]);
 
   const members = memberResult.data ?? [];
@@ -60,7 +61,30 @@ export default async function ImonePage() {
           skaičiuoklė parodo kainą, kuri ribą pasiektų. Marža skaičiuojama nuo pajamų. Palikite
           tuščią, jei ribos nereikia. Keisti gali tik savininkas.
         </p>
-        <MinMarginForm current={minMargin} />
+        <SettingForm
+          name="min_margin_percent"
+          label="Minimali marža, %"
+          placeholder="pvz. 12"
+          current={settings.minMarginPercent}
+          action={saveMinMargin}
+        />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium">Dienpinigiai pagal šalis</h2>
+        <p className="text-sm text-muted">
+          Įjungus, reiso dienpinigiai skaičiuojami pagal šalis, kuriose fura kiekvieną dieną
+          važiuoja (iš PTV maršruto), ir pakeičia furos fiksuotą dienpinigių sumą. Normos – LRV
+          nutarimo Nr. 526 (nuo 2026-10-01). Įrašykite, kiek normos mokate: 100 %, o jei
+          kolektyvinė sutartis numato mažiau – ne mažiau kaip 50 %. Tuščia – išjungta.
+        </p>
+        <SettingForm
+          name="per_diem_percent"
+          label="Mokama normos dalis, %"
+          placeholder="pvz. 100"
+          current={settings.perDiemPercent}
+          action={savePerDiemPercent}
+        />
       </section>
 
       <section className="flex flex-col gap-3">

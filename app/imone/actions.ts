@@ -9,6 +9,7 @@ import {
   type CompanyMember,
 } from "@/lib/invitations";
 import { formatMinMargin, parseMinMargin } from "@/lib/margin-guard";
+import { parsePerDiemPercent } from "@/lib/per-diem";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { isMissingColumnError } from "@/lib/truck";
 
@@ -122,23 +123,30 @@ async function describeDuplicate(
   };
 }
 
-export interface MinMarginState {
+export interface SettingState {
   status: "idle" | "error" | "success";
   message?: string;
   value?: string;
 }
 
+type Parsed = { ok: true; value: number | null } | { ok: false; error: string };
+
 /**
- * Įmonės minimali marža (#181). Keisti gali tik savininkas – tai užtikrina RLS,
- * o čia tik paaiškinama, kodėl neįrašyta.
+ * Vienas įmonės nustatymas (#181, #187). Keisti gali tik savininkas – tai
+ * užtikrina RLS, o čia tik paaiškinama, kodėl neįrašyta.
  */
-export async function saveMinMargin(
-  _previous: MinMarginState,
+async function saveCompanySetting(
   formData: FormData,
-): Promise<MinMarginState> {
-  const raw = formData.get("min_margin_percent");
+  setting: {
+    column: "min_margin_percent" | "per_diem_percent";
+    parse: (text: string) => Parsed;
+    migration: string;
+    saved: (value: number | null) => string;
+  },
+): Promise<SettingState> {
+  const raw = formData.get(setting.column);
   const typed = typeof raw === "string" ? raw : "";
-  const parsed = parseMinMargin(typed);
+  const parsed = setting.parse(typed);
   if (!parsed.ok) return { status: "error", message: parsed.error, value: typed };
 
   const supabase = await createServerSupabaseClient();
@@ -154,31 +162,51 @@ export async function saveMinMargin(
 
   const { data, error } = await supabase
     .from("companies")
-    .update({ min_margin_percent: parsed.value })
+    .update({ [setting.column]: parsed.value })
     .eq("id", company.id)
     .select("id");
 
   if (isMissingColumnError(error)) {
     return {
       status: "error",
-      message: "Duomenų bazėje dar nėra šio nustatymo – Supabase paleiskite migraciją 0013.",
+      message: `Duomenų bazėje dar nėra šio nustatymo – Supabase paleiskite migraciją ${setting.migration}.`,
       value: typed,
     };
   }
   if (error) {
-    console.error("Nepavyko įrašyti minimalios maržos", error);
+    console.error("Nepavyko įrašyti įmonės nustatymo", setting.column, error);
     return { status: "error", message: "Nepavyko įrašyti. Bandykite dar kartą.", value: typed };
   }
   // RLS neleidus atnaujinti, klaidos nėra – tiesiog nepaliesta nė viena eilutė.
   if (!data || data.length === 0) {
-    return { status: "error", message: "Ribą keisti gali tik įmonės savininkas.", value: typed };
+    return { status: "error", message: "Keisti gali tik įmonės savininkas.", value: typed };
   }
 
   refresh();
-  return {
-    status: "success",
-    message: parsed.value === null ? "Riba panaikinta." : `Riba išsaugota: ${formatMinMargin(parsed.value)}.`,
-  };
+  return { status: "success", message: setting.saved(parsed.value) };
+}
+
+/** Įmonės minimali marža (#181). */
+export async function saveMinMargin(_previous: SettingState, formData: FormData): Promise<SettingState> {
+  return saveCompanySetting(formData, {
+    column: "min_margin_percent",
+    parse: parseMinMargin,
+    migration: "0013",
+    saved: (value) => (value === null ? "Riba panaikinta." : `Riba išsaugota: ${formatMinMargin(value)}.`),
+  });
+}
+
+/** Kiek dienpinigių normos moka įmonė (#187). Tuščias – pagal šalis neskaičiuojama. */
+export async function savePerDiemPercent(_previous: SettingState, formData: FormData): Promise<SettingState> {
+  return saveCompanySetting(formData, {
+    column: "per_diem_percent",
+    parse: parsePerDiemPercent,
+    migration: "0016",
+    saved: (value) =>
+      value === null
+        ? "Dienpinigiai pagal šalis išjungti – naudojama furos paros suma."
+        : `Išsaugota: ${formatMinMargin(value)} normos.`,
+  });
 }
 
 /** Atšaukia dar nepriimtą pakvietimą (#97). */

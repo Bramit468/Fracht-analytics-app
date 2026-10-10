@@ -84,6 +84,11 @@ export interface TripInput {
   extras: RoadExtras;
   revenue: RevenueInput;
   tariffs: CountryTariff[];
+  /**
+   * Dienpinigiai pagal šalis visam reisui, centais (#187). Kai paduota, jie
+   * pakeičia furos fiksuotą `perDiem` × paros. `null` arba nėra – senas būdas.
+   */
+  perDiemCents?: number | null;
 }
 
 export interface TripResult {
@@ -91,7 +96,10 @@ export interface TripResult {
   fuelCents: number;
   adblueCents: number;
   roadCents: number;
+  /** Furos kaštai reisui, dienpinigiai įskaičiuoti. */
   truckCents: number;
+  /** Kiek iš `truckCents` sudaro dienpinigiai – fiksuoti arba pagal šalis. */
+  perDiemCents: number;
   totalCostCents: number;
   revenueCents: number;
   profitCents: number;
@@ -240,7 +248,11 @@ export function calcTrip(input: TripInput): TripResult {
   const fuelCents = calcFuelCost({ totalKm, ...input.fuel });
   const adblueCents = calcAdblueCost({ totalKm, ...input.adblue });
   const roadCents = calcRoadCost(input.legs, input.tariffs, input.extras);
-  const truckCents = calcTruckCost(input.truck, input.days);
+  // Dienpinigiai pagal šalis pakeičia fiksuotą furos paros sumą, o ne
+  // prisideda prie jos – kitaip jie būtų suskaičiuoti du kartus.
+  const fixedPerDiemCents = input.truck.dailyCents.perDiem * input.days;
+  const perDiemCents = input.perDiemCents ?? fixedPerDiemCents;
+  const truckCents = calcTruckCost(input.truck, input.days) - fixedPerDiemCents + perDiemCents;
 
   const totalCostCents = calcTotalCost({ roadCents, fuelCents, adblueCents, truckCents });
   const revenueCents = calcRevenue(input.revenue, input.paidKm);
@@ -252,6 +264,7 @@ export function calcTrip(input: TripInput): TripResult {
     adblueCents,
     roadCents,
     truckCents,
+    perDiemCents,
     totalCostCents,
     revenueCents,
     profitCents,

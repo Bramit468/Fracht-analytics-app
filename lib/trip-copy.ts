@@ -45,6 +45,8 @@ export function tripDefaults(trip: TripWithLegs): TripFormDefaults {
       trip.revenue_mode === "freight"
         ? centsToInput(trip.freight_price_cents ?? 0)
         : String(trip.rate_per_km ?? 0),
+    // Kopijuojant užsakovas lieka: tas pats maršrutas kas savaitę – tas pats klientas (#183).
+    customer_id: trip.customer_id ?? "",
   };
 }
 

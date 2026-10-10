@@ -96,6 +96,12 @@ describe("copyForNewTrip", () => {
     expect(copy.revenueMode).toBe("freight");
   });
 
+  it("išlaiko užsakovą, o be jo – tuščia", () => {
+    // Tas pats maršrutas kas savaitę dažniausiai to paties kliento (#183).
+    expect(copyForNewTrip({ ...TRIP, customer_id: "c1" }, "2026-09-26").defaults.customer_id).toBe("c1");
+    expect(copy.defaults.customer_id).toBe("");
+  });
+
   it("reiso be atkarpų nesugadina", () => {
     const beAtkarpu = copyForNewTrip({ ...TRIP, legs: [] }, "2026-09-26");
     expect(beAtkarpu.legs).toEqual([]);

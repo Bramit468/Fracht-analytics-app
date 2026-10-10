@@ -74,6 +74,7 @@ it("builds list values with the shared trip calculation", () => {
     marginPercent: 60,
     profitPerKm: 1.5,
     profitPerDayCents: 15000,
+    customerId: null,
     roadByCountry: [{ country: "Nemokami", km: 100, costCents: 0 }],
   }]);
 });

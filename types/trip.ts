@@ -68,6 +68,12 @@ export interface Trip {
    */
   stops?: StoredStop[];
 
+  /**
+   * Užsakovas (migracija 0014, #183). Neprivalomas; kol migracija netaikyta,
+   * lauko nėra visai.
+   */
+  customer_id?: string | null;
+
   created_at: string;
 }
 

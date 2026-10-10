@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/trips/import", label: "Importas iš Excel" },
   // Kaštai ir svoriai – skirtukai furų puslapyje, ne atskiri punktai (#169).
   { href: "/trucks", label: "Furos" },
+  { href: "/uzsakovai", label: "Užsakovai" },
   { href: "/telematika", label: "Analizė" },
   { href: "/imone", label: "Įmonė" },
 ];

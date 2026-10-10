@@ -619,9 +619,7 @@ function RouteMapView({
       </aside>}
     </div>
     {onAddVia && <p className="mt-2 text-sm text-muted">
-      Pagriebkite maršruto liniją ir nutempkite – maršrutas eis per tą vietą (violetinis taškas).
-      Tempiant kitur, žemėlapis slenka. Mastelis: +/− mygtukai arba Ctrl + ratukas (telefone – du pirštai).
-      Mygtukas „Padidinti“ atidaro žemėlapį per visą ekraną.
+      Nutempkite liniją – maršrutas eis per tą vietą. Mastelis: Ctrl + ratukas.
     </p>}
     {via.length > 0 && <ul className="mt-2 flex flex-wrap gap-2 text-sm">
       {via.map((point, index) => <li key={`${point.latitude}-${point.longitude}`} className="flex items-center gap-2 rounded-lg border bg-surface px-2 py-1">

@@ -15,7 +15,7 @@ import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { routeBounds, type LineCoordinate } from "@/lib/route-line";
-import type { PtvMapLayer } from "@/lib/ptv-map-tile";
+import { PTV_VECTOR_STYLE, ptvVectorProxyUrl, type PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
 
@@ -45,10 +45,9 @@ function mapLayerId(layer: PtvMapLayer): string {
 type Basemap = "roads" | "satellite";
 
 /**
- * Kelių žemėlapis (OpenFreeMap „Liberty“): OpenStreetMap duomenys, be rakto ir be
- * mokesčio. „Google Maps“ plytelių naudoti negalima – jų licencija leidžia jas
- * rodyti tik per „Google“ SDK. „Liberty“ spalvos artimos: oranžiniai greitkeliai,
- * geltoni magistraliniai keliai, balti gatvių tinklai.
+ * Atsarginis kelių žemėlapis (OpenFreeMap „Liberty“): OpenStreetMap duomenys, be
+ * rakto ir be mokesčio. Naudojamas, jei PTV stilius neįsikelia. „Google Maps“
+ * plytelių naudoti negalima – jų licencija leidžia jas rodyti tik per „Google“ SDK.
  */
 const ROADS_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
@@ -192,9 +191,16 @@ function RouteMapView({
   useEffect(() => {
     if (!container.current || !hasRoute) return;
 
+    const origin = window.location.origin;
     const map = new MapLibreMap({
       container: container.current,
-      style: ROADS_STYLE,
+      // PTV žemėlapis: tie patys HERE duomenys, pagal kuriuos PTV skaičiuoja
+      // maršrutą ir mokesčius, todėl linija sutampa su keliais (#177).
+      style: PTV_VECTOR_STYLE,
+      transformRequest: (url) => {
+        const proxied = ptvVectorProxyUrl(url, origin);
+        return proxied ? { url: proxied } : undefined;
+      },
       // Pradinė reikšmė, kurią iškart pakeičia `fitBounds`.
       center: [0, 50],
       zoom: 4,
@@ -202,6 +208,21 @@ function RouteMapView({
       locale: LOCALE,
     });
     mapRef.current = map;
+
+    // Jei PTV stilius neįsikėlė, žemėlapis liktų tuščias – tada naudojamas
+    // atsarginis. `load` įvyksta tik kartą, todėl sluoksniai pridedami ant to,
+    // kuris įsikėlė. Plytelių klaidos (jos ateina jau po `style.load`) stiliaus
+    // nekeičia: viena nepavykusi plytelė neturi pakeisti viso žemėlapio.
+    let styleArrived = false;
+    let fellBack = false;
+    map.once("style.load", () => {
+      styleArrived = true;
+    });
+    map.on("error", () => {
+      if (styleArrived || fellBack) return;
+      fellBack = true;
+      map.setStyle(ROADS_STYLE);
+    });
 
     map.addControl(new NavigationControl(), "top-right");
     // Konteineris keičia dydį ir be lango: tempiamas kampas, visas ekranas.

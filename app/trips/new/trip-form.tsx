@@ -111,6 +111,20 @@ function departureIso(date: string, time: string): string | undefined {
   return Number.isNaN(departure.getTime()) ? undefined : departure.toISOString();
 }
 
+/**
+ * Paspaudžia mygtuką, kai React jį vėl įjungia (#189). Išjungto mygtuko
+ * `click()` nieko nedaro, o įjungiamas jis tik po kito piešimo.
+ */
+async function clickWhenEnabled(button: HTMLButtonElement | null) {
+  for (let attempt = 0; attempt < 40 && button; attempt++) {
+    if (!button.disabled) {
+      button.click();
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 function durationText(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -246,6 +260,14 @@ export function TripForm({
    */
   const [detaliai, setDetaliai] = useState(!routeLookup || Boolean(tripId));
   const [kainaSkaiciuojama, setKainaSkaiciuojama] = useState(false);
+  /**
+   * Kol skaičiuojama kaina, automatinis maršruto perskaičiavimas laukia (#189):
+   * kitaip jis nutraukia kainos maršruto užklausą ir ištrina rezultatą. Jei per
+   * tą laiką pasikeitė sustojimai, kaina po to perskaičiuojama iš naujo.
+   */
+  const kainaVyksta = useRef(false);
+  const laukiaPerskaiciavimo = useRef(false);
+  const kainosMygtukas = useRef<HTMLButtonElement>(null);
   const [pastabos, setPastabos] = useState<string[]>([]);
   /** Iš ko paimtos paros ir ar po to keistas maršrutas. `null` – rašė žmogus. */
   const [dienuSaltinis, setDienuSaltinis] = useState<{ source: DaysSource; stale: boolean } | null>(null);
@@ -329,6 +351,10 @@ export function TripForm({
   /** Perskaičiuoja maršrutą, kai žmogus nustoja tempti ar redaguoti. */
   function scheduleRoute(via: ViaPoint[], stopList: Stop[], delay = 150) {
     clearTimeout(routeTimer.current);
+    if (kainaVyksta.current) {
+      laukiaPerskaiciavimo.current = true;
+      return;
+    }
     routeTimer.current = setTimeout(() => void fillFromRoute(via, !tripId, stopList), delay);
   }
 
@@ -830,8 +856,13 @@ export function TripForm({
    */
   async function calculateQuote() {
     const form = formRef.current;
-    if (!form || kainaSkaiciuojama) return;
+    if (!form || kainaVyksta.current) return;
 
+    // Laukiantis automatinis perskaičiavimas nebereikalingas: kaina pati
+    // skaičiuoja maršrutą su dabartiniais sustojimais.
+    clearTimeout(routeTimer.current);
+    kainaVyksta.current = true;
+    laukiaPerskaiciavimo.current = false;
     setKainaSkaiciuojama(true);
     setPastabos([]);
     setError("");
@@ -883,6 +914,14 @@ export function TripForm({
       form.requestSubmit(skaiciuotiMygtukas.current);
     } finally {
       setKainaSkaiciuojama(false);
+      kainaVyksta.current = false;
+      if (laukiaPerskaiciavimo.current) {
+        laukiaPerskaiciavimo.current = false;
+        // Sustojimai pasikeitė skaičiuojant (pvz. adresas patikslintas po
+        // paspaudimo): kaina perskaičiuojama su naujausiais. Spaudžiamas pats
+        // mygtukas, kad būtų naudojami naujausi duomenys, o ne šio paspaudimo.
+        void clickWhenEnabled(kainosMygtukas.current);
+      }
     }
   }
 
@@ -1025,7 +1064,7 @@ export function TripForm({
           <label>Norima marža (%)<input type="number" step="0.5" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
         </div>
         {routeLookup && <div className="mt-3">
-          <button type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
+          <button ref={kainosMygtukas} type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
             {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
           </button>
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">

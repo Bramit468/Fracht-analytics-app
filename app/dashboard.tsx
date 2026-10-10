@@ -30,6 +30,10 @@ function formatPerKm(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(2)} €/km`;
 }
 
+function formatPerDay(cents: number | null): string {
+  return cents === null ? "—" : formatCents(cents);
+}
+
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("lt-LT", { day: "2-digit", month: "short" }).format(new Date(`${date}T00:00:00`));
 }
@@ -77,9 +81,11 @@ function ProfitabilityBars({ stats, periodLabel }: { stats: DashboardStats; peri
       <div><div className="mb-2 flex justify-between text-sm"><span className="font-medium text-muted">Pajamos</span><strong>{formatCents(stats.revenueCents)}</strong></div><div className="h-3 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-accent" style={{ width: revenueWidth }} /></div></div>
       <div><div className="mb-2 flex justify-between text-sm"><span className="font-medium text-muted">Kaštai iš viso</span><strong>{formatCents(stats.totalCostCents)}</strong></div><div className="h-3 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-warn" style={{ width: costWidth }} /></div></div>
     </div>
-    <dl className="mt-8 grid grid-cols-2 gap-4 border-t border-line pt-5">
+    <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-line pt-5">
       <div><dt className="text-xs uppercase tracking-wide text-muted">Marža</dt><dd className="mt-1 text-lg font-bold">{formatPercent(stats.marginPercent)}</dd></div>
       <div><dt className="text-xs uppercase tracking-wide text-muted">Pelnas už km</dt><dd className="mt-1 text-lg font-bold">{formatPerKm(stats.profitPerKm)}</dd></div>
+      {/* Fura uždirba paromis: lėtas krovinys už km atrodo gerai, bet užima furą ilgiau (#179). */}
+      <div><dt className="text-xs uppercase tracking-wide text-muted">Pelnas per parą</dt><dd className="mt-1 text-lg font-bold">{formatPerDay(stats.profitPerDayCents)}</dd></div>
     </dl>
   </div>;
 }
@@ -255,7 +261,7 @@ function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: 
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-muted">{subtitle}</p></div><div className="flex items-center gap-4">{action && <Link href={action.href} className="text-sm font-semibold text-good hover:opacity-80">{action.label}</Link>}<ExportButton onExport={onExport} /></div></div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-5 py-3 text-right font-medium sm:px-6">Pelnas €/km</th></tr></thead>
+        <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted"><th className="px-5 py-3 font-medium sm:px-6">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-3 py-3 text-right font-medium">Pelnas €/km</th><th className="px-5 py-3 text-right font-medium sm:px-6">Pelnas per parą</th></tr></thead>
         <tbody className="divide-y divide-line">
           {rows.map((row) => <tr key={row.label}>
             <td className={`px-5 py-3 sm:px-6 ${row.mono ? "font-mono" : ""}`}>{row.label}</td>
@@ -264,7 +270,8 @@ function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: 
             <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.profitCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(row.profitCents)}</td>
             <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPercent(row.marginPercent)}</td>
             <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPerKm(row.costPerKm)}</td>
-            <td className="px-5 py-3 text-right tabular-nums text-muted sm:px-6">{formatPerKm(row.profitPerKm)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPerKm(row.profitPerKm)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-muted sm:px-6">{formatPerDay(row.profitPerDayCents)}</td>
           </tr>)}
         </tbody>
       </table>

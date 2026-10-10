@@ -24,6 +24,7 @@ const PLANNED: TripResult = {
   marginPercent: 31.3,
   costPerKm: 1.3745,
   profitPerKm: 0.6255,
+  profitPerDayCents: null,
 };
 
 const ACTUAL: ActualCosts = {

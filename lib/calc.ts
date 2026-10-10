@@ -101,6 +101,8 @@ export interface TripResult {
   costPerKm: number | null;
   /** EUR/km. null, kai apmokamų km nėra. */
   profitPerKm: number | null;
+  /** Centai per parą. null, kai parų nėra. */
+  profitPerDayCents: number | null;
 }
 
 /** EUR -> centai. */
@@ -218,6 +220,19 @@ export function calcProfitPerKm(profitCents: number, paidKm: number): number | n
   return profitCents / 100 / paidKm;
 }
 
+/**
+ * Pelnas per parą centais (#179). null, kai parų nėra.
+ *
+ * Pelnas už km lėtą krovinį rodo kaip gerą: 3000 km per 3 paras ir per 5 paras
+ * duoda tą patį €/km, nors antras reisas fura užima dviem paromis ilgiau ir
+ * per tas paras kito krovinio nebeveža. Fura uždirba paromis, todėl lyginti
+ * reikia ir taip.
+ */
+export function calcProfitPerDay(profitCents: number, days: number): number | null {
+  if (!(days > 0)) return null;
+  return Math.round(profitCents / days);
+}
+
 /** Visas reiso skaičiavimas nuo įvesties iki rodiklių. */
 export function calcTrip(input: TripInput): TripResult {
   const totalKm = input.paidKm + input.emptyKm;
@@ -243,5 +258,6 @@ export function calcTrip(input: TripInput): TripResult {
     marginPercent: calcMargin(profitCents, revenueCents),
     costPerKm: calcCostPerKm(totalCostCents, input.paidKm),
     profitPerKm: calcProfitPerKm(profitCents, input.paidKm),
+    profitPerDayCents: calcProfitPerDay(profitCents, input.days),
   };
 }

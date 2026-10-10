@@ -7,6 +7,7 @@ import {
   calcFuelCost,
   calcMargin,
   calcProfit,
+  calcProfitPerDay,
   calcProfitPerKm,
   calcRevenue,
   calcRoadCost,
@@ -209,6 +210,27 @@ describe("calcCostPerKm / calcProfitPerKm", () => {
   });
 });
 
+describe("calcProfitPerDay", () => {
+  it("dalina pelną iš parų", () => {
+    // 193 295 ct / 22 paros = 8786,14 → 8786 ct.
+    expect(calcProfitPerDay(193295, 22)).toBe(8786);
+  });
+
+  it("lėtas krovinys: tas pats €/km, bet mažiau per parą", () => {
+    // Tas pats 600 € pelnas už 3000 km: per 3 paras 200 €, per 5 – 120 € paroje.
+    expect(calcProfitPerDay(60000, 3)).toBe(20000);
+    expect(calcProfitPerDay(60000, 5)).toBe(12000);
+  });
+
+  it("nuostolį rodo kaip neigiamą", () => {
+    expect(calcProfitPerDay(-30000, 4)).toBe(-7500);
+  });
+
+  it("grąžina null, kai parų nėra", () => {
+    expect(calcProfitPerDay(193295, 0)).toBeNull();
+  });
+});
+
 describe("calcTrip (visas Omniva reisas)", () => {
   const result = calcTrip(OMNIVA_TRIP);
 
@@ -224,6 +246,7 @@ describe("calcTrip (visas Omniva reisas)", () => {
     expect(result.marginPercent).toBeCloseTo(16.05, 2);
     expect(result.costPerKm).toBeCloseTo(0.9151, 4);
     expect(result.profitPerKm).toBeCloseTo(0.1749, 4);
+    expect(result.profitPerDayCents).toBe(8786);
   });
 
   it("detalizacija sutampa su bendra suma", () => {

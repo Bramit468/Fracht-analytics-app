@@ -12,6 +12,7 @@ function trip(overrides: Partial<TripSummary>): TripSummary {
     tripDate: "2026-09-01",
     truckPlate: "LOV 141",
     paidKm: 1000,
+    days: 1,
     emptyKm: 0,
     emptyFuelCents: 0,
     revenueCents: 200000,
@@ -19,6 +20,7 @@ function trip(overrides: Partial<TripSummary>): TripSummary {
     profitCents: 50000,
     marginPercent: 25,
     profitPerKm: 0.5,
+    profitPerDayCents: null,
     roadByCountry: [],
     ...overrides,
   };
@@ -94,6 +96,16 @@ describe("summarizeByTruck", () => {
   it("pelną už km skaičiuoja eurais", () => {
     const rows = summarizeByTruck([trip({ paidKm: 1000, profitCents: 50000 })]);
     expect(rows[0].profitPerKm).toBeCloseTo(0.5, 6);
+  });
+
+  it("pelną per parą skaičiuoja nuo visų furos parų", () => {
+    // 50 000 ct per 2 paras ir 10 000 ct per 3 paras: 60 000 / 5 = 12 000 ct.
+    const rows = summarizeByTruck([
+      trip({ profitCents: 50000, days: 2 }),
+      trip({ profitCents: 10000, days: 3 }),
+    ]);
+    expect(rows[0].days).toBe(5);
+    expect(rows[0].profitPerDayCents).toBe(12000);
   });
 
   it("tuščias sąrašas duoda tuščią rezultatą", () => {

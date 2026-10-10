@@ -15,6 +15,8 @@ export interface TripSummary {
   tripDate: string;
   truckPlate: string;
   paidKm: number;
+  /** Kiek parų fura užimta – pelnui per parą (#179). */
+  days: number;
   /** Tuščia rida: kaštas be pajamų (#123). */
   emptyKm: number;
   /** Kuras, sudegintas tuščiais kilometrais. */
@@ -24,6 +26,8 @@ export interface TripSummary {
   profitCents: number;
   marginPercent: number | null;
   profitPerKm: number | null;
+  /** Centai per parą. `null`, kai parų nėra. */
+  profitPerDayCents: number | null;
   /** Kelių kaštai pagal šalį — atskirų mokesčių čia nėra (#125). */
   roadByCountry: CountryRoad[];
 }
@@ -67,6 +71,7 @@ export function buildTripSummaries(
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
       paidKm: trip.paid_km,
+      days: trip.days,
       emptyKm: trip.empty_km,
       emptyFuelCents: emptyFuelCents(trip.empty_km, trip.fuel_l_per_100km, trip.fuel_price),
       revenueCents: result.revenueCents,
@@ -74,6 +79,7 @@ export function buildTripSummaries(
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,
       profitPerKm: result.profitPerKm,
+      profitPerDayCents: result.profitPerDayCents,
       roadByCountry: tripRoadsByCountry(
         (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
         tariffs,

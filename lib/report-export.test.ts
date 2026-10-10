@@ -19,6 +19,8 @@ const PROFIT = {
   marginPercent: 23.9375,
   costPerKm: 0.8861,
   profitPerKm: 0.2789,
+  days: 4,
+  profitPerDayCents: 14363,
 };
 
 describe("trucksToCsv", () => {

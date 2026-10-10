@@ -174,6 +174,7 @@ export function TripList() {
             </p>
             <p className="text-sm text-muted">
               Marža {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
+              {trip.profitPerDayCents !== null && ` · ${formatCents(trip.profitPerDayCents)} per parą`}
             </p>
           </div>
         </div>

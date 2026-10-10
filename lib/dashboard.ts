@@ -1,3 +1,4 @@
+import { calcProfitPerDay } from "./calc";
 import type { TripSummary } from "./trips";
 
 export interface DashboardStats {
@@ -16,6 +17,8 @@ export interface DashboardStats {
    * žinant, kad kilometras kainuoja 0,92 €. `null`, kai km nėra.
    */
   costPerKm: number | null;
+  /** Visas pelnas / visos furų paros, centais (#179). `null`, kai parų nėra. */
+  profitPerDayCents: number | null;
 }
 
 /**
@@ -30,6 +33,7 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
   const profitCents = sum((trip) => trip.profitCents);
   const totalCostCents = sum((trip) => trip.totalCostCents);
   const paidKm = sum((trip) => trip.paidKm);
+  const days = sum((trip) => trip.days);
 
   return {
     tripCount: trips.length,
@@ -39,5 +43,6 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
     marginPercent: revenueCents > 0 ? (profitCents / revenueCents) * 100 : null,
     profitPerKm: paidKm > 0 ? profitCents / 100 / paidKm : null,
     costPerKm: paidKm > 0 ? totalCostCents / 100 / paidKm : null,
+    profitPerDayCents: calcProfitPerDay(profitCents, days),
   };
 }

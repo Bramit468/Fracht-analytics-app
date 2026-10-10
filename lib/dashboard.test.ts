@@ -11,6 +11,7 @@ const trips: TripSummary[] = [
     tripDate: "2026-09-20",
     truckPlate: "NNN 888",
     paidKm: 1740,
+    days: 1,
     emptyKm: 0,
     emptyFuelCents: 0,
     revenueCents: 240000,
@@ -18,6 +19,7 @@ const trips: TripSummary[] = [
     profitCents: 87100,
     marginPercent: 36.3,
     profitPerKm: 0.5,
+    profitPerDayCents: null,
     roadByCountry: [],
   },
   {
@@ -28,6 +30,7 @@ const trips: TripSummary[] = [
     tripDate: "2026-09-21",
     truckPlate: "NNN 888",
     paidKm: 1000,
+    days: 1,
     emptyKm: 0,
     emptyFuelCents: 0,
     revenueCents: 100000,
@@ -35,6 +38,7 @@ const trips: TripSummary[] = [
     profitCents: -10000,
     marginPercent: -10,
     profitPerKm: -0.1,
+    profitPerDayCents: null,
     roadByCountry: [],
   },
 ];
@@ -62,7 +66,17 @@ it("be reisų grąžina nulius, o santykinius rodiklius – null", () => {
     marginPercent: null,
     profitPerKm: null,
     costPerKm: null,
+    profitPerDayCents: null,
   });
+});
+
+it("pelnas per parą – visas pelnas / visos paros, ne reisų vidurkis", () => {
+  // 87 100 ct per 2 paras ir −10 000 ct per 3 paras: 77 100 / 5 = 15 420 ct.
+  const stats = calculateDashboardStats([
+    { ...trips[0], days: 2 },
+    { ...trips[1], days: 3 },
+  ]);
+  expect(stats.profitPerDayCents).toBe(15420);
 });
 
 it("savikaina už km skaičiuojama nuo apmokamų km", () => {

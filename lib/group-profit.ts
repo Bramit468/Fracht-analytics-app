@@ -9,6 +9,7 @@
  * tiek pat, kiek 12 000 € reisas.
  */
 
+import { calcProfitPerDay } from "./calc";
 import type { TripSummary } from "./trips";
 
 export interface ProfitGroup {
@@ -24,6 +25,10 @@ export interface ProfitGroup {
   profitPerKm: number | null;
   /** Savikaina eurais už apmokamą km — kaina, žemiau kurios dirbama nuostolingai (#127). */
   costPerKm: number | null;
+  /** Furų paros, kurias užėmė grupės reisai. */
+  days: number;
+  /** Pelnas centais per furos parą (#179). `null`, kai parų nėra. */
+  profitPerDayCents: number | null;
 }
 
 /** Grupės, pelningiausia viršuje. Vienodo pelno atveju — pagal raktą. */
@@ -45,10 +50,13 @@ export function groupProfit(
       marginPercent: null,
       profitPerKm: null,
       costPerKm: null,
+      days: 0,
+      profitPerDayCents: null,
     };
 
     group.tripCount += 1;
     group.paidKm += trip.paidKm;
+    group.days += trip.days;
     group.revenueCents += trip.revenueCents;
     group.totalCostCents += trip.totalCostCents;
     group.profitCents += trip.profitCents;
@@ -61,6 +69,7 @@ export function groupProfit(
       group.revenueCents > 0 ? (group.profitCents / group.revenueCents) * 100 : null;
     group.profitPerKm = group.paidKm > 0 ? group.profitCents / 100 / group.paidKm : null;
     group.costPerKm = group.paidKm > 0 ? group.totalCostCents / 100 / group.paidKm : null;
+    group.profitPerDayCents = calcProfitPerDay(group.profitCents, group.days);
   }
 
   return [...groups.values()].sort(

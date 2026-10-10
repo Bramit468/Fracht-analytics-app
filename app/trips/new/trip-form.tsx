@@ -1302,6 +1302,8 @@ export function TripForm({
             Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
             {" · "}
             {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
+            {/* Lėtas krovinys už km atrodo gerai, bet fura uždirba paromis (#179). */}
+            {result.profitPerDayCents !== null && ` · ${formatCents(result.profitPerDayCents)} per parą`}
           </p>
         </>}
         {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota

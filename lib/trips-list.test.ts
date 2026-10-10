@@ -65,6 +65,7 @@ it("builds list values with the shared trip calculation", () => {
     tripDate: "2026-09-20",
     truckPlate: "NNN 888",
     paidKm: 100,
+    days: 1,
     emptyKm: 0,
     emptyFuelCents: 0,
     revenueCents: 25000,
@@ -72,6 +73,7 @@ it("builds list values with the shared trip calculation", () => {
     profitCents: 15000,
     marginPercent: 60,
     profitPerKm: 1.5,
+    profitPerDayCents: 15000,
     roadByCountry: [{ country: "Nemokami", km: 100, costCents: 0 }],
   }]);
 });

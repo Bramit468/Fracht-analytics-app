@@ -15,10 +15,13 @@ import {
 import { PERIODS, type PeriodKey } from "../../lib/trip-period";
 import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
-import { deleteTrip, listTrips, type TripSummary } from "../../lib/trips";
+import { deleteTrip, listTrips, updateTripPayment, type TripSummary } from "../../lib/trips";
 import { fetchMinMarginPercent } from "../../lib/company-settings";
 import { checkMargin, formatMinMargin } from "../../lib/margin-guard";
 import { getSupabaseClient } from "../../lib/supabase";
+import { listCustomers, type Customer } from "../../lib/customers";
+import { todayInVilnius } from "../../lib/local-date";
+import { paymentState, paymentStateText } from "../../lib/payments";
 
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("lt-LT").format(new Date(`${date}T00:00:00`));
@@ -101,6 +104,8 @@ export function TripList() {
   const [sort, setSort] = useState<SortKey>("date");
   /** Įmonės minimali marža (#181). `null` – riba nenustatyta. */
   const [minMargin, setMinMargin] = useState<number | null>(null);
+  /** Užsakovai – pavadinimui ir apmokėjimo terminui (#183, #185). */
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   async function remove(trip: TripSummary) {
     if (!confirm(`Ištrinti reisą ${trip.tripNumber}? Atstatyti nebus galima.`)) return;
@@ -121,13 +126,16 @@ export function TripList() {
 
     async function loadTrips() {
       try {
-        const [loadedTrips, riba] = await Promise.all([
+        const [loadedTrips, riba, uzsakovai] = await Promise.all([
           listTrips(),
           fetchMinMarginPercent(getSupabaseClient()),
+          // Užsakovų klaida neturi paslėpti reisų sąrašo.
+          listCustomers(getSupabaseClient()).catch(() => ({ customers: [], available: false })),
         ]);
         if (!cancelled) {
           setTrips(loadedTrips);
           setMinMargin(riba);
+          setCustomers(uzsakovai.customers);
         }
       } catch {
         if (!cancelled) setError("Nepavyko užkrauti reisų. Patikrinkite ryšį ir bandykite dar kartą.");
@@ -163,6 +171,8 @@ export function TripList() {
     filterTrips(trips, filter, new Date().toISOString().slice(0, 10)),
     sort,
   );
+  const customersById = new Map(customers.map((customer) => [customer.id, customer]));
+  const today = todayInVilnius();
 
   return <div className="space-y-4">
     <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
@@ -178,6 +188,9 @@ export function TripList() {
             <p className="text-sm text-muted">{formatDate(trip.tripDate)} · {trip.truckPlate}</p>
             <h2 className="mt-1 text-lg font-semibold">{trip.tripNumber}</h2>
             <p className="text-ink">{trip.origin} → {trip.destination}</p>
+            {trip.customerId && customersById.has(trip.customerId) && <p className="text-sm text-muted">
+              {customersById.get(trip.customerId)?.name}
+            </p>}
           </div>
           <div className="text-right">
             <p className={`text-xl font-bold ${profitable ? "text-good" : "text-bad"}`}>
@@ -211,8 +224,68 @@ export function TripList() {
             </button>
           </div>
         </div>
+        {/* Datos pildomos vėliau nei reisas, todėl čia, o ne reiso formoje (#185).
+            Kol migracija 0015 nepaleista, laukų nėra. */}
+        {trip.invoicedOn !== undefined && <PaymentDates
+          trip={trip}
+          termsDays={trip.customerId ? (customersById.get(trip.customerId)?.payment_terms_days ?? null) : null}
+          today={today}
+          onSaved={(dates) => setTrips((current) => current.map((t) => (t.id === trip.id ? { ...t, ...dates } : t)))}
+        />}
       </li>;
     })}
     </ul>}
+  </div>;
+}
+
+/**
+ * Sąskaitos ir apmokėjimo datos vienam reisui (#185). Įrašoma iškart pakeitus
+ * datą – atskiro „išsaugoti“ mygtuko dešimčiai reisų niekas nespaudinėtų.
+ */
+function PaymentDates({ trip, termsDays, today, onSaved }: {
+  trip: TripSummary;
+  termsDays: number | null;
+  today: string;
+  onSaved: (dates: { invoicedOn?: string | null; paidOn?: string | null }) => void;
+}) {
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const state = paymentState({ invoicedOn: trip.invoicedOn ?? null, paidOn: trip.paidOn ?? null, termsDays }, today);
+  const text = paymentStateText(state);
+
+  async function save(field: "invoiced_on" | "paid_on", value: string) {
+    const date = value === "" ? null : value;
+    const stored = (field === "invoiced_on" ? trip.invoicedOn : trip.paidOn) ?? null;
+    if (date === stored) return;
+    setSaving(true);
+    try {
+      await updateTripPayment(trip.id, { [field]: date });
+      setError("");
+      onSaved(field === "invoiced_on" ? { invoicedOn: date } : { paidOn: date });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti datos.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="mt-3 flex flex-wrap items-end gap-3 border-t pt-3 text-sm">
+    <label className="flex flex-col gap-1">
+      <span className="text-muted">Sąskaita išrašyta</span>
+      <input type="date" disabled={saving} defaultValue={trip.invoicedOn ?? ""} onBlur={(event) => void save("invoiced_on", event.target.value)} className="rounded-md border border-line bg-transparent px-2 py-1" />
+    </label>
+    <label className="flex flex-col gap-1">
+      <span className="text-muted">Apmokėta</span>
+      <input type="date" disabled={saving} defaultValue={trip.paidOn ?? ""} onBlur={(event) => void save("paid_on", event.target.value)} className="rounded-md border border-line bg-transparent px-2 py-1" />
+    </label>
+    {text && <span className={state.status === "overdue" || state.status === "paid_late"
+      ? "rounded bg-bad-soft px-2 py-1 text-xs text-bad"
+      : state.status === "paid" ? "rounded bg-accent-soft px-2 py-1 text-xs text-good" : "text-xs text-muted"}>
+      {text}
+    </span>}
+    {state.status === "open" && trip.customerId && termsDays === null && <span className="text-xs text-muted">
+      Užsakovo terminas nežinomas – vėlavimas neskaičiuojamas.
+    </span>}
+    {error && <span role="alert" className="text-xs text-bad">{error}</span>}
   </div>;
 }

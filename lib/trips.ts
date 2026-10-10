@@ -16,6 +16,12 @@ export interface TripSummary {
   truckPlate: string;
   /** Užsakovas (#183). `null` arba nėra – reisas be užsakovo. */
   customerId?: string | null;
+  /**
+   * Sąskaitos ir apmokėjimo datos (#185). `undefined` – migracija 0015 dar
+   * nepaleista (stulpelio nėra), `null` – data neįrašyta.
+   */
+  invoicedOn?: string | null;
+  paidOn?: string | null;
   paidKm: number;
   /** Kiek parų fura užimta – pelnui per parą (#179). */
   days: number;
@@ -73,6 +79,7 @@ export function buildTripSummaries(
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
       customerId: trip.customer_id ?? null,
+      ...("invoiced_on" in trip ? { invoicedOn: trip.invoiced_on ?? null, paidOn: trip.paid_on ?? null } : {}),
       paidKm: trip.paid_km,
       days: trip.days,
       emptyKm: trip.empty_km,
@@ -102,6 +109,22 @@ export async function saveTrip(trip: TripSave, legs: TripCountryLegInsert[]): Pr
   if (error) throw error;
   if (!data?.id || !Array.isArray(data.legs)) throw new Error("Invalid saved trip response.");
   return data as TripWithLegs;
+}
+
+/**
+ * Sąskaitos ir apmokėjimo datos (#185). Keičiamos atskirai nuo reiso, nes
+ * pildomos savaitėmis vėliau; save_trip_with_legs jų neliečia.
+ */
+export async function updateTripPayment(
+  id: string,
+  dates: { invoiced_on?: string | null; paid_on?: string | null },
+): Promise<void> {
+  const { data, error } = await getSupabaseClient().from("trips").update(dates).eq("id", id).select("id");
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    throw new Error("Apmokėjimų dar nėra duomenų bazėje – Supabase paleiskite migraciją 0015.");
+  }
+  if (error) throw error;
+  if (!data?.length) throw new Error("Reisas nerastas. Galbūt jis ištrintas.");
 }
 
 export async function deleteTrip(id: string): Promise<void> {

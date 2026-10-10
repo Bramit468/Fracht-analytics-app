@@ -6,6 +6,8 @@ import {
   NO_CUSTOMER_LABEL,
   normalizeCustomerName,
   parseCustomerName,
+  parsePaymentTerms,
+  paymentsByCustomer,
   summarizeByCustomer,
 } from "./customers";
 import type { TripSummary } from "./trips";
@@ -64,6 +66,43 @@ describe("užsakovo pavadinimas", () => {
 
   it("nežinomo neranda", () => {
     expect(findCustomer(CUSTOMERS, "Nauja įmonė")).toBeNull();
+  });
+});
+
+describe("paymentsByCustomer", () => {
+  it("naudoja užsakovo terminą ir praleidžia reisus be užsakovo", () => {
+    const result = paymentsByCustomer(
+      [
+        trip({ customerId: "c1", invoicedOn: "2026-08-01", paidOn: null, revenueCents: 100000 }),
+        trip({ customerId: null, invoicedOn: "2026-01-01", paidOn: null, revenueCents: 999999 }),
+      ],
+      [{ id: "c1", name: "UAB Omniva", payment_terms_days: 30 }],
+      "2026-10-10",
+    );
+
+    expect(result.size).toBe(1);
+    expect(result.get("c1")).toMatchObject({ openCents: 100000, overdueCents: 100000, overdueCount: 1 });
+  });
+
+  it("be termino – laukiama, bet nepradelsta", () => {
+    const result = paymentsByCustomer(
+      [trip({ customerId: "c2", invoicedOn: "2026-01-01", paidOn: null })],
+      CUSTOMERS,
+      "2026-10-10",
+    );
+    expect(result.get("c2")).toMatchObject({ openCents: 100000, overdueCents: 0 });
+  });
+});
+
+describe("parsePaymentTerms", () => {
+  it("tuščias – nežinomas, sveikas skaičius – dienos", () => {
+    expect(parsePaymentTerms("")).toEqual({ ok: true, value: null });
+    expect(parsePaymentTerms(" 60 ")).toEqual({ ok: true, value: 60 });
+  });
+
+  it("atmeta trupmenas ir per ilgus terminus", () => {
+    expect(parsePaymentTerms("30,5").ok).toBe(false);
+    expect(parsePaymentTerms("400").ok).toBe(false);
   });
 });
 

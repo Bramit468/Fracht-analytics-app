@@ -74,6 +74,10 @@ export interface Trip {
    */
   customer_id?: string | null;
 
+  /** Sąskaitos ir apmokėjimo datos (migracija 0015, #185). */
+  invoiced_on?: string | null;
+  paid_on?: string | null;
+
   created_at: string;
 }
 

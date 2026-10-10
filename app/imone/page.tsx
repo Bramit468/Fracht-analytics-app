@@ -6,10 +6,12 @@ import {
   type CompanyInvitation,
   type CompanyMember,
 } from "@/lib/invitations";
+import { fetchMinMarginPercent } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
+import { MinMarginForm } from "./min-margin-form";
 
 export const metadata: Metadata = {
   title: "Įmonė | Bramit",
@@ -25,7 +27,7 @@ export default async function ImonePage() {
 
   const supabase = await createServerSupabaseClient();
 
-  const [memberResult, inviteResult] = await Promise.all([
+  const [memberResult, inviteResult, minMargin] = await Promise.all([
     supabase
       .from("company_member_emails")
       .select("user_id,email,role,created_at")
@@ -35,6 +37,7 @@ export default async function ImonePage() {
       .from("company_invitations")
       .select("email,invited_at,accepted_at")
       .overrideTypes<CompanyInvitation[], { merge: false }>(),
+    fetchMinMarginPercent(supabase),
   ]);
 
   const members = memberResult.data ?? [];
@@ -49,6 +52,16 @@ export default async function ImonePage() {
           lieka nematomi.
         </p>
       </header>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium">Minimali marža</h2>
+        <p className="text-sm text-muted">
+          Reisas, kurio marža žemesnė, skaičiuoklėje ir reisų sąraše pažymimas įspėjimu, o
+          skaičiuoklė parodo kainą, kuri ribą pasiektų. Marža skaičiuojama nuo pajamų. Palikite
+          tuščią, jei ribos nereikia. Keisti gali tik savininkas.
+        </p>
+        <MinMarginForm current={minMargin} />
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Turi prieigą</h2>

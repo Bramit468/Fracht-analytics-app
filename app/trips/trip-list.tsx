@@ -16,6 +16,9 @@ import { PERIODS, type PeriodKey } from "../../lib/trip-period";
 import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
 import { deleteTrip, listTrips, type TripSummary } from "../../lib/trips";
+import { fetchMinMarginPercent } from "../../lib/company-settings";
+import { checkMargin, formatMinMargin } from "../../lib/margin-guard";
+import { getSupabaseClient } from "../../lib/supabase";
 
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("lt-LT").format(new Date(`${date}T00:00:00`));
@@ -96,6 +99,8 @@ export function TripList() {
   const [removing, setRemoving] = useState("");
   const [filter, setFilter] = useState<TripFilter>(EMPTY_FILTER);
   const [sort, setSort] = useState<SortKey>("date");
+  /** Įmonės minimali marža (#181). `null` – riba nenustatyta. */
+  const [minMargin, setMinMargin] = useState<number | null>(null);
 
   async function remove(trip: TripSummary) {
     if (!confirm(`Ištrinti reisą ${trip.tripNumber}? Atstatyti nebus galima.`)) return;
@@ -116,8 +121,14 @@ export function TripList() {
 
     async function loadTrips() {
       try {
-        const loadedTrips = await listTrips();
-        if (!cancelled) setTrips(loadedTrips);
+        const [loadedTrips, riba] = await Promise.all([
+          listTrips(),
+          fetchMinMarginPercent(getSupabaseClient()),
+        ]);
+        if (!cancelled) {
+          setTrips(loadedTrips);
+          setMinMargin(riba);
+        }
       } catch {
         if (!cancelled) setError("Nepavyko užkrauti reisų. Patikrinkite ryšį ir bandykite dar kartą.");
       } finally {
@@ -176,6 +187,14 @@ export function TripList() {
               Marža {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
               {trip.profitPerDayCents !== null && ` · ${formatCents(trip.profitPerDayCents)} per parą`}
             </p>
+            {minMargin !== null && checkMargin({
+              marginPercent: trip.marginPercent,
+              minMarginPercent: minMargin,
+              totalCostCents: trip.totalCostCents,
+              revenueCents: trip.revenueCents,
+            }).status === "below" && <p className="mt-1 inline-block rounded bg-bad-soft px-2 text-xs text-bad">
+              Žemiau ribos {formatMinMargin(minMargin)}
+            </p>}
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t pt-4">

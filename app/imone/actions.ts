@@ -8,7 +8,9 @@ import {
   parseInviteEmail,
   type CompanyMember,
 } from "@/lib/invitations";
+import { formatMinMargin, parseMinMargin } from "@/lib/margin-guard";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { isMissingColumnError } from "@/lib/truck";
 
 export interface InviteState {
   status: "idle" | "error" | "success";
@@ -117,6 +119,65 @@ async function describeDuplicate(
         ? `${email} jau pakviestas ir laukia registracijos.`
         : `${email} jau pakviestas į kitą įmonę.`,
     email: typed,
+  };
+}
+
+export interface MinMarginState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  value?: string;
+}
+
+/**
+ * Įmonės minimali marža (#181). Keisti gali tik savininkas – tai užtikrina RLS,
+ * o čia tik paaiškinama, kodėl neįrašyta.
+ */
+export async function saveMinMargin(
+  _previous: MinMarginState,
+  formData: FormData,
+): Promise<MinMarginState> {
+  const raw = formData.get("min_margin_percent");
+  const typed = typeof raw === "string" ? raw : "";
+  const parsed = parseMinMargin(typed);
+  if (!parsed.ok) return { status: "error", message: parsed.error, value: typed };
+
+  const supabase = await createServerSupabaseClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  if (!claimsData?.claims) {
+    return { status: "error", message: "Prisijungimo sesija baigėsi. Prisijunkite dar kartą.", value: typed };
+  }
+
+  const { data: company } = await supabase.from("companies").select("id").maybeSingle();
+  if (!company) {
+    return { status: "error", message: "Įmonė nerasta.", value: typed };
+  }
+
+  const { data, error } = await supabase
+    .from("companies")
+    .update({ min_margin_percent: parsed.value })
+    .eq("id", company.id)
+    .select("id");
+
+  if (isMissingColumnError(error)) {
+    return {
+      status: "error",
+      message: "Duomenų bazėje dar nėra šio nustatymo – Supabase paleiskite migraciją 0013.",
+      value: typed,
+    };
+  }
+  if (error) {
+    console.error("Nepavyko įrašyti minimalios maržos", error);
+    return { status: "error", message: "Nepavyko įrašyti. Bandykite dar kartą.", value: typed };
+  }
+  // RLS neleidus atnaujinti, klaidos nėra – tiesiog nepaliesta nė viena eilutė.
+  if (!data || data.length === 0) {
+    return { status: "error", message: "Ribą keisti gali tik įmonės savininkas.", value: typed };
+  }
+
+  refresh();
+  return {
+    status: "success",
+    message: parsed.value === null ? "Riba panaikinta." : `Riba išsaugota: ${formatMinMargin(parsed.value)}.`,
   };
 }
 

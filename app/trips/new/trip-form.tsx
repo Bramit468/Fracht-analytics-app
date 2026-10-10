@@ -16,7 +16,8 @@ import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money"
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerKm } from "../../../lib/pricing";
 import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
-import { fetchMinMarginPercent } from "../../../lib/company-settings";
+import { fetchCompanySettings } from "../../../lib/company-settings";
+import { countriesByDay, fitPerDiemDays, perDiemDays, sumPerDiem, type PerDiemDay } from "../../../lib/per-diem";
 import { ensureCustomer, listCustomers, parseCustomerName, type Customer } from "../../../lib/customers";
 import { truckRowToCalc } from "../../../lib/truck";
 import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
@@ -178,6 +179,17 @@ export function TripForm({
   /** Užsakovai (#183). `customersAvailable` – ar migracija 0014 paleista. */
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersAvailable, setCustomersAvailable] = useState(false);
+  /** Įmonės dienpinigių procentas (#187). `null` – pagal šalis neskaičiuojama. */
+  const [dienpinigiuProc, setDienpinigiuProc] = useState<number | null>(null);
+  /**
+   * Dienpinigiai pagal šalis kiekvienai dienai. `null` – fiksuoti furos.
+   * `ref`, ne būsena: „Skaičiuoti kainą“ siunčia formą iškart po maršruto, ir
+   * būsena tuo metu dar būtų sena.
+   */
+  const dienpinigiai = useRef<PerDiemDay[] | null>(null);
+  const [dienpinigiuPastaba, setDienpinigiuPastaba] = useState("");
+  /** Dienos, pagal kurias suskaičiuotas rodomas rezultatas. */
+  const [skaiciuotiDienpinigiai, setSkaiciuotiDienpinigiai] = useState<PerDiemDay[] | null>(null);
   /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
   const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
   /** Krovinio svoris tonomis – tik PTV užklausai, reise nesaugomas (#86). */
@@ -249,18 +261,21 @@ export function TripForm({
       try {
         const client = getSupabaseClient();
         const source = tripId ?? copyFromId;
-        const [t, c, existing, riba, uzsakovai] = await Promise.all([
+        const [t, c, existing, nustatymai, uzsakovai] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
           source ? getTripWithLegs(source) : null,
-          fetchMinMarginPercent(client),
+          fetchCompanySettings(client),
           // Užsakovų sąrašo klaida neturi užblokuoti reiso skaičiavimo.
           listCustomers(client).catch(() => ({ customers: [], available: false })),
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
         if (!cancelled) {
-          setMinMarza(riba);
+          setMinMarza(nustatymai.minMarginPercent);
+          setDienpinigiuProc(nustatymai.perDiemPercent);
+          // Taisant ar kopijuojant – tos pačios šalys, kol maršrutas neperskaičiuotas.
+          if (existing?.per_diem_days?.length) dienpinigiai.current = existing.per_diem_days;
           setCustomers(uzsakovai.customers);
           setCustomersAvailable(uzsakovai.available);
           setTrucks(t.data as Truck[]);
@@ -505,6 +520,7 @@ export function TripForm({
         return null;
       }
       setTvarkarastis(result.schedule);
+      applyPerDiem(result.schedule);
       planasParodytas.current = true;
       return result.schedule.days;
     } catch {
@@ -513,6 +529,26 @@ export function TripForm({
     } finally {
       setPlanuoja(false);
     }
+  }
+
+  /**
+   * Dienpinigiai pagal šalis iš PTV tvarkaraščio (#187). Šalis, kurios normos
+   * nežinome, sumos neužpildo: tada lieka fiksuoti furos dienpinigiai, o ne
+   * tikslu atrodantis, bet neteisingas skaičius.
+   */
+  function applyPerDiem(schedule: RouteSchedule) {
+    if (dienpinigiuProc === null) return;
+    const computed = perDiemDays(countriesByDay(schedule), dienpinigiuProc);
+    if (computed.days.length === 0) return;
+    if (computed.unknownCountries.length > 0) {
+      dienpinigiai.current = null;
+      setDienpinigiuPastaba(`Šalies ${computed.unknownCountries.join(", ")} dienpinigių normos sąraše nėra – naudojami fiksuoti furos dienpinigiai.`);
+      return;
+    }
+    dienpinigiai.current = computed.days;
+    setDienpinigiuPastaba("");
+    setResult(null);
+    setSaved("");
   }
 
   /** Įrašo viešo tarifo įvertį į tą patį lauką, kurį galima pataisyti ranka. */
@@ -894,6 +930,13 @@ export function TripForm({
         stops: toStoredStops(routedStops(stops)),
       };
       if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
+      // Dienpinigiai pagal šalis pritaikomi prie įvestos trukmės (#187).
+      const dienos = dienpinigiuProc !== null && dienpinigiai.current ? fitPerDiemDays(dienpinigiai.current, trip.days) : null;
+      if (dienos && dienos.length > 0) {
+        trip.per_diem_cents = sumPerDiem(dienos);
+        trip.per_diem_days = dienos;
+      }
+      setSkaiciuotiDienpinigiai(dienos && dienos.length > 0 ? dienos : null);
       const tripLegs = legs.map(({ id }) => ({ country: text(`country-${id}`), km: number(`km-${id}`) }));
       if (Math.abs(tripLegs.reduce((sum, l) => sum + l.km, 0) - trip.paid_km - trip.empty_km) > 0.005) throw new Error("Šalių atkarpų suma turi sutapti su apmokamų ir tuščių km suma.");
       const calculation = calculateSavedTrip(trip, tripLegs, truckRowToCalc(truck), tariffs);
@@ -921,10 +964,14 @@ export function TripForm({
       // Lentelė jau yra, bet funkcija sena (0014 paleista tik iš dalies) –
       // užsakovas tyliai nepatektų į reisą, todėl pasakome.
       const customerLost = customerId !== null && persisted.customer_id !== customerId;
+      // Be 0016 funkcija dienpinigių neįrašo – reisas liktų su fiksuotais,
+      // ir sąraše pelnas skirtųsi nuo ką tik parodyto.
+      const perDiemLost = trip.per_diem_cents != null && persisted.per_diem_cents !== trip.per_diem_cents;
       setSaved((tripId
         ? `Reiso ${persisted.trip_number} pakeitimai išsaugoti.`
         : `Reisas ${persisted.trip_number} išsaugotas.`)
-        + (customerLost ? " Užsakovas neišsaugotas – Supabase iki galo paleiskite migraciją 0014." : ""));
+        + (customerLost ? " Užsakovas neišsaugotas – Supabase iki galo paleiskite migraciją 0014." : "")
+        + (perDiemLost ? " Dienpinigiai pagal šalis neišsaugoti – Supabase paleiskite migraciją 0016." : ""));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti reiso. Patikrinkite ryšį su duomenų baze ir ar pritaikyta migracija 0004.");
     } finally { busy.current = false; setSaving(false); }
@@ -1386,6 +1433,16 @@ export function TripForm({
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
           {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
         </dl>
+
+        {/* Dienpinigiai – didelė „Furos“ dalis; matyti, iš kokių šalių jie
+            suskaičiuoti, kad būtų galima patikrinti (#187). */}
+        {dienpinigiuProc !== null && <p className="mt-3 text-sm text-muted">
+          {skaiciuotiDienpinigiai
+            ? <>Iš jų dienpinigiai pagal šalis <strong className="text-ink">{formatCents(result.perDiemCents)}</strong> ({String(dienpinigiuProc).replace(".", ",")} % normos):{" "}
+              {skaiciuotiDienpinigiai.map((day, index) => `${index + 1} d. ${day.countries.join("/")} ${formatCents(day.cents)}`).join(" · ")}</>
+            : <>Dienpinigiai fiksuoti – {formatCents(result.perDiemCents)} (furos paros suma × paros). Pagal šalis jie suskaičiuojami, kai paspaudžiate „Skaičiuoti kainą“ arba „Vairavimo laikas ir atvykimas“.</>}
+          {dienpinigiuPastaba && <span className="block text-warn">{dienpinigiuPastaba}</span>}
+        </p>}
 
         {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Kai pajamų
             nėra, kaina jau parodyta antraštėje — antrą kartą jos nekartojame

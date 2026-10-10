@@ -249,6 +249,21 @@ describe("calcTrip (visas Omniva reisas)", () => {
     expect(result.profitPerDayCents).toBe(8786);
   });
 
+  it("dienpinigiai pagal šalis pakeičia fiksuotus, o ne prisideda", () => {
+    // Fiksuoti: perDiem × 22 paros. Pagal šalis – 1000 € visam reisui.
+    const fixed = OMNIVA_TRIP.truck.dailyCents.perDiem * OMNIVA_TRIP.days;
+    const byCountry = calcTrip({ ...OMNIVA_TRIP, perDiemCents: 100000 });
+
+    expect(result.perDiemCents).toBe(fixed);
+    expect(byCountry.perDiemCents).toBe(100000);
+    expect(byCountry.truckCents).toBe(result.truckCents - fixed + 100000);
+    expect(byCountry.totalCostCents).toBe(result.totalCostCents - fixed + 100000);
+  });
+
+  it("null – senas būdas", () => {
+    expect(calcTrip({ ...OMNIVA_TRIP, perDiemCents: null }).truckCents).toBe(result.truckCents);
+  });
+
   it("detalizacija sutampa su bendra suma", () => {
     expect(result.fuelCents + result.adblueCents + result.roadCents + result.truckCents).toBe(
       result.totalCostCents,

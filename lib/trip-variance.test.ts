@@ -18,6 +18,7 @@ const PLANNED: TripResult = {
   adblueCents: 1000,
   roadCents: 20000,
   truckCents: 80700,
+  perDiemCents: 0,
   totalCostCents: 137450,
   revenueCents: 200000,
   profitCents: 62550,

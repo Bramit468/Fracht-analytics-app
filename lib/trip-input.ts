@@ -17,5 +17,7 @@ export function calculateSavedTrip(trip: TripInsert, legs: TripCountryLegInsert[
     revenue: trip.revenue_mode === "freight"
       ? { mode: "freight", freightPriceCents: trip.freight_price_cents! }
       : { mode: "per_km", ratePerKm: trip.rate_per_km! },
+    // Užfiksuoti reiso dienpinigiai pagal šalis (#187); seniems reisams – fiksuoti.
+    perDiemCents: trip.per_diem_cents ?? null,
   });
 }

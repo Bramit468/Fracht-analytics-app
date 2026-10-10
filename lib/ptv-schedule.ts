@@ -19,7 +19,14 @@
  * su `ROUTING_PARAMETER_ONLY_SUPPORTED_BY_POST`.
  */
 
-export const PTV_SCHEDULE_RESULTS = "SCHEDULE_EVENTS,SCHEDULE_REPORT";
+/**
+ * `BORDER_EVENTS` – sienų kirtimai su laiku: iš jų matyti, kurioje šalyje fura
+ * kurią dieną, o nuo to priklauso dienpinigiai (#187). Su tvarkaraščiu PTV
+ * juos grąžina su `startsAt` (patikrinta su tikru raktu 2026-10-10).
+ */
+import type { BorderCrossing } from "./per-diem";
+
+export const PTV_SCHEDULE_RESULTS = "SCHEDULE_EVENTS,SCHEDULE_REPORT,BORDER_EVENTS";
 
 /** Scenarijai, kuriuos žmogus renkasi formoje. PTV presetų daugiau, bet vežėjui užtenka šitų. */
 export const DRIVER_SCENARIOS = [
@@ -110,6 +117,10 @@ export interface RouteSchedule {
   /** Kiek parų apims reisas. Tiek, kiek kalendorinių dienų jis paliečia. */
   days: number;
   stops: ScheduleStop[];
+  /** Išvykimo šalis (ISO kodas). Tuščia, kai PTV jos nenurodė. */
+  startCountry: string;
+  /** Sienų kirtimai: kada ir į kurią šalį įvažiuojama (#187). */
+  borders: BorderCrossing[];
 }
 
 function decimal(value: unknown): number | null {
@@ -166,9 +177,21 @@ export function routeSchedule(payload: unknown): RouteSchedule | null {
   if (startTime === "" || endTime === "") return null;
 
   const stops: ScheduleStop[] = [];
+  const borders: BorderCrossing[] = [];
+  let startCountry = "";
   for (const event of Array.isArray(source.events) ? source.events : []) {
     if (typeof event !== "object" || event === null) continue;
     const entry = event as Record<string, unknown>;
+    if (startCountry === "") startCountry = text(entry.countryCode);
+
+    const border = entry.border as Record<string, unknown> | undefined;
+    if (typeof border === "object" && border !== null) {
+      const countryCode = text(border.countryCode) || text(entry.countryCode);
+      const startsAt = text(entry.startsAt);
+      if (countryCode && startsAt) borders.push({ startsAt, countryCode });
+      continue;
+    }
+
     const schedule = entry.schedule as Record<string, unknown> | undefined;
     const type = stopType(schedule?.scheduleTypes);
     const duration = minutes(schedule?.duration);
@@ -192,5 +215,7 @@ export function routeSchedule(payload: unknown): RouteSchedule | null {
     endTime,
     days: scheduleDays(startTime, endTime),
     stops,
+    startCountry,
+    borders,
   };
 }

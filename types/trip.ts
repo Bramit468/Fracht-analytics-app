@@ -11,6 +11,7 @@
  */
 
 import type { Truck as TruckCosts } from "../lib/calc";
+import type { PerDiemDay } from "../lib/per-diem";
 import type { StoredStop } from "../lib/stops";
 
 /** Kaip gaunamos reiso pajamos. */
@@ -77,6 +78,15 @@ export interface Trip {
   /** Sąskaitos ir apmokėjimo datos (migracija 0015, #185). */
   invoiced_on?: string | null;
   paid_on?: string | null;
+
+  /**
+   * Dienpinigiai pagal šalis (migracija 0016, #187), užfiksuoti įrašant:
+   * pasikeitus normoms, senas reisas nepersiskaičiuoja. `null` – fiksuoti
+   * furos dienpinigiai × paros.
+   */
+  per_diem_cents?: number | null;
+  /** Kiekvienos dienos šalys ir suma – kad būtų matyti, iš ko ji gauta. */
+  per_diem_days?: PerDiemDay[] | null;
 
   created_at: string;
 }

@@ -268,6 +268,8 @@ export function TripForm({
   const kainaVyksta = useRef(false);
   const laukiaPerskaiciavimo = useRef(false);
   const kainosMygtukas = useRef<HTMLButtonElement>(null);
+  /** Vykstantis vairavimo laiko plano skaičiavimas ir jo duomenys (#189). */
+  const planavimas = useRef<{ key: string; promise: Promise<number | null> } | null>(null);
   const [pastabos, setPastabos] = useState<string[]>([]);
   /** Iš ko paimtos paros ir ar po to keistas maršrutas. `null` – rašė žmogus. */
   const [dienuSaltinis, setDienuSaltinis] = useState<{ source: DaysSource; stale: boolean } | null>(null);
@@ -514,13 +516,35 @@ export function TripForm({
    */
   async function planDriverHours(): Promise<number | null> {
     const form = formRef.current;
-    if (!form || planuoja) return null;
+    if (!form) return null;
 
     const value = (name: string) => {
       const field = form.elements.namedItem(name);
       return field instanceof HTMLInputElement ? field.value : "";
     };
 
+    // Planas gali jau būti skaičiuojamas fone (paleistas po maršruto). Anksčiau
+    // antras prašymas tada grąžindavo „nepavyko“, ir paros būdavo spėjamos (#189):
+    // dabar palaukiama to paties, o jei duomenys kiti – po jo skaičiuojama iš naujo.
+    const key = JSON.stringify([
+      value("origin"), value("destination"), value("origin_point"), value("destination_point"),
+      value("trip_date"), value("departure_time"), scenarijus, jauVairavo,
+    ]);
+    const running = planavimas.current;
+    if (running) {
+      const days = await running.promise;
+      if (running.key === key) return days;
+    }
+    const promise = runDriverHours(value);
+    planavimas.current = { key, promise };
+    try {
+      return await promise;
+    } finally {
+      if (planavimas.current?.promise === promise) planavimas.current = null;
+    }
+  }
+
+  async function runDriverHours(value: (name: string) => string): Promise<number | null> {
     setPlanuoja(true);
     setTvarkarascioKlaida("");
     setTvarkarastis(null);

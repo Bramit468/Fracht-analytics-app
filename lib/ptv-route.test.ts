@@ -4,6 +4,7 @@ import {
   firstPlace,
   placeLabel,
   placeSuggestions,
+  ptvQuotaExceeded,
   routeEstimate,
   routeFill,
   routeRequestUrl,
@@ -395,5 +396,16 @@ describe("placeLabel pašto kodui", () => {
       locationType: "POSTAL_CODE",
       address: { countryName: "Prancūzija", countryCode: "FR", postalCode: "51100", city: "Reims" },
     })).toBe("FR-51100 Reims");
+  });
+});
+
+describe("ptvQuotaExceeded", () => {
+  it("403 su GENERAL_QUOTA_EXCEEDED yra limitas, ne blogas raktas", () => {
+    expect(ptvQuotaExceeded(403, '{"errorCode":"GENERAL_QUOTA_EXCEEDED"}')).toBe(true);
+    expect(ptvQuotaExceeded(429, "")).toBe(true);
+  });
+
+  it("paprastas 403 lieka rakto klaida", () => {
+    expect(ptvQuotaExceeded(403, '{"errorCode":"GENERAL_UNAUTHENTICATED"}')).toBe(false);
   });
 });

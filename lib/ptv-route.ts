@@ -100,12 +100,15 @@ function text(value: unknown): string | null {
 /**
  * Gyvas eismas prasmingas tik išvykstant dabar arba per kelias valandas.
  * Tolimesnei datai PTV naudoja tipinius tos savaitės dienos srautus.
+ *
+ * Be datos irgi imamas tipinis eismas: PTV pats rinktųsi gyvą, ir tas pats
+ * reisas po pusvalandžio gautų kitą kelią ir kitą kainą.
  */
 export function routeTiming(
   startTime?: string,
   now = new Date(),
 ): RouteTiming | null {
-  if (!startTime) return { trafficMode: "REALISTIC" };
+  if (!startTime) return { trafficMode: "AVERAGE" };
 
   const departure = new Date(startTime);
   if (Number.isNaN(departure.getTime())) return null;
@@ -310,10 +313,9 @@ export function routeRequestUrl(
     `TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE,${PTV_EMISSIONS_RESULT}`,
   );
   url.searchParams.set("options[currency]", "EUR");
-  if (timing?.startTime) {
-    url.searchParams.set("options[startTime]", timing.startTime);
-    url.searchParams.set("options[trafficMode]", timing.trafficMode);
-  }
+  // Režimas siunčiamas ir be išvykimo laiko: nenurodžius PTV ima gyvą eismą.
+  if (timing) url.searchParams.set("options[trafficMode]", timing.trafficMode);
+  if (timing?.startTime) url.searchParams.set("options[startTime]", timing.startTime);
   if (avoidFerries) url.searchParams.set("options[avoid]", "FERRIES");
   for (const [name, value] of Object.entries(weightParams(weights ?? {}))) {
     url.searchParams.set(name, value);

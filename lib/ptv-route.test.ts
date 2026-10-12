@@ -366,8 +366,13 @@ describe("routeTiming", () => {
     expect(routeTiming("2026-09-25T08:00:00.000Z", now)?.trafficMode).toBe("AVERAGE");
   });
 
-  it("be datos palieka PTV numatytą išvykimą dabar", () => {
-    expect(routeTiming(undefined, now)).toEqual({ trafficMode: "REALISTIC" });
+  it("be datos ima tipinį eismą, kad kaina nepriklausytų nuo minutės", () => {
+    const timing = routeTiming(undefined, now);
+    expect(timing).toEqual({ trafficMode: "AVERAGE" });
+
+    const url = new URL(routeRequestUrl({ latitude: 54.9, longitude: 23.9 }, { latitude: 52.5, longitude: 13.4 }, false, timing ?? undefined));
+    expect(url.searchParams.get("options[trafficMode]")).toBe("AVERAGE");
+    expect(url.searchParams.has("options[startTime]")).toBe(false);
   });
 
   it("atmeta neteisingą laiką", () => {

@@ -391,8 +391,9 @@ export function TripForm({
 
   /**
    * Sustojimų sąrašo pakeitimas. Eilės ir sudėties keitimas nuima tarpinius
-   * taškus: jie priklauso konkrečiam ruožui tarp dviejų sustojimų. Perskaičiuojama
-   * tik jei maršrutas jau buvo suskaičiuotas.
+   * taškus: jie priklauso konkrečiam ruožui tarp dviejų sustojimų. Perskaičiuojama,
+   * jei maršrutas jau buvo suskaičiuotas arba visi adresai patvirtinti – tada
+   * pirmas maršrutas atsiranda pats, nelaukdamas mygtuko.
    */
   function changeStops(next: Stop[], { resetVia, recalc }: { resetVia: boolean; recalc: boolean }) {
     setStops(next);
@@ -405,7 +406,7 @@ export function TripForm({
       setTarpiniai([]);
       setMarsrutas("Tarpiniai taškai nuimti, nes pasikeitė sustojimai.");
     }
-    if (recalc && marsrutoLinija.length > 0) scheduleRoute(via, next, 600);
+    if (recalc && (marsrutoLinija.length > 0 || next.every((stop) => stop.point))) scheduleRoute(via, next, 600);
   }
 
   /** Rašant adresą maršrutas neperskaičiuojamas – tik pasirinkus pasiūlymą. */

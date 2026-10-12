@@ -165,8 +165,6 @@ export function TripForm({
   const nextId = useRef(1);
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [telematika, setTelematika] = useState("");
-  const [pildoma, setPildoma] = useState(false);
   const [normos, setNormos] = useState("");
   const [marsrutas, setMarsrutas] = useState("");
   const [skaiciuoja, setSkaiciuoja] = useState(false);
@@ -651,50 +649,6 @@ export function TripForm({
       setResult(null);
     } catch {
       setNormos("");
-    }
-  }
-
-  /** Užpildo laukus faktiniais duomenimis. Vartotojas gali juos taisyti. */
-  async function fillFromTelematics() {
-    const form = formRef.current;
-    if (!form || pildoma) return;
-
-    const value = (name: string) => {
-      const field = form.elements.namedItem(name);
-      return field instanceof HTMLInputElement || field instanceof HTMLSelectElement ? field.value : "";
-    };
-    const plate = trucks.find(t => t.id === value("truck_id"))?.plate ?? "";
-
-    setPildoma(true);
-    setTelematika("");
-    try {
-      const result = await fetchTelematicsFill(plate, value("tele_from"), value("tele_to"));
-      if (!result.ok) {
-        setTelematika(result.message);
-        return;
-      }
-
-      for (const [name, filled] of Object.entries(result.fill)) {
-        if (name === "legKm" || filled === "") continue;
-        const field = form.elements.namedItem(name);
-        if (field instanceof HTMLInputElement) field.value = filled;
-      }
-
-      // Atkarpos pakeičiamos viena „Nemokami" – tikri keliai jau suvesti kaip
-      // sumokėta suma, todėl įkainis pagal šalis čia tik dubliuotų kaštus.
-      setLegs([{ id: nextId.current++, country: "Nemokami", km: result.fill.legKm }]);
-      setNeivertintasKeltas(null);
-      setKeltoIvertis(null);
-      setResult(null);
-      setSaved("");
-      const praleista = result.skippedRows > 0
-        ? ` Neįtraukta ${result.skippedRows} pirkim. kita valiuta (${result.skippedCurrencies.join(", ")}) — kurą ir kelius patikrinkite patys.`
-        : "";
-      setTelematika(`Užpildyta: ${Math.round(result.km)} km, keliai ${formatCents(result.tollCents)}. Tuščius km atskirkite patys.${praleista}`);
-    } catch {
-      setTelematika("Nepavyko susisiekti su telematika.");
-    } finally {
-      setPildoma(false);
     }
   }
 
@@ -1281,14 +1235,6 @@ export function TripForm({
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
         {normos && <p role="status" className="mt-2 text-sm text-muted">{normos}</p>}
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <label className="text-sm">Nuo<input name="tele_from" type="date" className={inputClass} /></label>
-          <label className="text-sm">Iki<input name="tele_to" type="date" className={inputClass} /></label>
-          <button type="button" disabled={pildoma} onClick={() => void fillFromTelematics()} className="rounded-lg border bg-surface p-3 disabled:opacity-50">
-            {pildoma ? "Imama…" : "Užpildyti iš telematikos"}
-          </button>
-        </div>
-        {telematika && <p role="status" className="mt-2 text-sm text-ink">{telematika}</p>}
         {/* Vienintelis paaiškinimas, kurį verta palikti: be jo žmogus ieško,
             kur įvesti vairuotojo atlyginimą, ir gali jį įskaičiuoti dukart. */}
         <p className="mt-3 text-sm text-muted">Vairuotojas, draudimas ir nusidėvėjimas — jau furos paros savikainoje.</p>
@@ -1302,7 +1248,7 @@ export function TripForm({
       </Skiltis>
 
       {/* Atkarpos reikalingos tik tada, kai kelių kaina skaičiuojama pagal
-          įkainius. Su PTV ar telematika ten lieka viena „Nemokami" eilutė,
+          įkainius. Su PTV ten lieka viena „Nemokami" eilutė,
           todėl skiltis suskleista ir nebeblaško. */}
       <details className="rounded-xl border p-4">
         <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis (kai keliai pagal įkainius)</summary>

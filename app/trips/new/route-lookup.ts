@@ -15,6 +15,8 @@ import {
   type GeocodedPlace,
   type RouteViolation,
   type RouteFill,
+  ptvQuotaExceeded,
+  PTV_QUOTA_MESSAGE,
 } from "@/lib/ptv-route";
 import {
   routeSchedule,
@@ -179,6 +181,7 @@ export async function lookupRouteOptions(
   } catch (cause) {
     if (cause instanceof PtvError) {
       console.error("PTV atmetė variantų užklausą", cause.status, cause.body);
+      if (ptvQuotaExceeded(cause.status, cause.body)) return { ok: false, message: PTV_QUOTA_MESSAGE };
       return { ok: false, message: `Maršrutų paslauga grąžino klaidą ${cause.status}.` };
     }
 
@@ -256,6 +259,7 @@ export async function lookupSchedule(
   } catch (cause) {
     if (cause instanceof PtvError) {
       console.error("PTV atmetė tvarkaraščio užklausą", cause.status, cause.body);
+      if (ptvQuotaExceeded(cause.status, cause.body)) return { ok: false, message: PTV_QUOTA_MESSAGE };
       return { ok: false, message: `Vairavimo laiko paslauga grąžino klaidą ${cause.status}.` };
     }
 

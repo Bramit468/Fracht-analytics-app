@@ -18,6 +18,17 @@ export const PTV_ROUTING_URL = "https://api.myptv.com/routing/v1/routes";
 /** 40 t vilkikas. Kiti profiliai duotų kitus mokesčius ir kitus draudimus. */
 export const PTV_TRUCK_PROFILE = "EUR_TRUCK_40T";
 
+export const PTV_QUOTA_MESSAGE =
+  "Pasiektas PTV užklausų limitas (dienos arba mėnesio). Maršrutų skaičiavimas veiks, kai limitas atsinaujins.";
+
+/**
+ * Išnaudotą limitą PTV grąžina kaip 403 GENERAL_QUOTA_EXCEEDED, nors raktas
+ * geras: neatskyrus vartotojui liepiama tikrinti raktą, kuris nekaltas.
+ */
+export function ptvQuotaExceeded(status: number, body: string): boolean {
+  return status === 429 || body.includes("QUOTA_EXCEEDED");
+}
+
 export type PtvTrafficMode = "REALISTIC" | "AVERAGE";
 
 export interface RouteTiming {

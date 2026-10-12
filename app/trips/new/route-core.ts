@@ -6,7 +6,9 @@ import {
   routeRequestUrl,
   routeTiming,
   suggestedDays,
+  ptvQuotaExceeded,
   PTV_GEOCODING_URL,
+  PTV_QUOTA_MESSAGE,
   type GeocodedPlace,
   type RouteFill,
   type RouteViolation,
@@ -243,6 +245,8 @@ export async function runRouteLookup(
     if (cause instanceof PtvError) {
       console.error("PTV atmetė užklausą", cause.status, cause.body);
 
+      // Pirmiau už rakto patikrą: limitas irgi ateina kaip 403.
+      if (ptvQuotaExceeded(cause.status, cause.body)) return { ok: false, message: PTV_QUOTA_MESSAGE };
       if (cause.status === 401 || cause.status === 403) {
         return {
           ok: false,
@@ -257,9 +261,6 @@ export async function runRouteLookup(
             + "Dažniausia priežastis – tikslus namo taškas gatvėje, kuri uždara sunkiasvorėms, "
             + "arba tempiamas taškas ant uždaro kelio. Pabandykite nurodyti miestą arba artimiausią didesnę gatvę.",
         };
-      }
-      if (cause.status === 429) {
-        return { ok: false, message: "Viršytas maršrutų užklausų limitas. Bandykite vėliau." };
       }
       return { ok: false, message: `Maršrutų paslauga grąžino klaidą ${cause.status}.` };
     }

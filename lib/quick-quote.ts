@@ -48,6 +48,8 @@ export interface QuoteNoteInput {
   applied: boolean;
   routeOk: boolean;
   scheduleOk: boolean;
+  /** Plano neprašyta, nes nėra išvykimo datos ar laiko – tai ne gedimas. */
+  noDeparture?: boolean;
   days: number | null;
   daysSource: DaysSource;
   emptyKm: number;
@@ -74,7 +76,9 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
   } else if (input.daysSource === "route") {
     notes.push(
       `Paros: ${verb} ${input.days} – apytikslis spėjimas pagal kelio valandas`
-      + `${input.scheduleOk ? "" : ", nes vairavimo laiko plano gauti nepavyko"}. `
+      + `${input.scheduleOk ? "" : input.noDeparture
+        ? ", nes neįvesta reiso data ar išvykimo laikas – su jais paros būtų pagal vairavimo laiko planą"
+        : ", nes vairavimo laiko plano gauti nepavyko"}. `
       + "Pertraukos ir poilsis neįskaičiuoti.",
     );
   } else {

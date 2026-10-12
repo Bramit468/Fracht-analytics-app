@@ -79,6 +79,12 @@ describe("quoteNotes", () => {
     expect(notes[0]).toContain("plano gauti nepavyko");
   });
 
+  it("be reiso datos nesako, kad planas nepavyko", () => {
+    const notes = quoteNotes({ ...VISKAS_GERAI, daysSource: "route", days: 2, scheduleOk: false, noDeparture: true });
+    expect(notes[0]).toContain("neįvesta reiso data");
+    expect(notes[0]).not.toContain("nepavyko");
+  });
+
   it("nenustatytos paros prašo įrašyti ranka", () => {
     const notes = quoteNotes({ ...VISKAS_GERAI, daysSource: "none", days: null });
     expect(notes[0]).toContain("įrašykite jas ranka");

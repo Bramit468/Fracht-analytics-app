@@ -842,6 +842,10 @@ export function TripForm({
       const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write, stops), planDriverHours()]);
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
+      const text = (name: string) => {
+        const field = form.elements.namedItem(name);
+        return field instanceof HTMLInputElement ? field.value : "";
+      };
       const truckId = form.elements.namedItem("truck_id");
       const plate = trucks.find((truck) => truck.id === (truckId instanceof HTMLSelectElement ? truckId.value : ""))?.plate;
       const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
@@ -867,6 +871,7 @@ export function TripForm({
         applied: write,
         routeOk: route !== null,
         scheduleOk: scheduleDays !== null,
+        noDeparture: !departureIso(text("trip_date"), text("departure_time")),
         days: picked.days,
         daysSource: picked.source,
         emptyKm,

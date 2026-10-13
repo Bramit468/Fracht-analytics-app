@@ -108,13 +108,25 @@ export interface LiveTruck {
   longitude: number;
   country: string | null;
   moving: boolean;
-  /** „Važiuoja 81 km/h“, „Stovi, variklis įjungtas“ arba „Stovi“. */
+  /** „Važiuoja 81 km/h“, „Stovi, variklis įjungtas“, „Stovi“ arba „Nėra ryšio“. */
   state: string;
   gpsTime: string;
 }
 
+/** Po kiek minučių tylos paskutinis greitis nebelaikomas dabartiniu. */
+export const SIGNAL_STALE_MINUTES = 30;
+
+/** Minutės tarp dviejų tiekėjo laikų („2026-09-22 19:06:51“, ta pati zona). */
+function minutesBetween(earlier: string, later: string): number {
+  const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
+  return (at(later) - at(earlier)) / 60_000;
+}
+
 /**
  * Furų sąrašo furos su paskutine žinoma vieta – po vieną eilutę furai.
+ *
+ * `now` – dabartinis laikas tiekėjo zona (Lietuvos). Senas signalas su greičiu
+ * dar nereiškia, kad fura važiuoja: ji tiesiog nutilo važiuodama.
  *
  * Numeriai lyginami be tarpų, kaip ir kitur. Telematikoje būna ir priekabų bei
  * parduotų vilkikų, todėl rodomos tik sąrašo furos, o `withoutPosition` pasako,
@@ -123,6 +135,7 @@ export interface LiveTruck {
 export function liveTrucks(
   snapshots: TelematicsSnapshot[],
   plates: string[],
+  now: string,
 ): { trucks: LiveTruck[]; withoutPosition: string[] } {
   const key = (plate: string) => plate.replace(/\s+/g, "").toUpperCase();
   const newest = new Map<string, TelematicsSnapshot>();
@@ -141,14 +154,17 @@ export function liveTrucks(
       continue;
     }
     const speed = Math.round(row.speedKmh ?? 0);
-    const moving = row.ignition && speed > 0;
+    const silent = !(minutesBetween(row.gpsTime, now) <= SIGNAL_STALE_MINUTES);
+    const moving = !silent && row.ignition && speed > 0;
     trucks.push({
       plate,
       latitude: row.latitude,
       longitude: row.longitude,
       country: row.country,
       moving,
-      state: moving ? `Važiuoja ${speed} km/h` : row.ignition ? "Stovi, variklis įjungtas" : "Stovi",
+      state: silent
+        ? "Nėra ryšio"
+        : moving ? `Važiuoja ${speed} km/h` : row.ignition ? "Stovi, variklis įjungtas" : "Stovi",
       gpsTime: row.gpsTime,
     });
   }

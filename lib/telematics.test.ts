@@ -89,7 +89,7 @@ describe("liveTrucks", () => {
   ]);
 
   it("rodo tik sąrašo furas ir ima naujausią vietą", () => {
-    const { trucks } = liveTrucks(rows, ["MLE 240", "LSE728"]);
+    const { trucks } = liveTrucks(rows, ["MLE 240", "LSE728"], "2026-09-22 19:10:00");
 
     expect(trucks).toEqual([
       { plate: "MLE 240", latitude: 59.334591, longitude: 18.06324, country: "SWE", moving: true, state: "Važiuoja 81 km/h", gpsTime: "2026-09-22 19:06:51" },
@@ -98,6 +98,12 @@ describe("liveTrucks", () => {
   });
 
   it("furos be vietos nedingsta tyliai", () => {
-    expect(liveTrucks(rows, ["LVI 413", "AAA 111"]).withoutPosition).toEqual(["LVI 413", "AAA 111"]);
+    expect(liveTrucks(rows, ["LVI 413", "AAA 111"], "2026-09-22 19:10:00").withoutPosition).toEqual(["LVI 413", "AAA 111"]);
+  });
+
+  it("nutilusi fura nebevadinama važiuojančia, nors paskutinis greitis buvo 81", () => {
+    const [truck] = liveTrucks(rows, ["MLE 240"], "2026-09-22 23:00:00").trucks;
+
+    expect(truck).toMatchObject({ moving: false, state: "Nėra ryšio", gpsTime: "2026-09-22 19:06:51" });
   });
 });

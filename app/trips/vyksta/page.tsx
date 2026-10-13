@@ -5,6 +5,8 @@ import { connection } from "next/server";
 import { calcDailyRate } from "@/lib/calc";
 import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { liveTrucks, parseSnapshots, type LiveTruck } from "@/lib/telematics";
+import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, type DailyDistance } from "@/lib/telematics-costs";
 import {
   addDays,
@@ -17,6 +19,7 @@ import {
 import type { Trip } from "@/types/trip";
 import type { Truck } from "@/types/truck";
 
+import { LiveMap } from "./live-map";
 
 export const metadata: Metadata = {
   title: "Vyksta dabar | Bramit",
@@ -45,6 +48,31 @@ async function loadDaily(): Promise<DailyDistance[]> {
   }
 }
 
+/** Kiek dienų tylintis objektas dar laikomas gyvu: senesni – parduoti ar išjungti. */
+const VIETA_GALIOJA_DIENU = 7;
+
+type Live =
+  | { status: "off" }
+  | { status: "error" }
+  | { status: "ok"; trucks: LiveTruck[]; withoutPosition: string[] };
+
+/**
+ * Furų vietos dabar. Tikrinama įmonė: nuorodos yra vienos įmonės, o vietos –
+ * ne reiso duomenys, kurių RLS neapsaugotų (#S2).
+ */
+async function loadLive(allowed: boolean, plates: string[], today: string): Promise<Live> {
+  if (!allowed || !process.env.TELEMATIKA_SNAPSHOT_URL) return { status: "off" };
+  try {
+    const rows = parseSnapshots(
+      await fetchJson(process.env.TELEMATIKA_SNAPSHOT_URL),
+      `${addDays(today, -VIETA_GALIOJA_DIENU)} 00:00:00`,
+    );
+    return { status: "ok", ...liveTrucks(rows, plates) };
+  } catch {
+    return { status: "error" };
+  }
+}
+
 interface Row {
   trip: Trip;
   plate: string;
@@ -60,7 +88,7 @@ export default async function VykstaPage() {
   const today = isoDate(new Date());
   const supabase = await createServerSupabaseClient();
 
-  const [tripResult, truckResult, daily] = await Promise.all([
+  const [tripResult, truckResult, daily, allowed] = await Promise.all([
     supabase
       .from("trips")
       .select("*")
@@ -69,9 +97,11 @@ export default async function VykstaPage() {
       .order("trip_date"),
     supabase.from("trucks").select("id,plate").overrideTypes<Pick<Truck, "id" | "plate">[], { merge: false }>(),
     loadDaily(),
+    canUseTelematics(supabase),
   ]);
 
   const plates = new Map((truckResult.data ?? []).map((truck) => [truck.id, truck.plate]));
+  const live = await loadLive(allowed, [...plates.values()], today);
 
   const rows: Row[] = ((tripResult.data as Trip[] | null) ?? [])
     .filter((trip) => isOnTheRoad(trip.trip_date, trip.days, today))
@@ -111,6 +141,42 @@ export default async function VykstaPage() {
           tai matyti iš datos ir trukmės.
         </p>
       </header>
+
+      {live.status === "error" && (
+        <p role="alert" className="rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
+          Nepavyko gauti furų vietų iš telematikos.
+        </p>
+      )}
+      {live.status === "ok" && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Furos dabar</h2>
+          {/* Žemėlapio plytelės eina per PTV raktą; be jo lieka lentelė. */}
+          {process.env.PTV_API_KEY && live.trucks.length > 0 && <LiveMap trucks={live.trucks} />}
+          {live.trucks.length === 0 ? (
+            <p className="text-sm text-muted">Nė viena sąrašo fura per paskutines {VIETA_GALIOJA_DIENU} d. vietos nesiuntė.</p>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="text-muted">
+                <tr><th className="py-1 font-normal">Fura</th><th className="font-normal">Būsena</th><th className="font-normal">Šalis</th><th className="font-normal">Paskutinis signalas</th></tr>
+              </thead>
+              <tbody>
+                {live.trucks.map((truck) => (
+                  <tr key={truck.plate} className="border-t">
+                    <td className="py-1 font-semibold">{truck.plate}</td>
+                    <td className={truck.moving ? "text-good" : ""}>{truck.state}</td>
+                    <td>{truck.country ?? "—"}</td>
+                    <td className="tabular-nums">{truck.gpsTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-xs text-muted">
+            Vietos atsinaujina kas minutę. Laikas – telematikos tiekėjo, Lietuvos laiku.
+            {live.withoutPosition.length > 0 && ` Be vietos: ${live.withoutPosition.join(", ")}.`}
+          </p>
+        </section>
+      )}
 
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-dashed p-8 text-center text-muted">

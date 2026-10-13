@@ -20,6 +20,10 @@ export interface TelematicsSnapshot {
   /** Šalis ISO3, pvz. "DEU". Gali nebūti. */
   country: string | null;
   ignition: boolean;
+  /** Paskutinė žinoma vieta. `null`, jei tiekėjas koordinačių nedavė. */
+  latitude: number | null;
+  longitude: number | null;
+  speedKmh: number | null;
   /** Kaupiamoji rida kilometrais. Gali nebūti. */
   odometerKm: number | null;
   /** Kaupiamosios kuro sąnaudos litrais. Dalis furų kuro daviklio neturi. */
@@ -35,6 +39,19 @@ function decimal(value: unknown): number | null {
   if (raw === null) return null;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Tiekėjo `X` yra ilguma, `Y` – platuma (patikrinta su gyvu atsakymu). 0,0 ir
+ * reikšmės už ribų laikomos nežinoma vieta: žymeklis Gvinėjos įlankoje klaidintų.
+ */
+function position(x: unknown, y: unknown): { latitude: number; longitude: number } | null {
+  const longitude = decimal(x);
+  const latitude = decimal(y);
+  if (longitude === null || latitude === null) return null;
+  if (longitude === 0 && latitude === 0) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
 }
 
 /**
@@ -66,16 +83,74 @@ export function parseSnapshots(payload: unknown, freshSince?: string): Telematic
     if (seen.has(key)) continue;
     seen.add(key);
 
+    const place = position(source.X, source.Y);
+
     snapshots.push({
       objectId,
       plate: normalizePlate(plate),
       gpsTime,
       country: text(source.Country),
       ignition: text(source.Ignition) === "1",
+      latitude: place?.latitude ?? null,
+      longitude: place?.longitude ?? null,
+      speedKmh: decimal(source.VectorSpeed),
       odometerKm: decimal(source.Odometer),
       fuelL: decimal(source.FuelConsumption),
     });
   }
 
   return snapshots;
+}
+
+export interface LiveTruck {
+  plate: string;
+  latitude: number;
+  longitude: number;
+  country: string | null;
+  moving: boolean;
+  /** „Važiuoja 81 km/h“, „Stovi, variklis įjungtas“ arba „Stovi“. */
+  state: string;
+  gpsTime: string;
+}
+
+/**
+ * Furų sąrašo furos su paskutine žinoma vieta – po vieną eilutę furai.
+ *
+ * Numeriai lyginami be tarpų, kaip ir kitur. Telematikoje būna ir priekabų bei
+ * parduotų vilkikų, todėl rodomos tik sąrašo furos, o `withoutPosition` pasako,
+ * kurių sąrašo furų žemėlapyje nėra – kad jos nedingtų tyliai.
+ */
+export function liveTrucks(
+  snapshots: TelematicsSnapshot[],
+  plates: string[],
+): { trucks: LiveTruck[]; withoutPosition: string[] } {
+  const key = (plate: string) => plate.replace(/\s+/g, "").toUpperCase();
+  const newest = new Map<string, TelematicsSnapshot>();
+  for (const row of snapshots) {
+    if (row.latitude === null || row.longitude === null) continue;
+    const seen = newest.get(key(row.plate));
+    if (!seen || row.gpsTime > seen.gpsTime) newest.set(key(row.plate), row);
+  }
+
+  const trucks: LiveTruck[] = [];
+  const withoutPosition: string[] = [];
+  for (const plate of plates) {
+    const row = newest.get(key(plate));
+    if (!row || row.latitude === null || row.longitude === null) {
+      withoutPosition.push(plate);
+      continue;
+    }
+    const speed = Math.round(row.speedKmh ?? 0);
+    const moving = row.ignition && speed > 0;
+    trucks.push({
+      plate,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      country: row.country,
+      moving,
+      state: moving ? `Važiuoja ${speed} km/h` : row.ignition ? "Stovi, variklis įjungtas" : "Stovi",
+      gpsTime: row.gpsTime,
+    });
+  }
+  return { trucks, withoutPosition };
 }

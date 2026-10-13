@@ -31,9 +31,18 @@ export function LiveMap({ trucks }: { trucks: LiveTruck[] }) {
   const fitted = useRef(false);
 
   // Serverio komponentas iš naujo paima telematiką; žemėlapis lieka tas pats.
+  // Nematomas skirtukas neatnaujinamas: pamirštas fone jis per parą išsiųstų
+  // tūkstančius užklausų, kurių niekas nemato. Grįžus atnaujinama iškart.
   useEffect(() => {
-    const timer = setInterval(() => router.refresh(), ATNAUJINTI_KAS_MS);
-    return () => clearInterval(timer);
+    const refresh = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    const timer = setInterval(refresh, ATNAUJINTI_KAS_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [router]);
 
   useEffect(() => {

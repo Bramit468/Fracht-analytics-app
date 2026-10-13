@@ -32,6 +32,11 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Dabartis tiekėjo formatu ir zona: „2026-10-13 17:26:58“ Lietuvos laiku. */
+function vilniusNow(date: Date): string {
+  return date.toLocaleString("sv-SE", { timeZone: "Europe/Vilnius" });
+}
+
 async function fetchJson(url: string | undefined): Promise<unknown> {
   if (!url) throw new Error("Nenurodytas adresas");
   const response = await fetch(url, { cache: "no-store" });
@@ -67,7 +72,7 @@ async function loadLive(allowed: boolean, plates: string[], today: string): Prom
       await fetchJson(process.env.TELEMATIKA_SNAPSHOT_URL),
       `${addDays(today, -VIETA_GALIOJA_DIENU)} 00:00:00`,
     );
-    return { status: "ok", ...liveTrucks(rows, plates) };
+    return { status: "ok", ...liveTrucks(rows, plates, vilniusNow(new Date())) };
   } catch {
     return { status: "error" };
   }
@@ -163,7 +168,7 @@ export default async function VykstaPage() {
                 {live.trucks.map((truck) => (
                   <tr key={truck.plate} className="border-t">
                     <td className="py-1 font-semibold">{truck.plate}</td>
-                    <td className={truck.moving ? "text-good" : ""}>{truck.state}</td>
+                    <td className={truck.moving ? "text-good" : truck.state === "Nėra ryšio" ? "text-warn" : ""}>{truck.state}</td>
                     <td>{truck.country ?? "—"}</td>
                     <td className="tabular-nums">{truck.gpsTime}</td>
                   </tr>

@@ -37,9 +37,18 @@ function vilniusNow(date: Date): string {
   return date.toLocaleString("sv-SE", { timeZone: "Europe/Vilnius" });
 }
 
-async function fetchJson(url: string | undefined): Promise<unknown> {
+/**
+ * Kiek sekundžių tiekėjo atsakymas laikomas serverio talpykloje. Puslapis
+ * atsinaujina kas minutę kiekviename atidarytame skirtuke, o talpykla bendra:
+ * kad ir kiek skirtukų, tiekėjas gauna ne daugiau kaip vieną užklausą per šį laiką.
+ */
+const VIETOS_TALPYKLA_S = 60;
+/** Paros km keičiasi kartą per parą, tad kas minutę jų siųstis nereikia. */
+const PAROS_TALPYKLA_S = 900;
+
+async function fetchJson(url: string | undefined, revalidate: number): Promise<unknown> {
   if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { next: { revalidate } });
   if (!response.ok) throw new Error(String(response.status));
   return response.json();
 }
@@ -47,7 +56,7 @@ async function fetchJson(url: string | undefined): Promise<unknown> {
 /** Telematika yra priedas: be jos rodome planą be fakto, o ne klaidą. */
 async function loadDaily(): Promise<DailyDistance[]> {
   try {
-    return parseCanDaily(await fetchJson(process.env.TELEMATIKA_CANDAILY_URL));
+    return parseCanDaily(await fetchJson(process.env.TELEMATIKA_CANDAILY_URL, PAROS_TALPYKLA_S));
   } catch {
     return [];
   }
@@ -69,7 +78,7 @@ async function loadLive(allowed: boolean, plates: string[], today: string): Prom
   if (!allowed || !process.env.TELEMATIKA_SNAPSHOT_URL) return { status: "off" };
   try {
     const rows = parseSnapshots(
-      await fetchJson(process.env.TELEMATIKA_SNAPSHOT_URL),
+      await fetchJson(process.env.TELEMATIKA_SNAPSHOT_URL, VIETOS_TALPYKLA_S),
       `${addDays(today, -VIETA_GALIOJA_DIENU)} 00:00:00`,
     );
     return { status: "ok", ...liveTrucks(rows, plates, vilniusNow(new Date())) };

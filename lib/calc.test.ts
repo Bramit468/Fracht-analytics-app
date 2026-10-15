@@ -14,6 +14,7 @@ import {
   calcTotalCost,
   calcTrip,
   calcTruckCost,
+  DAYS_PER_MONTH,
   type CountryTariff,
   type TripInput,
   type Truck,
@@ -68,6 +69,11 @@ describe("calcDailyRate", () => {
   it("sudeda paros dedamąsias ir priekabą iš mėnesinės nuomos", () => {
     // 57 + 4 + 8 + 2 + 145 + 28 + (550 / 22 = 25) = 269 EUR
     expect(calcDailyRate(OMNIVA_TRUCK)).toBe(26900);
+  });
+
+  it("nauji reisai priekabą dalina iš vidutinio kalendorinio mėnesio", () => {
+    // 244 + 550 × 12 / 365 = 244 + 18,08 EUR
+    expect(calcDailyRate({ ...OMNIVA_TRUCK, workingDaysPerMonth: DAYS_PER_MONTH })).toBe(24400 + 1808);
   });
 
   it("meta klaidą, kai darbo dienų skaičius netinkamas", () => {

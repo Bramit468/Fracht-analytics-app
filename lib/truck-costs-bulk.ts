@@ -58,12 +58,10 @@ export const COST_SHORT_LABELS: Record<TruckCostField, string> = {
   repairs_cents: "Remontas",
   management_cents: "Vadyba",
   trailer_monthly_cents: "Priekaba/mėn.",
-  working_days_per_month: "D. d./mėn.",
 };
 
 const EXTRA_LABELS: Partial<Record<TruckCostField, string>> = {
   trailer_monthly_cents: "Priekabos nuoma, EUR/mėn.",
-  working_days_per_month: "Darbo dienų per mėnesį",
 };
 
 /** Pilnas lauko pavadinimas — toks pat kaip vienos furos formoje. */

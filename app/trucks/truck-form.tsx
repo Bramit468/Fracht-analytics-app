@@ -4,7 +4,6 @@ import { useActionState } from "react";
 
 import {
   DAILY_COSTS,
-  DEFAULT_WORKING_DAYS_PER_MONTH,
   truckRowToFormValues,
   WEIGHT_LABELS,
   type TruckFormField,
@@ -64,22 +63,14 @@ export function TruckForm({ truck }: { truck?: Truck }) {
         ))}
       </Section>
 
-      <Section title="Paros kaštai, EUR/parą" hint="Didžioji reiso kaštų dalis — nuo jų priklauso kiekvieno reiso pelnas.">
+      <Section title="Paros kaštai, EUR/parą" hint="Kalendorinės paros kaina: metų suma / 365 (arba mėnesio × 12 / 365). Fura kainuoja ir stovėdama.">
         {Object.values(DAILY_COSTS).map(({ column, label }) => (
           <Field key={column} name={column} label={label} placeholder="0" inputMode="decimal" {...common} />
         ))}
       </Section>
 
-      <Section title="Mėnesiniai kaštai">
+      <Section title="Mėnesiniai kaštai" hint="Paroje – mėnesio suma × 12 / 365.">
         <Field name="trailer_monthly_cents" label="Priekabos nuoma, EUR/mėn." placeholder="0" inputMode="decimal" {...common} />
-        <Field
-          name="working_days_per_month"
-          label="Darbo dienų per mėnesį"
-          hint="Iš jų dalinami mėnesiniai kaštai."
-          defaultValue={String(DEFAULT_WORKING_DAYS_PER_MONTH)}
-          inputMode="numeric"
-          {...common}
-        />
       </Section>
 
       <Section title="Dokumentai">

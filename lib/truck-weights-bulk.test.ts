@@ -23,7 +23,6 @@ function truck(id: string, plate: string, overrides: Partial<Truck> = {}): Truck
     repairs_cents: 2500,
     management_cents: 1500,
     trailer_monthly_cents: 40000,
-    working_days_per_month: 22,
     empty_weight_kg: null,
     total_permitted_weight_kg: null,
     ...overrides,

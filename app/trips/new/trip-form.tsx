@@ -130,11 +130,14 @@ function durationText(minutes: number): string {
   return hours > 0 ? `${hours} val. ${rest} min.` : `${rest} min.`;
 }
 
-/** Paskutinių 30 dienų rėžis. Už komponento ribų, nes render metu laiko imti negalima. */
+/**
+ * Paskutinės 30 pilnų dienų, baigiant vakar: tiekėjo teigimu, einamosios paros
+ * eilutė netiksli. Už komponento ribų, nes render metu laiko imti negalima.
+ */
 function paskutinesTrisdesimtDienu(): { from: string; to: string } {
   const isoDate = (at: number) => new Date(at).toISOString().slice(0, 10);
   const dabar = Date.now();
-  return { from: isoDate(dabar - 30 * 86_400_000), to: isoDate(dabar) };
+  return { from: isoDate(dabar - 30 * 86_400_000), to: isoDate(dabar - 86_400_000) };
 }
 
 /** Ką maršruto paieška grąžina greitai kainai: pati forma jau užpildyta. */

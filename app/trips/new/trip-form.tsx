@@ -14,7 +14,7 @@ import {
 } from "../../../lib/ferry-pricing";
 import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money";
 import { calculateSavedTrip } from "../../../lib/trip-input";
-import { priceForMargin, pricePerKm } from "../../../lib/pricing";
+import { priceForMargin, pricePerDay, pricePerKm } from "../../../lib/pricing";
 import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
 import { groupViolations, VIOLATION_ADVICE, VIOLATION_HEADINGS } from "../../../lib/route-violations";
 import { fetchCompanySettings } from "../../../lib/company-settings";
@@ -180,6 +180,7 @@ export function TripForm({
   const [result, setResult] = useState<TripResult | null>(null);
   /** Apmokami km skaičiavimo metu — reikia įkainiui už km pasiūlyme. */
   const [apmokamiKm, setApmokamiKm] = useState(0);
+  const [paros, setParos] = useState(0);
   /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
   const [norimaMarza, setNorimaMarza] = useState("15");
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
@@ -953,6 +954,7 @@ export function TripForm({
       setResult(calculation);
       setBePajamu(!hasRevenue);
       setApmokamiKm(trip.paid_km);
+      setParos(trip.days);
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
       setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
       if (action !== "save") return;
@@ -1285,7 +1287,7 @@ export function TripForm({
           <p className="mt-1 text-sm text-muted">
             {prasomaKaina === null
               ? "Tokia marža nepasiekiama — 100 % reikštų pajamas be kaštų."
-              : `Kaštai ${formatCents(result.totalCostCents)} · marža ${norimaMarza} %${pricePerKm(prasomaKaina, apmokamiKm) !== null ? ` · ${pricePerKm(prasomaKaina, apmokamiKm)!.toFixed(2)} €/km` : ""}`}
+              : `Su ${norimaMarza} % marža`}
           </p>
         </> : <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -1296,8 +1298,6 @@ export function TripForm({
           </div>
           <p className="mt-1 text-sm text-muted">
             Marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)}%`}
-            {" · "}
-            {result.profitPerKm === null ? "—" : `${result.profitPerKm.toFixed(2)} €/km`}
             {/* Lėtas krovinys už km atrodo gerai, bet fura uždirba paromis (#179). */}
             {result.profitPerDayCents !== null && ` · ${formatCents(result.profitPerDayCents)} per parą`}
           </p>
@@ -1334,8 +1334,40 @@ export function TripForm({
           Norima marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
         </p>}
 
+        {/* Kaina trimis matais: viso, per parą ir už apmokamą km. Užsakovas
+            klausia €/km, o fura kainuoja paromis – reikia matyti abu. */}
+        <table className="mt-4 w-full text-sm tabular-nums">
+          <thead>
+            <tr className="text-muted">
+              <th className="py-1 text-left font-normal"><span className="sr-only">Kas</span></th>
+              <th className="py-1 text-right font-normal">Iš viso</th>
+              <th className="py-1 text-right font-normal">Per parą</th>
+              <th className="py-1 text-right font-normal">€/km</th>
+            </tr>
+          </thead>
+          <tbody>
+            {([
+              ["Savikaina", result.totalCostCents, false],
+              [`Prašoma kaina (${norimaMarza} % marža)`, prasomaKaina, true],
+              ...(bePajamu ? [] : [["Pajamos", result.revenueCents, false]]),
+            ] as [string, number | null, boolean][]).map(([label, cents, target]) => {
+              const perDay = cents === null ? null : pricePerDay(cents, paros);
+              const perKm = cents === null ? null : pricePerKm(cents, apmokamiKm);
+              return <tr key={label} className="border-t border-line">
+                <th scope="row" className="py-1 pr-3 text-left font-normal">
+                  {label}
+                  {target && !bePajamu && minMarza !== null && targetBelowMin(Number(norimaMarza), minMarza) && <span className="block text-xs text-bad">žemiau įmonės ribos {formatMinMargin(minMarza)}</span>}
+                </th>
+                <td className="py-1 text-right font-semibold">{cents === null ? "—" : formatCents(cents)}</td>
+                <td className="py-1 text-right">{perDay === null ? "—" : formatCents(perDay)}</td>
+                <td className="py-1 text-right">{perKm === null ? "—" : perKm.toFixed(2)}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+
         <dl className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
-          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}</dd></div>)}
+          {[["Kuras", result.fuelCents], ["AdBlue", result.adblueCents], ["Keliai", result.roadCents], ["Fura", result.truckCents], ["Kaštai iš viso", result.totalCostCents], ["Pajamos", result.revenueCents]].filter(([label]) => !(bePajamu && label === "Pajamos")).map(([label, value]) => <div key={label}><dt className="text-sm text-muted">{label}</dt><dd className="font-semibold tabular-nums">{formatCents(Number(value))}{label === "Fura" && paros > 0 && <span className="block text-xs font-normal text-muted">{formatCents(pricePerDay(Number(value), paros)!)} /parą × {paros}</span>}</dd></div>)}
         </dl>
 
         {/* Dienpinigiai – didelė „Furos“ dalis; matyti, iš kokių šalių jie
@@ -1351,23 +1383,11 @@ export function TripForm({
         {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Kai pajamų
             nėra, kaina jau parodyta antraštėje — antrą kartą jos nekartojame
             (#159). Tuščio skyriaus su linija be turinio irgi nerodome. */}
-        {(!bePajamu || istorija) && <div className="mt-4 border-t pt-4">
-          {/* Marža keičiama viršuje, viename lauke – čia tik jos kaina (#193). */}
-          {!bePajamu && (() => {
-            const kaina = priceForMargin(result.totalCostCents, Number(norimaMarza));
-            if (kaina === null) return <p className="text-sm text-muted">Marža {norimaMarza} % nepasiekiama – 100 % reikštų pajamas be kaštų.</p>;
-            const uzKm = pricePerKm(kaina, apmokamiKm);
-            return <p className="text-sm">
-              Kaina su {norimaMarza} % marža: <strong className="tabular-nums">{formatCents(kaina)}</strong>
-              {uzKm !== null && <span className="text-muted"> ({uzKm.toFixed(2)} €/km)</span>}
-              {minMarza !== null && targetBelowMin(Number(norimaMarza), minMarza) && <span className="text-bad"> – žemiau įmonės ribos {formatMinMargin(minMarza)}</span>}
-            </p>;
-          })()}
-
+        {istorija && <div className="mt-4 border-t pt-4">
           {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
               kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
               dabar prašoma daugiau, ar mažiau nei anksčiau (#109). */}
-          {istorija && <div className="mt-3 rounded-lg bg-page p-3 text-sm">
+          <div className="rounded-lg bg-page p-3 text-sm">
             <p className="font-semibold">
               {istorija.matchType === "route" ? "Ta pati kryptis anksčiau" : "Į tą pačią vietą anksčiau"}
               <span className="ml-2 font-normal text-muted">
@@ -1387,7 +1407,7 @@ export function TripForm({
             {istorija.matchType !== "route" && <p className="mt-1 text-muted">
               Šios krypties dar nebuvo — tai kitų reisų į tą pačią vietą kainos.
             </p>}
-          </div>}
+          </div>
         </div>}
       </section>}
     </fieldset>

@@ -45,3 +45,9 @@ export function pricePerKm(priceCents: number, paidKm: number): number | null {
   if (!(paidKm > 0)) return null;
   return priceCents / 100 / paidKm;
 }
+
+/** Ta pati suma per parą, centais. Fura uždirba paromis, ne tik kilometrais. */
+export function pricePerDay(priceCents: number, days: number): number | null {
+  if (!(days > 0)) return null;
+  return Math.round(priceCents / days);
+}

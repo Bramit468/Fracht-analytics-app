@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calcTrip } from "./calc";
-import { marginForPrice, priceForMargin, priceForProfit, pricePerKm } from "./pricing";
+import { marginForPrice, priceForMargin, priceForProfit, pricePerDay, pricePerKm } from "./pricing";
 
 describe("priceForMargin", () => {
   it("marža skaičiuojama nuo pajamų, ne nuo kaštų", () => {
@@ -94,5 +94,15 @@ describe("kaina be pajamų", () => {
     // 2 paros 488 € + kuras 450 € + AdBlue 14 € = 952 €; 952 / 0,8 = 1190 €.
     expect(trip.totalCostCents).toBe(95200);
     expect(priceForMargin(trip.totalCostCents, 20)).toBe(119000);
+  });
+});
+
+describe("pricePerDay", () => {
+  it("dalina iš parų ir apvalina iki cento", () => {
+    expect(pricePerDay(100000, 3)).toBe(33333);
+  });
+
+  it("be parų atsakymo nėra", () => {
+    expect(pricePerDay(100000, 0)).toBeNull();
   });
 });

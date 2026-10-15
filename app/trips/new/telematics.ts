@@ -12,6 +12,7 @@ import {
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
+import { fetchTelematics } from "@/lib/telematics-feed";
 
 export type TelematicsFillResult =
   | {
@@ -24,13 +25,6 @@ export type TelematicsFillResult =
       skippedRows: number;
     }
   | { ok: false; message: string };
-
-async function fetchJson(url: string | undefined): Promise<unknown> {
-  if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
-}
 
 /**
  * Faktiniai furos duomenys reiso formai (#44).
@@ -65,8 +59,8 @@ export async function fetchTelematicsFill(
   let skipped: SkippedSupply[] = [];
   try {
     const [canRaw, suppliesRaw, rates] = await Promise.all([
-      fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
-      fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchTelematics("canDaily"),
+      fetchTelematics("supplies"),
       fetchEcbRates(),
     ]);
     const { supplies, issues } = parseSupplies(suppliesRaw, (amount, currency, date) =>

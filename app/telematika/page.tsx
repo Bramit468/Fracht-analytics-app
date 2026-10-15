@@ -22,6 +22,7 @@ import {
   type SupplyIssues,
 } from "@/lib/telematics-costs";
 import { fuelPricesByCountry, fuelPricesByMonth } from "@/lib/fuel-prices";
+import { fetchTelematics } from "@/lib/telematics-feed";
 
 import { ArchiveButton } from "./archive-button";
 import { ExportButtons } from "./export-buttons";
@@ -50,13 +51,6 @@ function readRange(params: Record<string, string | string[] | undefined>) {
   return from <= to ? { from, to } : { from: to, to: from };
 }
 
-async function fetchJson(url: string | undefined): Promise<unknown> {
-  if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
-}
-
 async function loadCosts(
   from: string,
   to: string,
@@ -69,8 +63,8 @@ async function loadCosts(
 }> {
   try {
     const [canRaw, suppliesRaw, rates] = await Promise.all([
-      fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
-      fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchTelematics("canDaily"),
+      fetchTelematics("supplies"),
       fetchEcbRates(),
     ]);
 

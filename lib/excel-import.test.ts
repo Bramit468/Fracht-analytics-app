@@ -11,7 +11,7 @@ const truck: Truck = {
   insurance_kasko_cents: 0,
   insurance_civil_cents: 0,
   insurance_cmr_cents: 0,
-  driver_salary_cents: 0,
+  driver_salary_monthly_cents: 0,
   per_diem_cents: 0,
   repairs_cents: 0,
   management_cents: 0,

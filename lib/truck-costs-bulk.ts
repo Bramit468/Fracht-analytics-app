@@ -53,7 +53,7 @@ export const COST_SHORT_LABELS: Record<TruckCostField, string> = {
   insurance_kasko_cents: "Kasko",
   insurance_civil_cents: "Civilinis",
   insurance_cmr_cents: "CMR",
-  driver_salary_cents: "Vairuotojas",
+  driver_salary_monthly_cents: "Vairuot./mėn.",
   per_diem_cents: "Komand.",
   repairs_cents: "Remontas",
   management_cents: "Vadyba",

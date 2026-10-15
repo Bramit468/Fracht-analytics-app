@@ -47,7 +47,8 @@ Paros dedamosios yra **kalendorinės** paros kaina: metų suma / 365. Fura
 kainuoja kiekvieną parą, ne tik darbo dieną, todėl 31 dienos mėnuo gauna 31
 parą kaštų.
 
-Priekaba įvedama per mėnesį ir verčiama tuo pačiu matu: 550 × 12 / 365 = 18,08.
+Priekaba ir vairuotojo atlyginimas (visų furos vairuotojų, su mokesčiais, be
+dienpinigių) įvedami per mėnesį ir verčiami tuo pačiu matu: 550 × 12 / 365 = 18,08.
 Excel'yje (ir programoje iki migracijos `0017`) ji buvo dalinama iš 22 darbo
 dienų — tada 30 parų reisuose fura „sumokėdavo" 136 % nuomos. Seni reisai
 įšaldyti su 22, kontrolinis pavyzdys žemiau irgi.

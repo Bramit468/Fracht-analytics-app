@@ -14,7 +14,7 @@ export interface Truck extends TruckProfile {
   insurance_kasko_cents: number;
   insurance_civil_cents: number;
   insurance_cmr_cents: number;
-  driver_salary_cents: number;
+  driver_salary_monthly_cents: number;
   per_diem_cents: number;
   repairs_cents: number;
   management_cents: number;

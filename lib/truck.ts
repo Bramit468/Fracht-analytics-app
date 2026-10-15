@@ -31,7 +31,7 @@ export const DAILY_COSTS = {
   insuranceKasko: { column: "insurance_kasko_cents", label: "Draudimas kasko" },
   insuranceCivil: { column: "insurance_civil_cents", label: "Civilinis draudimas" },
   insuranceCmr: { column: "insurance_cmr_cents", label: "CMR + DCA + sveikatos draudimas" },
-  driverSalary: { column: "driver_salary_cents", label: "Vairuotojo atlyginimas ir mokesčiai" },
+  driverSalary: { column: "driver_salary_monthly_cents", label: "Vairuotojo atlyginimas ir mokesčiai, EUR/mėn." },
   perDiem: { column: "per_diem_cents", label: "Komandiruotpinigiai" },
   repairs: { column: "repairs_cents", label: "Remontas" },
   management: { column: "management_cents", label: "Vadyba" },
@@ -260,6 +260,9 @@ export function truckRowToCalc(row: TruckInsert): CalcTruck {
   for (const key of DAILY_COST_KEYS) {
     dailyCents[key] = row[DAILY_COSTS[key].column];
   }
+  // Atlyginimas įvedamas per mėnesį – paroje kaip ir priekaba. Ta pati
+  // formulė kaip `truck_cost_snapshot()` (0017), kad peržiūra sutaptų su įrašu.
+  dailyCents.driverSalary = Math.round((row.driver_salary_monthly_cents * 12) / 365);
 
   return {
     dailyCents,

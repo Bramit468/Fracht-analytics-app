@@ -12,7 +12,7 @@ const truck: Truck = {
   insurance_kasko_cents: 0,
   insurance_civil_cents: 0,
   insurance_cmr_cents: 0,
-  driver_salary_cents: 10000,
+  driver_salary_monthly_cents: 304167, // 100,00 €/parą
   per_diem_cents: 0,
   repairs_cents: 0,
   management_cents: 0,
@@ -80,7 +80,7 @@ it("builds list values with the shared trip calculation", () => {
 
 it("skaičiuoja pagal reiso kaštų kopiją, o ne pagal dabartinę furą", () => {
   // Fura pabrango dvigubai jau po reiso — senas pelnas turi likti toks pat.
-  const brangesneFura: Truck = { ...truck, driver_salary_cents: 20000 };
+  const brangesneFura: Truck = { ...truck, driver_salary_monthly_cents: 608333 };
 
   expect(buildTripSummaries([trip], [leg], [brangesneFura], [
     { country: "Nemokami", rate: 0, rateType: "per_km" },

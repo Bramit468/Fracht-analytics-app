@@ -23,7 +23,7 @@ const OMNIVA_FORM: TruckFormValues = {
   insurance_kasko_cents: "4",
   insurance_civil_cents: "8",
   insurance_cmr_cents: "2",
-  driver_salary_cents: "145",
+  driver_salary_monthly_cents: "4410,42",
   per_diem_cents: "",
   repairs_cents: "28",
   management_cents: "",
@@ -51,7 +51,7 @@ describe("parseTruckForm", () => {
         insurance_kasko_cents: 400,
         insurance_civil_cents: 800,
         insurance_cmr_cents: 200,
-        driver_salary_cents: 14500,
+        driver_salary_monthly_cents: 441042,
         per_diem_cents: 0,
         repairs_cents: 2800,
         management_cents: 0,
@@ -141,7 +141,9 @@ describe("truckRowToCalc", () => {
 
     const truck = truckRowToCalc(row);
     keys.forEach((key, i) => {
-      expect(truck.dailyCents[key], key).toBe(10 ** i);
+      // Atlyginimas įvedamas per mėnesį: paroje × 12 / 365.
+      const expected = key === "driverSalary" ? Math.round((10 ** i * 12) / 365) : 10 ** i;
+      expect(truck.dailyCents[key], key).toBe(expected);
     });
   });
 });
@@ -215,7 +217,7 @@ describe("truckPayload", () => {
 
   it("kaštų niekada neišmeta", () => {
     const payload = truckPayload(value, null);
-    expect(payload.driver_salary_cents).toBe(14500);
+    expect(payload.driver_salary_monthly_cents).toBe(441042);
   });
 });
 

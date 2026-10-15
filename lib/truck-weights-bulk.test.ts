@@ -18,7 +18,7 @@ function truck(id: string, plate: string, overrides: Partial<Truck> = {}): Truck
     insurance_kasko_cents: 800,
     insurance_civil_cents: 200,
     insurance_cmr_cents: 300,
-    driver_salary_cents: 9000,
+    driver_salary_monthly_cents: 9000,
     per_diem_cents: 5500,
     repairs_cents: 2500,
     management_cents: 1500,

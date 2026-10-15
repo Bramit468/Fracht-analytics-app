@@ -5,6 +5,7 @@ import { calculateSavedTrip } from "@/lib/trip-input";
 import { compareTripToActuals, type TripVariance } from "@/lib/trip-variance";
 import { parseCanDaily, parseSupplies, summarizeActuals } from "@/lib/telematics-costs";
 import type { CountryTariff } from "@/lib/calc";
+import { fetchTelematics } from "@/lib/telematics-feed";
 import type { Trip, TripCountryLeg } from "@/types/trip";
 import type { Truck } from "@/types/truck";
 
@@ -19,13 +20,6 @@ function lastDay(tripDate: string, days: number): string {
   const start = Date.parse(tripDate);
   if (!Number.isFinite(start)) return tripDate;
   return new Date(start + Math.max(0, days - 1) * 86_400_000).toISOString().slice(0, 10);
-}
-
-async function fetchJson(url: string | undefined): Promise<unknown> {
-  if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
 }
 
 /**
@@ -69,8 +63,8 @@ async function loadVariance(tripId: string): Promise<TripVariance | null> {
     );
 
     const [canRaw, suppliesRaw, rates] = await Promise.all([
-      fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
-      fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchTelematics("canDaily"),
+      fetchTelematics("supplies"),
       fetchEcbRates(),
     ]);
 

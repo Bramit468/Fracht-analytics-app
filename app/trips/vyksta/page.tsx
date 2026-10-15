@@ -8,6 +8,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { liveTrucks, parseSnapshots, type LiveTruck } from "@/lib/telematics";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, type DailyDistance } from "@/lib/telematics-costs";
+import { fetchTelematics } from "@/lib/telematics-feed";
 import {
   addDays,
   fuelDrift,
@@ -37,26 +38,10 @@ function vilniusNow(date: Date): string {
   return date.toLocaleString("sv-SE", { timeZone: "Europe/Vilnius" });
 }
 
-/**
- * Kiek sekundžių tiekėjo atsakymas laikomas serverio talpykloje. Puslapis
- * atsinaujina kas minutę kiekviename atidarytame skirtuke, o talpykla bendra:
- * kad ir kiek skirtukų, tiekėjas gauna ne daugiau kaip vieną užklausą per šį laiką.
- */
-const VIETOS_TALPYKLA_S = 60;
-/** Paros km keičiasi kartą per parą, tad kas minutę jų siųstis nereikia. */
-const PAROS_TALPYKLA_S = 900;
-
-async function fetchJson(url: string | undefined, revalidate: number): Promise<unknown> {
-  if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { next: { revalidate } });
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
-}
-
 /** Telematika yra priedas: be jos rodome planą be fakto, o ne klaidą. */
 async function loadDaily(): Promise<DailyDistance[]> {
   try {
-    return parseCanDaily(await fetchJson(process.env.TELEMATIKA_CANDAILY_URL, PAROS_TALPYKLA_S));
+    return parseCanDaily(await fetchTelematics("canDaily"));
   } catch {
     return [];
   }
@@ -78,7 +63,7 @@ async function loadLive(allowed: boolean, plates: string[], today: string): Prom
   if (!allowed || !process.env.TELEMATIKA_SNAPSHOT_URL) return { status: "off" };
   try {
     const rows = parseSnapshots(
-      await fetchJson(process.env.TELEMATIKA_SNAPSHOT_URL, VIETOS_TALPYKLA_S),
+      await fetchTelematics("snapshot"),
       `${addDays(today, -VIETA_GALIOJA_DIENU)} 00:00:00`,
     );
     return { status: "ok", ...liveTrucks(rows, plates, vilniusNow(new Date())) };

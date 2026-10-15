@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { dailyArchiveRows, supplyArchiveRows } from "@/lib/telematics-archive";
+import { fetchTelematics } from "@/lib/telematics-feed";
 
 export interface ArchiveState {
   status: "idle" | "error" | "success";
@@ -11,13 +12,6 @@ export interface ArchiveState {
 
 /** Vienu įrašymu siunčiamų eilučių riba, kad užklausa neišaugtų per didelė. */
 const PORCIJA = 500;
-
-async function fetchJson(url: string | undefined): Promise<unknown> {
-  if (!url) throw new Error("Nenurodytas adresas");
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
-}
 
 /**
  * Nusirašo telematikos duomenis į savo lenteles (#54).
@@ -48,8 +42,8 @@ export async function archiveTelematics(): Promise<ArchiveState> {
   let daily, supplies;
   try {
     const [canRaw, suppliesRaw] = await Promise.all([
-      fetchJson(process.env.TELEMATIKA_CANDAILY_URL),
-      fetchJson(process.env.TELEMATIKA_SUPPLIES_URL),
+      fetchTelematics("canDaily"),
+      fetchTelematics("supplies"),
     ]);
     daily = dailyArchiveRows(canRaw);
     supplies = supplyArchiveRows(suppliesRaw);

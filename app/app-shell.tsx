@@ -3,31 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { activeNavHref, NAV_ITEMS } from "@/lib/navigation";
+import { activeNavHref, NAV_GROUP_LABELS, NAV_ITEMS, type NavGroup } from "@/lib/navigation";
 
+import { AccountMenu } from "./account-menu";
 import { AppNav } from "./app-nav";
+import { BrandMark } from "./brand-mark";
+import { NAV_ICONS } from "./nav-icons";
 
 /** Puslapiai be meniu: iki prisijungimo jo nėra kur vesti. */
 const BARE_PATHS = ["/login", "/auth"];
 
-function BrandMark() {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid size-10 place-items-center rounded-xl bg-accent text-lg font-black text-accent-ink"
-    >
-      B
-    </span>
-  );
-}
+const GROUPS: NavGroup[] = ["darbas", "duomenys", "nustatymai"];
 
 /**
- * Vienas rėmas visai programai (#145).
+ * Vienas rėmas visai programai (#145, #205).
  *
- * Meniu buvo tik suvestinėje kairėje, o kituose puslapiuose – juosta viršuje,
- * todėl einant per skiltis jis šokinėjo iš vietos į vietą. Dabar jis gyvena
- * maketo lygyje: kompiuteryje visada kairėje, telefone – viršuje, ir puslapis
- * nebeturi savo meniu kopijos.
+ * Meniu gyvena maketo lygyje: kompiuteryje visada kairėje, telefone – viršuje.
+ * Aktyvus punktas pažymimas plona žalia juostele ir šviesesniu fonu, o ne
+ * užpildytu mygtuku – meniu yra navigacija, ne veiksmas.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -38,34 +31,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-page text-ink lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="min-h-screen bg-page text-ink lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
       {/* Meniu lieka ekrane slenkant: `sticky` ir savas slinkimas, jei skilčių
           netilptų į žemą langą (#149). */}
-      <aside className="hidden flex-col bg-sidebar px-4 py-6 lg:sticky lg:top-0 lg:flex lg:h-screen lg:overflow-y-auto">
-        <Link href="/" className="flex items-center gap-3 px-2">
+      <aside className="hidden flex-col bg-sidebar px-3 py-5 lg:sticky lg:top-0 lg:flex lg:h-screen lg:overflow-y-auto">
+        <Link href="/" className="flex items-center gap-2.5 px-2.5">
           <BrandMark />
-          <span>
-            <strong className="block text-sm text-sidebar-ink">Bramit</strong>
-            <span className="text-xs text-sidebar-muted">Reisų analitika</span>
-          </span>
+          <span className="text-[15px] font-semibold tracking-tight text-sidebar-ink">Bramit</span>
         </Link>
 
-        <nav aria-label="Pagrindinis meniu" className="mt-10 space-y-1">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={item.href === active ? "page" : undefined}
-              className={`block rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                item.href === active
-                  ? "bg-accent text-accent-ink"
-                  : "text-sidebar-muted hover:bg-white/10 hover:text-sidebar-ink"
-              }`}
-            >
-              {item.label}
-            </Link>
+        <nav aria-label="Pagrindinis meniu" className="mt-8 flex flex-1 flex-col gap-6">
+          {GROUPS.map((group) => (
+            <div key={group} className={group === "nustatymai" ? "mt-auto" : undefined}>
+              {NAV_GROUP_LABELS[group] && (
+                <p className="mb-1.5 px-2.5 text-xs font-medium text-sidebar-muted/70">{NAV_GROUP_LABELS[group]}</p>
+              )}
+              <ul className="space-y-0.5">
+                {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
+                  const Icon = NAV_ICONS[item.href];
+                  const current = item.href === active;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={current ? "page" : undefined}
+                        className={`relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                          current
+                            ? "bg-white/[0.07] text-sidebar-ink before:absolute before:inset-y-1.5 before:-left-3 before:w-[3px] before:rounded-r before:bg-brand"
+                            : "text-sidebar-muted hover:bg-white/[0.04] hover:text-sidebar-ink"
+                        }`}
+                      >
+                        {Icon && <Icon aria-hidden className={`size-4 shrink-0 ${current ? "text-brand" : ""}`} strokeWidth={1.75} />}
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ))}
         </nav>
+        <AccountMenu variant="sidebar" />
       </aside>
 
       <div className="min-w-0">
@@ -73,16 +79,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             taip pat prilipusi prie ekrano viršaus. */}
         <header className="sticky top-0 z-30 border-b border-line bg-surface px-4 py-3 lg:hidden">
           <div className="flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-3">
-              <BrandMark />
-              <span className="text-sm font-bold">Bramit</span>
+            <Link href="/" className="flex items-center gap-2">
+              <BrandMark className="size-6" />
+              <span className="text-[15px] font-semibold tracking-tight">Bramit</span>
             </Link>
-            <Link
-              href="/trips/new"
-              className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-accent-ink"
-            >
-              + Reisas
-            </Link>
+            <div className="flex items-center gap-4">
+              <AccountMenu variant="header" />
+              <Link
+                href="/trips/new"
+                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink"
+              >
+                Naujas reisas
+              </Link>
+            </div>
           </div>
           <AppNav className="mt-3" />
         </header>

@@ -78,7 +78,7 @@ export function LiveMap({ trucks }: { trucks: LiveTruck[] }) {
       const element = document.createElement("div");
       element.textContent = truck.plate;
       element.className = `cursor-pointer whitespace-nowrap rounded-md border px-1.5 py-0.5 text-xs font-semibold shadow ${
-        truck.moving ? "border-good bg-accent text-accent-ink" : "border-line bg-surface text-ink"
+        truck.moving ? "border-good bg-brand text-ink" : "border-line bg-surface text-ink"
       }`;
       return new Marker({ element })
         .setLngLat([truck.longitude, truck.latitude])

@@ -19,13 +19,13 @@ const PORCIJA = 500;
  * Paleidžia žmogus, ne tvarkaraštis. Taip archyvavimas vyksta su prisijungusio
  * vartotojo teisėmis: `company_id` užsipildo pagal jį, o RLS galioja kaip
  * visur. Automatiniam paleidimui reikėtų `service_role` rakto, kuris apeina
- * visą RLS — to neverta įsivesti dėl darbo, kurį kol kas atlieka mygtukas.
+ * visą RLS – to neverta įsivesti dėl darbo, kurį kol kas atlieka mygtukas.
  *
  * Įrašoma `upsert` pagal raktą, todėl paleisti galima kiek nori kartų:
  * pasikartojanti eilutė perrašoma, o ne dubliuojama.
  */
 // Parametrų neima sąmoningai: `useActionState` perduoda ankstesnę būseną ir
-// formos duomenis, bet archyvavimui nereikia nei vieno — ką siųsti, nusprendžia
+// formos duomenis, bet archyvavimui nereikia nei vieno – ką siųsti, nusprendžia
 // tiekėjo atsakymas, o ne vartotojo įvestis.
 export async function archiveTelematics(): Promise<ArchiveState> {
   const supabase = await createServerSupabaseClient();

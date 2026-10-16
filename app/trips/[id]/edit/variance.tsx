@@ -25,7 +25,7 @@ function lastDay(tripDate: string, days: number): string {
 /**
  * Surenka abi puses: reiso skaičiavimą ir to paties vilkiko faktą.
  *
- * Grąžina `null`, kai palyginti nėra su kuo — telematikos duomenų nėra arba
+ * Grąžina `null`, kai palyginti nėra su kuo – telematikos duomenų nėra arba
  * fura tomis dienomis nevažiavo. Tada geriau nerodyti nieko, nei rodyti nulius.
  */
 async function loadVariance(tripId: string): Promise<TripVariance | null> {
@@ -126,7 +126,7 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
   const brangiau = variance.profitImpactCents > 0;
 
   return (
-    <section className="mt-6 rounded-2xl border bg-surface p-6 shadow-sm">
+    <section className="mt-6 rounded-lg border border-line bg-surface p-5 sm:p-6">
       <h2 className="text-xl font-semibold">Planas prieš faktą</h2>
       <p className="mt-1 text-sm text-muted">
         Kairėje – kiek reisas turėjo kainuoti pagal suvestas normas, dešinėje – kiek

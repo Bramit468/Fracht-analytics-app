@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
+import { Copy, Download, Pencil, Search, Trash2 } from "lucide-react";
+import { buttonSecondary, input } from "../ui";
 import { formatCents } from "../../lib/money";
 import {
   EMPTY_FILTER,
@@ -47,14 +49,14 @@ function Controls({
   total: number;
   onExport: () => void;
 }) {
-  const select = "rounded-xl border border-line bg-surface px-3 py-2 text-sm";
+  const select = `${input} pr-8`;
 
-  return <div className="rounded-2xl border bg-surface p-4 shadow-sm">
-    <div className="flex flex-wrap gap-3">
-      <label className="flex-1 text-sm">
-        <span className="sr-only">Paieška</span>
-        <input type="search" value={filter.query} onChange={(event) => onFilter({ ...filter, query: event.target.value })} placeholder="Reiso numeris, miestas arba fura" className="w-full min-w-48 rounded-xl border border-line px-3 py-2" />
-      </label>
+  return <div className="flex flex-wrap items-center gap-2">
+    <label className="relative min-w-56 flex-1 text-sm sm:max-w-sm">
+      <span className="sr-only">Paieška</span>
+      <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+      <input type="search" value={filter.query} onChange={(event) => onFilter({ ...filter, query: event.target.value })} placeholder="Reiso nr., miestas, fura" className={`${input} w-full pl-8`} />
+    </label>
       <label className="text-sm">
         <span className="sr-only">Fura</span>
         <select value={filter.plate} onChange={(event) => onFilter({ ...filter, plate: event.target.value })} className={select}>
@@ -74,13 +76,11 @@ function Controls({
           {SORTS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
         </select>
       </label>
-    </div>
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted">Rodoma {shown} iš {total} reisų.</p>
-      <button type="button" onClick={onExport} disabled={shown === 0} className="text-sm font-semibold text-good underline disabled:opacity-50">
-        Atsisiųsti Excel lentelei ({shown})
-      </button>
-    </div>
+    <span className="ml-auto text-sm tabular-nums text-muted">{shown === total ? `${total} reis.` : `${shown} iš ${total}`}</span>
+    <button type="button" onClick={onExport} disabled={shown === 0} title="Atsisiųsti rodomus reisus Excel'iui" className={`${buttonSecondary} px-2.5 py-1.5`}>
+      <Download aria-hidden className="size-3.5" strokeWidth={1.75} />
+      CSV
+    </button>
   </div>;
 }
 
@@ -88,7 +88,7 @@ function Controls({
  * Atsiunčia tai, kas matoma ekrane (#115).
  *
  * Iškeliamas ne visas sąrašas, o atrinktas: jei ieškojai vienos furos rugsėjį,
- * to ir reikia — kitaip failą tektų karpyti Excel'yje.
+ * to ir reikia – kitaip failą tektų karpyti Excel'yje.
  */
 function downloadTrips(trips: TripSummary[], today: string) {
   downloadCsv(csvFileName(today), tripsToCsv(trips));
@@ -106,6 +106,8 @@ export function TripList() {
   const [minMargin, setMinMargin] = useState<number | null>(null);
   /** Užsakovai – pavadinimui ir apmokėjimo terminui (#183, #185). */
   const [customers, setCustomers] = useState<Customer[]>([]);
+  /** Kurio reiso apmokėjimo datos atskleistos. */
+  const [openPayment, setOpenPayment] = useState("");
 
   async function remove(trip: TripSummary) {
     if (!confirm(`Ištrinti reisą ${trip.tripNumber}? Atstatyti nebus galima.`)) return;
@@ -148,12 +150,12 @@ export function TripList() {
     return () => { cancelled = true; };
   }, [attempt]);
 
-  if (loading) return <p role="status">Kraunami reisai…</p>;
+  if (loading) return <p role="status" className="text-sm text-muted">Kraunami reisai…</p>;
 
   if (error) {
-    return <div>
+    return <div className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4 text-sm">
       <p role="alert" className="text-bad">{error}</p>
-      <button type="button" className="mt-3 underline" onClick={() => {
+      <button type="button" className="mt-2 font-medium text-bad underline" onClick={() => {
         setLoading(true);
         setError("");
         setAttempt((value) => value + 1);
@@ -162,8 +164,8 @@ export function TripList() {
   }
 
   if (!trips.length) {
-    return <p className="rounded-2xl border border-dashed bg-surface p-8 text-center text-muted">
-      Išsaugotų reisų dar nėra. Sukurkite pirmą reisą ir čia matysite jo pelną.
+    return <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
+      Reisų dar nėra. Sukurkite pirmą – čia matysite jo pelną.
     </p>;
   }
 
@@ -173,69 +175,97 @@ export function TripList() {
   );
   const customersById = new Map(customers.map((customer) => [customer.id, customer]));
   const today = todayInVilnius();
+  // Kol migracija 0015 nepaleista, datų stulpelių nėra – nerodomas ir stulpelis.
+  const payments = trips.some((trip) => trip.invoicedOn !== undefined);
 
   return <div className="space-y-4">
     <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
 
-    {shown.length === 0 ? <p className="rounded-2xl border border-dashed bg-surface p-8 text-center text-muted">
+    {shown.length === 0 ? <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
       Pagal šią paiešką reisų nėra.
-    </p> : <ul className="space-y-4">
-    {shown.map((trip) => {
-      const profitable = trip.profitCents >= 0;
-      return <li key={trip.id} className="rounded-2xl border bg-surface p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-muted">{formatDate(trip.tripDate)} · {trip.truckPlate}</p>
-            <h2 className="mt-1 text-lg font-semibold">{trip.tripNumber}</h2>
-            <p className="text-ink">{trip.origin} → {trip.destination}</p>
-            {trip.customerId && customersById.has(trip.customerId) && <p className="text-sm text-muted">
-              {customersById.get(trip.customerId)?.name}
-            </p>}
-          </div>
-          <div className="text-right">
-            <p className={`text-xl font-bold ${profitable ? "text-good" : "text-bad"}`}>
-              {formatCents(trip.profitCents)} {profitable ? "pelnas" : "nuostolis"}
-            </p>
-            <p className="text-sm text-muted">
-              Marža {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`} · {trip.profitPerKm === null ? "—" : `${trip.profitPerKm.toFixed(2)} €/km`}
-              {trip.profitPerDayCents !== null && ` · ${formatCents(trip.profitPerDayCents)} per parą`}
-            </p>
-            {minMargin !== null && checkMargin({
+    </p> : <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className="w-full min-w-[960px] text-sm">
+        <thead>
+          <tr className="border-b border-line text-left text-xs font-medium text-muted">
+            <th className="py-2.5 pl-4 pr-3 font-medium">Data</th>
+            <th className="px-3 py-2.5 font-medium">Maršrutas</th>
+            <th className="px-3 py-2.5 font-medium">Fura</th>
+            <th className="px-3 py-2.5 text-right font-medium">Pajamos</th>
+            <th className="px-3 py-2.5 text-right font-medium">Kaštai</th>
+            <th className="px-3 py-2.5 text-right font-medium">Pelnas</th>
+            <th className="px-3 py-2.5 text-right font-medium">Marža</th>
+            <th className="px-3 py-2.5 text-right font-medium">Per parą</th>
+            {payments && <th className="px-3 py-2.5 font-medium">Apmokėjimas</th>}
+            <th className="py-2.5 pl-3 pr-4"><span className="sr-only">Veiksmai</span></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {shown.map((trip) => {
+            const below = minMargin !== null && checkMargin({
               marginPercent: trip.marginPercent,
               minMarginPercent: minMargin,
               totalCostCents: trip.totalCostCents,
               revenueCents: trip.revenueCents,
-            }).status === "below" && <p className="mt-1 inline-block rounded bg-bad-soft px-2 text-xs text-bad">
-              Žemiau ribos {formatMinMargin(minMargin)}
-            </p>}
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t pt-4">
-          <dl className="grid flex-1 grid-cols-2 gap-3 text-sm sm:max-w-md">
-            <div><dt className="text-muted">Pajamos</dt><dd className="font-semibold">{formatCents(trip.revenueCents)}</dd></div>
-            <div><dt className="text-muted">Kaštai</dt><dd className="font-semibold">{formatCents(trip.totalCostCents)}</dd></div>
-          </dl>
-          <div className="flex gap-4 text-sm">
-            <Link href={`/trips/${trip.id}/edit`} className="underline">Redaguoti</Link>
-            {/* Tas pats maršrutas kartojasi kas savaitę (#129). */}
-            <Link href={`/trips/new?copy=${trip.id}`} className="underline">Kopijuoti</Link>
-            <button type="button" disabled={removing === trip.id} onClick={() => void remove(trip)} className="text-bad underline disabled:opacity-50">
-              {removing === trip.id ? "Trinama…" : "Ištrinti"}
-            </button>
-          </div>
-        </div>
-        {/* Datos pildomos vėliau nei reisas, todėl čia, o ne reiso formoje (#185).
-            Kol migracija 0015 nepaleista, laukų nėra. */}
-        {trip.invoicedOn !== undefined && <PaymentDates
-          trip={trip}
-          termsDays={trip.customerId ? (customersById.get(trip.customerId)?.payment_terms_days ?? null) : null}
-          today={today}
-          onSaved={(dates) => setTrips((current) => current.map((t) => (t.id === trip.id ? { ...t, ...dates } : t)))}
-        />}
-      </li>;
-    })}
-    </ul>}
+            }).status === "below";
+            const customer = trip.customerId ? customersById.get(trip.customerId) : undefined;
+            const termsDays = customer?.payment_terms_days ?? null;
+            const open = openPayment === trip.id;
+
+            return <Fragment key={trip.id}>
+              <tr className="group hover:bg-page">
+                <td className="whitespace-nowrap py-2.5 pl-4 pr-3 tabular-nums text-muted">{formatDate(trip.tripDate)}</td>
+                <td className="max-w-80 px-3 py-2.5">
+                  <Link href={`/trips/${trip.id}/edit`} className="block truncate font-medium hover:underline">{trip.origin} → {trip.destination}</Link>
+                  <p className="truncate text-xs text-muted">{trip.tripNumber}{customer && ` · ${customer.name}`}</p>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[13px]">{trip.truckPlate}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.revenueCents)}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.totalCostCents)}</td>
+                <td className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${trip.profitCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(trip.profitCents)}</td>
+                <td className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${below ? "font-medium text-bad" : "text-muted"}`} title={below ? `Žemiau ribos ${formatMinMargin(minMargin)}` : undefined}>
+                  {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{trip.profitPerDayCents === null ? "—" : formatCents(trip.profitPerDayCents)}</td>
+                {payments && <td className="whitespace-nowrap px-3 py-2.5">
+                  {/* Datos pildomos vėliau nei reisas, todėl čia, o ne reiso formoje (#185). */}
+                  <button type="button" aria-expanded={open} onClick={() => setOpenPayment(open ? "" : trip.id)} className="text-left hover:underline">
+                    <PaymentStatusText trip={trip} termsDays={termsDays} today={today} />
+                  </button>
+                </td>}
+                <td className="whitespace-nowrap py-2.5 pl-3 pr-4">
+                  <div className="flex justify-end gap-0.5 text-muted">
+                    <Link href={`/trips/${trip.id}/edit`} title="Redaguoti" aria-label={`Redaguoti ${trip.tripNumber}`} className="grid size-7 place-items-center rounded-md hover:bg-raised hover:text-ink"><Pencil aria-hidden className="size-3.5" strokeWidth={1.75} /></Link>
+                    {/* Tas pats maršrutas kartojasi kas savaitę (#129). */}
+                    <Link href={`/trips/new?copy=${trip.id}`} title="Kopijuoti" aria-label={`Kopijuoti ${trip.tripNumber}`} className="grid size-7 place-items-center rounded-md hover:bg-raised hover:text-ink"><Copy aria-hidden className="size-3.5" strokeWidth={1.75} /></Link>
+                    <button type="button" disabled={removing === trip.id} onClick={() => void remove(trip)} title="Ištrinti" aria-label={`Ištrinti ${trip.tripNumber}`} className="grid size-7 place-items-center rounded-md hover:bg-bad-soft hover:text-bad disabled:opacity-50"><Trash2 aria-hidden className="size-3.5" strokeWidth={1.75} /></button>
+                  </div>
+                </td>
+              </tr>
+              {payments && open && <tr className="bg-page">
+                <td colSpan={10} className="px-4 pb-3">
+                  <PaymentDates
+                    trip={trip}
+                    termsDays={termsDays}
+                    today={today}
+                    onSaved={(dates) => setTrips((current) => current.map((t) => (t.id === trip.id ? { ...t, ...dates } : t)))}
+                  />
+                </td>
+              </tr>}
+            </Fragment>;
+          })}
+        </tbody>
+      </table>
+    </div>}
   </div>;
+}
+
+/** Trumpa apmokėjimo būsena lentelės langelyje; spustelėjus atsiveria datos. */
+function PaymentStatusText({ trip, termsDays, today }: { trip: TripSummary; termsDays: number | null; today: string }) {
+  const state = paymentState({ invoicedOn: trip.invoicedOn ?? null, paidOn: trip.paidOn ?? null, termsDays }, today);
+  const text = paymentStateText(state);
+  if (!text) return <span className="text-muted">Įvesti datas</span>;
+  const tone = state.status === "overdue" || state.status === "paid_late" ? "text-bad" : state.status === "paid" ? "text-good" : "text-ink";
+  return <span className={tone}>{text}</span>;
 }
 
 /**
@@ -269,23 +299,21 @@ function PaymentDates({ trip, termsDays, today, onSaved }: {
     }
   }
 
-  return <div className="mt-3 flex flex-wrap items-end gap-3 border-t pt-3 text-sm">
+  return <div className="flex flex-wrap items-end gap-4 pt-1 text-sm">
     <label className="flex flex-col gap-1">
-      <span className="text-muted">Sąskaita išrašyta</span>
-      <input type="date" disabled={saving} defaultValue={trip.invoicedOn ?? ""} onBlur={(event) => void save("invoiced_on", event.target.value)} className="rounded-md border border-line bg-transparent px-2 py-1" />
+      <span className="text-xs font-medium text-muted">Sąskaita išrašyta</span>
+      <input type="date" disabled={saving} defaultValue={trip.invoicedOn ?? ""} onBlur={(event) => void save("invoiced_on", event.target.value)} className={`${input} py-1.5`} />
     </label>
     <label className="flex flex-col gap-1">
-      <span className="text-muted">Apmokėta</span>
-      <input type="date" disabled={saving} defaultValue={trip.paidOn ?? ""} onBlur={(event) => void save("paid_on", event.target.value)} className="rounded-md border border-line bg-transparent px-2 py-1" />
+      <span className="text-xs font-medium text-muted">Apmokėta</span>
+      <input type="date" disabled={saving} defaultValue={trip.paidOn ?? ""} onBlur={(event) => void save("paid_on", event.target.value)} className={`${input} py-1.5`} />
     </label>
-    {text && <span className={state.status === "overdue" || state.status === "paid_late"
-      ? "rounded bg-bad-soft px-2 py-1 text-xs text-bad"
-      : state.status === "paid" ? "rounded bg-accent-soft px-2 py-1 text-xs text-good" : "text-xs text-muted"}>
+    {text && <span className={`pb-2 text-xs ${state.status === "overdue" || state.status === "paid_late" ? "text-bad" : state.status === "paid" ? "text-good" : "text-muted"}`}>
       {text}
     </span>}
-    {state.status === "open" && trip.customerId && termsDays === null && <span className="text-xs text-muted">
+    {state.status === "open" && trip.customerId && termsDays === null && <span className="pb-2 text-xs text-muted">
       Užsakovo terminas nežinomas – vėlavimas neskaičiuojamas.
     </span>}
-    {error && <span role="alert" className="text-xs text-bad">{error}</span>}
+    {error && <span role="alert" className="pb-2 text-xs text-bad">{error}</span>}
   </div>;
 }

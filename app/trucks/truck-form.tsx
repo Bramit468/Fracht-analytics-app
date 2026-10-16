@@ -64,7 +64,7 @@ export function TruckForm({ truck }: { truck?: Truck }) {
         ))}
       </Section>
 
-      <Section title="Paros kaštai, EUR/parą" hint="Didžioji reiso kaštų dalis — nuo jų priklauso kiekvieno reiso pelnas.">
+      <Section title="Paros kaštai, EUR/parą" hint="Didžioji reiso kaštų dalis – nuo jų priklauso kiekvieno reiso pelnas.">
         {Object.values(DAILY_COSTS).map(({ column, label }) => (
           <Field key={column} name={column} label={label} placeholder="0" inputMode="decimal" {...common} />
         ))}

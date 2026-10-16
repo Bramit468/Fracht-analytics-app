@@ -9,6 +9,7 @@ import {
 import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
+import { Page, PageHeader } from "../ui";
 import { saveMinMargin, savePerDiemPercent } from "./actions";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
@@ -45,14 +46,12 @@ export default async function ImonePage() {
   const waiting = pendingInvitations(inviteResult.data ?? []);
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Įmonė</h1>
-        <p className="text-sm text-muted">
-          Visi įmonės nariai mato tuos pačius reisus, furas ir skaičius. Kitų įmonių duomenys
-          lieka nematomi.
-        </p>
-      </header>
+    <Page width="narrow">
+      <PageHeader
+        title="Įmonė"
+        description="Visi įmonės nariai mato tuos pačius reisus, furas ir skaičius. Kitų įmonių duomenys lieka nematomi."
+      />
+      <div className="mt-6 flex flex-col gap-10">
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Minimali marža</h2>
@@ -154,10 +153,11 @@ export default async function ImonePage() {
         <h2 className="text-lg font-medium">Pakviesti darbuotoją</h2>
         <p className="text-sm text-muted">
           Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu
-          el. paštu — tada jis iškart pateks į šią įmonę, o ne į tuščią erdvę.
+          el. paštu – tada jis iškart pateks į šią įmonę, o ne į tuščią erdvę.
         </p>
         <InviteForm />
       </section>
-    </main>
+      </div>
+    </Page>
   );
 }

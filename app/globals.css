@@ -1,11 +1,13 @@
 @import "tailwindcss";
 
 /**
- * Viena tema visai programai (#143, #147).
+ * Viena tema visai programai (#143, #147, #205).
  *
  * Puslapis šviesus: skaičiai skaitomi ir atspausdinti, ir dienos šviesoje
- * kabinoje. Tamsiai pilka lieka šonui ir tekstui, pastelinė žalia – veiksmams
- * ir teigiamiems skaičiams.
+ * kabinoje. Tamsiai pilka – šonui, tekstui ir pagrindiniams mygtukams;
+ * pastelinė žalia – prekės ženklui ir pažymėjimui (aktyvus meniu punktas,
+ * pasirinkta eilutė), ne užpildytiems mygtukams: pastelinis mygtukas atrodo
+ * žaisliškai, o įrankis, kuriuo skaičiuojami pinigai, turi atrodyti tvirtai.
  *
  * Spalvos aprašytos kintamaisiais ir per `@theme` virsta `bg-surface`,
  * `text-muted` ir panašiomis klasėmis — kad naujas puslapis nebeturėtų iš kur
@@ -13,34 +15,39 @@
  */
 :root {
   /* Fonas ir paviršiai */
-  --page: #f5f7f6;
+  --page: #f4f5f4;
   --surface: #ffffff;
-  --raised: #eef1ef;
-  --line: #dde2df;
+  --raised: #eef0ee;
+  --line: #e2e5e3;
+  --line-strong: #cfd4d1;
 
   /* Tekstas */
-  --ink: #1b211f;
-  --muted: #5e6a65;
+  --ink: #18201c;
+  --muted: #5f6a65;
 
-  /* Pastelinė žalia – veiksmams */
-  --accent: #93dcb1;
-  --accent-ink: #10231a;
-  --accent-soft: #e6f7ee;
+  /* Pagrindiniai veiksmai – tamsiai pilka, ta pati kaip šonas */
+  --accent: #1f2623;
+  --accent-ink: #ffffff;
+  /* Pažymėjimas – pastelinė žalia */
+  --accent-soft: #e4f5eb;
+
+  /* Prekės ženklas */
+  --brand: #93dcb1;
 
   /*
    * Rezultatai. Tekstui imamos tamsesnės atmainos: pastelinė žalia ant balto
    * fono neįskaitoma, o skaičius, kurio neperskaitai, yra blogesnis už jokį.
    */
-  --good: #1f7a53;
-  --bad: #b2413a;
-  --bad-soft: #fdecea;
-  --warn: #8a6a2c;
-  --warn-soft: #fdf3e0;
+  --good: #1d7550;
+  --bad: #b23b33;
+  --bad-soft: #fcebe9;
+  --warn: #86651f;
+  --warn-soft: #fbf2df;
 
-  /* Šoninis meniu – ta pati moderni tamsiai pilka */
-  --sidebar: #232826;
-  --sidebar-ink: #f3f5f4;
-  --sidebar-muted: #a7b1ac;
+  /* Šoninis meniu */
+  --sidebar: #1c2220;
+  --sidebar-ink: #f1f4f2;
+  --sidebar-muted: #9aa49f;
 }
 
 @theme inline {
@@ -48,11 +55,13 @@
   --color-surface: var(--surface);
   --color-raised: var(--raised);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-brand: var(--brand);
   --color-good: var(--good);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
@@ -66,14 +75,33 @@
   --color-background: var(--page);
   --color-foreground: var(--ink);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /*
+   * Kampai ir šešėliai – santūrūs. Dideli apvalinimai ir šešėlis po kiekviena
+   * kortele yra šablono žymė; darbo įrankyje rėmelį brėžia linija, ne šešėlis.
+   * Perrašoma pačiuose tokenuose, todėl galioja visiems puslapiams iš karto.
+   */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.375rem;
+  --radius-2xl: 0.5rem;
+  --shadow-sm: 0 1px 0 rgb(16 24 20 / 0.03);
+  --shadow: 0 6px 20px -8px rgb(16 24 20 / 0.18);
+
+  /* Puslapio antraštė – ne plakatas, o įrankio pavadinimas */
+  --text-3xl: 1.5rem;
+  --text-3xl--line-height: 2rem;
 }
 
 body {
   background: var(--page);
   color: var(--ink);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.5;
 }
 
 /* Tailwind 4 numatytoji rėmelio spalva yra `currentColor`, todėl `border` be
@@ -83,6 +111,29 @@ body {
   ::before,
   ::after {
     border-color: var(--line);
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+  }
+
+  /* Klaviatūra turi matyti, kur ji yra – bet be ryškaus mėlyno švytėjimo. */
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: var(--ink);
   }
 }
 

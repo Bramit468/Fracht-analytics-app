@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import type { Truck } from "@/types/truck";
 
+import { Page, PageHeader } from "../../../ui";
 import { TruckForm } from "../../truck-form";
 
 export const metadata: Metadata = {
@@ -31,23 +32,21 @@ export default async function EditTruckPage({
 
   const truck = data?.[0];
 
-  // Svetimos įmonės furos RLS negrąžins — vartotojui tai tas pats, kas nėra.
+  // Svetimos įmonės furos RLS negrąžins – vartotojui tai tas pats, kas nėra.
   if (error || !truck) {
     notFound();
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Fura {truck.plate}
-        </h1>
-        <p className="text-sm text-muted">
-          Pakeisti kaštai galios tik naujiems reisams — seni reisai saugo savo kaštų kopiją.
-        </p>
-      </header>
+    <Page width="narrow">
+      <PageHeader
+        title={`Fura ${truck.plate}`}
+        description="Pakeisti kaštai galios tik naujiems reisams – seni reisai saugo savo kaštų kopiją."
+      />
 
-      <TruckForm truck={truck} />
-    </main>
+      <div className="mt-6">
+        <TruckForm truck={truck} />
+      </div>
+    </Page>
   );
 }

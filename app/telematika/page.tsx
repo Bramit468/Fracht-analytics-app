@@ -171,7 +171,7 @@ export default async function TelematikaPage({
           </form>
         }
       />
-      <div className="mt-6 flex max-w-5xl flex-col gap-8">
+      <div className="mt-6 flex flex-col gap-8">
 
       {klaida && (
         <p role="alert" className="text-sm text-bad">

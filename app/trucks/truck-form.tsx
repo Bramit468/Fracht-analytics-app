@@ -125,7 +125,7 @@ function Section({
     <fieldset className="flex flex-col gap-3">
       <legend className="text-base font-semibold">{title}</legend>
       {hint && <p className="-mt-1 text-sm text-muted">{hint}</p>}
-      <div className={wide ? "grid gap-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"}>
+      <div className={wide ? "grid gap-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"}>
         {children}
       </div>
     </fieldset>

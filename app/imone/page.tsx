@@ -9,7 +9,7 @@ import {
 import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
-import { Page, PageHeader } from "../ui";
+import { Page, PageHeader, SettingRow } from "../ui";
 import { saveMinMargin, savePerDiemPercent } from "./actions";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
@@ -46,117 +46,102 @@ export default async function ImonePage() {
   const waiting = pendingInvitations(inviteResult.data ?? []);
 
   return (
-    <Page width="narrow">
+    <Page>
       <PageHeader
         title="Įmonė"
         description="Visi įmonės nariai mato tuos pačius reisus, furas ir skaičius. Kitų įmonių duomenys lieka nematomi."
       />
-      <div className="mt-6 flex flex-col gap-10">
+      <div className="mt-2">
+        <SettingRow
+          title="Minimali marža"
+          description="Reisas su žemesne marža pažymimas skaičiuoklėje ir reisų sąraše, o skaičiuoklė parodo kainą, kuri ribą pasiektų. Marža – nuo pajamų. Tuščia – ribos nėra. Keisti gali tik savininkas."
+        >
+          <SettingForm
+            name="min_margin_percent"
+            label="Minimali marža, %"
+            placeholder="pvz. 12"
+            current={settings.minMarginPercent}
+            action={saveMinMargin}
+          />
+        </SettingRow>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">Minimali marža</h2>
-        <p className="text-sm text-muted">
-          Reisas, kurio marža žemesnė, skaičiuoklėje ir reisų sąraše pažymimas įspėjimu, o
-          skaičiuoklė parodo kainą, kuri ribą pasiektų. Marža skaičiuojama nuo pajamų. Palikite
-          tuščią, jei ribos nereikia. Keisti gali tik savininkas.
-        </p>
-        <SettingForm
-          name="min_margin_percent"
-          label="Minimali marža, %"
-          placeholder="pvz. 12"
-          current={settings.minMarginPercent}
-          action={saveMinMargin}
-        />
-      </section>
+        <SettingRow
+          title="Dienpinigiai pagal šalis"
+          description="Skaičiuojami pagal šalis, kuriose fura važiuoja kiekvieną dieną (iš PTV maršruto), vietoj furos fiksuotos sumos. Normos – LRV nutarimo Nr. 526 (nuo 2026-10-01). Įrašykite mokamą normos dalį: 100 %, pagal kolektyvinę sutartį – ne mažiau kaip 50 %. Tuščia – išjungta."
+        >
+          <SettingForm
+            name="per_diem_percent"
+            label="Mokama normos dalis, %"
+            placeholder="pvz. 100"
+            current={settings.perDiemPercent}
+            action={savePerDiemPercent}
+          />
+        </SettingRow>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">Dienpinigiai pagal šalis</h2>
-        <p className="text-sm text-muted">
-          Įjungus, reiso dienpinigiai skaičiuojami pagal šalis, kuriose fura kiekvieną dieną
-          važiuoja (iš PTV maršruto), ir pakeičia furos fiksuotą dienpinigių sumą. Normos – LRV
-          nutarimo Nr. 526 (nuo 2026-10-01). Įrašykite, kiek normos mokate: 100 %, o jei
-          kolektyvinė sutartis numato mažiau – ne mažiau kaip 50 %. Tuščia – išjungta.
-        </p>
-        <SettingForm
-          name="per_diem_percent"
-          label="Mokama normos dalis, %"
-          placeholder="pvz. 100"
-          current={settings.perDiemPercent}
-          action={savePerDiemPercent}
-        />
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">Turi prieigą</h2>
-        {memberResult.error ? (
-          <p role="alert" className="text-sm text-bad">
-            Nepavyko nuskaityti narių: {memberResult.error.message}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left ">
-                  <th className="py-2 pr-4 font-medium">El. paštas</th>
-                  <th className="py-2 pr-4 font-medium">Teisės</th>
-                  <th className="py-2 font-medium">Nuo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((member) => (
-                  <tr
-                    key={member.user_id}
-                    className="border-b border-line "
-                  >
-                    <td className="py-2 pr-4">{member.email}</td>
-                    <td className="py-2 pr-4">
-                      {member.role === "owner" ? "Savininkas" : "Darbuotojas"}
-                    </td>
-                    <td className="py-2 tabular-nums">{formatDate(member.created_at)}</td>
+        <SettingRow title="Turi prieigą">
+          {memberResult.error ? (
+            <p role="alert" className="text-sm text-bad">
+              Nepavyko nuskaityti narių: {memberResult.error.message}
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-xs text-muted">
+                    <th className="py-2.5 pl-4 pr-4 font-medium">El. paštas</th>
+                    <th className="py-2.5 pr-4 font-medium">Teisės</th>
+                    <th className="py-2.5 pr-4 font-medium">Nuo</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {members.map((member) => (
+                    <tr key={member.user_id}>
+                      <td className="py-2.5 pl-4 pr-4">{member.email}</td>
+                      <td className="py-2.5 pr-4 text-muted">
+                        {member.role === "owner" ? "Savininkas" : "Darbuotojas"}
+                      </td>
+                      <td className="py-2.5 pr-4 tabular-nums text-muted">{formatDate(member.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SettingRow>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">Laukia registracijos</h2>
-        {inviteResult.error ? (
-          <p role="alert" className="text-sm text-bad">
-            Nepavyko nuskaityti pakvietimų: {inviteResult.error.message}
-          </p>
-        ) : waiting.length === 0 ? (
-          <p className="text-sm text-muted">Laukiančių pakvietimų nėra.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {waiting.map((invitation) => (
-              <li
-                key={invitation.email}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-2 text-sm "
-              >
-                <span>
-                  {invitation.email}
-                  <span className="ml-2 text-xs text-muted">
-                    pakviesta {formatDate(invitation.invited_at)}
+        <SettingRow title="Laukia registracijos">
+          {inviteResult.error ? (
+            <p role="alert" className="text-sm text-bad">
+              Nepavyko nuskaityti pakvietimų: {inviteResult.error.message}
+            </p>
+          ) : waiting.length === 0 ? (
+            <p className="text-sm text-muted">Laukiančių pakvietimų nėra.</p>
+          ) : (
+            <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
+              {waiting.map((invitation) => (
+                <li
+                  key={invitation.email}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                >
+                  <span>
+                    {invitation.email}
+                    <span className="ml-2 text-xs text-muted">
+                      pakviesta {formatDate(invitation.invited_at)}
+                    </span>
                   </span>
-                </span>
-                <InvitationRowActions email={invitation.email} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <InvitationRowActions email={invitation.email} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </SettingRow>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Pakviesti darbuotoją</h2>
-        <p className="text-sm text-muted">
-          Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu
-          el. paštu – tada jis iškart pateks į šią įmonę, o ne į tuščią erdvę.
-        </p>
-        <InviteForm />
-      </section>
+        <SettingRow
+          title="Pakviesti darbuotoją"
+          description="Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu el. paštu – tada jis iškart pateks į šią įmonę."
+        >
+          <InviteForm />
+        </SettingRow>
       </div>
     </Page>
   );

@@ -10,7 +10,7 @@ export default async function NewTripPage({
   // neperkelia – jie kiekvienam reisui savi (#129).
   const { copy } = await searchParams;
 
-  return <Page width="narrow">
+  return <Page>
     <PageHeader
       title={copy ? "Naujas reisas pagal ankstesnį" : "Naujas reisas"}
       description={copy ? "Laukai užpildyti iš pasirinkto reiso. Įrašykite naują numerį ir patikrinkite datą." : undefined}

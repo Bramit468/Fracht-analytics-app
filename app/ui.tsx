@@ -32,11 +32,31 @@ export function PageHeader({ title, description, actions }: {
   );
 }
 
-/** Puslapio rėmas: vienodos paraštės visur, plotis – pagal turinį. */
-export function Page({ children, width = "wide" }: { children: ReactNode; width?: "wide" | "narrow" }) {
+/**
+ * Puslapio rėmas: vienodos paraštės ir visas ekrano plotis. Siauras stulpelis
+ * plačiame ekrane palikdavo pusę lango tuščio – turinys pats išsidėlioja
+ * stulpeliais, kai vietos daugiau.
+ */
+export function Page({ children }: { children: ReactNode }) {
+  return <main className="w-full px-4 py-6 sm:px-6 lg:px-8">{children}</main>;
+}
+
+/**
+ * Nustatymo eilutė: kairėje pavadinimas ir paaiškinimas, dešinėje laukai –
+ * plačiame ekrane tekstas neišsitempia per visą eilutę.
+ */
+export function SettingRow({ title, description, children }: {
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <main className="w-full px-4 py-6 sm:px-6 lg:px-8">
-      <div className={width === "narrow" ? "max-w-4xl" : "max-w-[1400px]"}>{children}</div>
-    </main>
+    <section className="grid gap-4 border-b border-line py-6 last:border-b-0 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:gap-10">
+      <div>
+        <h2 className="font-semibold">{title}</h2>
+        {description && <div className="mt-1 text-sm text-muted">{description}</div>}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
   );
 }

@@ -133,7 +133,7 @@ export default async function VykstaPage() {
     });
 
   return (
-    <Page width="narrow">
+    <Page>
       <PageHeader title="Vyksta dabar" description="Reisai, kurių šiandiena patenka tarp pradžios ir pabaigos." />
       <div className="mt-5 flex flex-col gap-6">
 
@@ -178,7 +178,7 @@ export default async function VykstaPage() {
           Šiandien nė vienas reisas nevyksta.
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid gap-3 xl:grid-cols-2">
           {rows.map(({ trip, plate, progress, drift }) => (
             <li key={trip.id} className="rounded-lg border border-line bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">

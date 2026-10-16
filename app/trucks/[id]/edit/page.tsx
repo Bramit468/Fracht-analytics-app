@@ -38,7 +38,7 @@ export default async function EditTruckPage({
   }
 
   return (
-    <Page width="narrow">
+    <Page>
       <PageHeader
         title={`Fura ${truck.plate}`}
         description="Pakeisti kaštai galios tik naujiems reisams – seni reisai saugo savo kaštų kopiją."

@@ -8,10 +8,10 @@
  * - pajamos – užsakymo kaina + priemokos;
  * - paros – valandos / 24. Tos pačios furos persidengiantys užsakymai
  *   laiką dalijasi: kitaip paros kaštai būtų priskaičiuoti dukart;
- * - km – atkarpų suma, tuščios atkarpos atskirai. Ketvirtadalis užsakymų
- *   Telematikoje km neturi visai (nei atstumo, nei odometro) – jiems imama
- *   furos paros rida, padalinta tą dieną važiavusiems užsakymams pagal
- *   valandas, ir tai pažymima;
+ * - km – atkarpų suma, tuščios atkarpos atskirai. Maždaug pusės užsakymų
+ *   pakrautos atkarpos Telematikoje be km (nei atstumo, nei odometro): jiems
+ *   importuojant km skaičiuoja PTV per atkarpų adresus (`kmAddresses`), o
+ *   peržiūrai – įvertis iš paros ridos pagal užsakymo valandų dalį;
  * - keliai – tikri pirkimai, paskirstyti tą dieną važiavusiems tos furos
  *   užsakymams pagal jų valandas tą dieną;
  * - kuro ir AdBlue normos bei kainos – tos furos faktas per užsakymo laiką.
@@ -103,13 +103,27 @@ export function parseOrderLegs(payload: unknown): OrderLeg[] {
   return legs;
 }
 
+/** Telematikos vieta: „Pavadinimas, SWE, Linköping, 582 75, Gatvė 5“. */
+function placeParts(place: string): { country: string; city: string; postcode: string; street: string } | null {
+  const parts = place.split(",").map((part) => part.trim());
+  const index = parts.findIndex((part, i) => i > 0 && /^[A-Z]{3}$/.test(part));
+  if (index === -1) return null;
+  return { country: parts[index], city: parts[index + 1] ?? "", postcode: parts[index + 2] ?? "", street: parts.slice(index + 3).join(", ") };
+}
+
+/** Adresas PTV paieškai – be įmonės pavadinimo, kuris paiešką tik painioja. */
+export function placeQuery(place: string): string {
+  const parts = placeParts(place);
+  if (!parts) return place;
+  const town = [parts.postcode, parts.city].filter(Boolean).join(" ");
+  return [parts.street, town, parts.country].filter(Boolean).join(", ");
+}
+
 /** „Pavadinimas, SWE, Linköping, 582 75, Gatvė 5“ → „Linköping, SWE“. */
 export function placeCity(place: string): string {
-  const parts = place.split(",").map((part) => part.trim());
-  const country = parts.findIndex((part, index) => index > 0 && /^[A-Z]{3}$/.test(part));
-  if (country === -1) return parts[0] ?? place;
-  const city = parts[country + 1];
-  return city ? `${city}, ${parts[country]}` : parts[country];
+  const parts = placeParts(place);
+  if (!parts) return place.split(",")[0].trim();
+  return parts.city ? `${parts.city}, ${parts.country}` : parts.country;
 }
 
 const HOUR = 3_600_000;
@@ -206,6 +220,11 @@ export interface ImportedTrip {
   end: string;
   /** Ką teko spėti – rodoma peržiūroje. */
   notes: string[];
+  /**
+   * Pakrautų atkarpų adresai PTV maršrutui, kai Telematikoje jų km nėra.
+   * `null` – km yra. Importuojant PTV km pakeičia `paid_km` įvertį.
+   */
+  kmAddresses: string[] | null;
 }
 
 export interface SkippedOrder {
@@ -319,10 +338,15 @@ export function buildOrderTrips(input: {
     const end = legs[legs.length - 1].end;
     let paidKm = round(legs.filter((leg) => !leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
     const emptyKm = round(legs.filter((leg) => leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
+    const loadedLegs = legs.filter((leg) => !leg.empty);
+    let kmAddresses: string[] | null = null;
     if (paidKm === 0) {
-      // Pakrautų atkarpų km Telematikoje nėra: kas lieka iš paros ridos po tuščių.
+      // Pakrautų atkarpų km Telematikoje nėra: peržiūrai – kas lieka iš paros
+      // ridos po tuščių, importuojant – PTV maršrutas per tuos pačius adresus.
       paidKm = round(Math.max(0, (estimatedKm.get(orderId) ?? 0) - emptyKm), 2);
-      notes.push(paidKm > 0 ? "Km – įvertis iš paros ridos (Telematikoje atkarpų km nėra)." : "Apmokamų km nėra nei atkarpose, nei paros ridoje.");
+      const route = loadedLegs.length > 0 ? loadedLegs : legs;
+      kmAddresses = [route[0].startPlace, ...route.map((leg) => leg.endPlace)].map(placeQuery);
+      notes.push("Km Telematikoje nėra – importuojant skaičiuos PTV (dabar įvertis iš paros ridos).");
     }
     const totalKm = paidKm + emptyKm;
 
@@ -341,11 +365,11 @@ export function buildOrderTrips(input: {
 
     const hours = allocated.get(orderId)?.hours ?? 0;
     const days = Math.max(0.01, round(hours / 24, 3));
-    const loaded = legs.filter((leg) => !leg.empty);
-    const route = loaded.length > 0 ? loaded : legs;
+    const route = loadedLegs.length > 0 ? loadedLegs : legs;
 
     return {
       orderId,
+      kmAddresses,
       customer: order.client,
       plate: truck.plate,
       start,

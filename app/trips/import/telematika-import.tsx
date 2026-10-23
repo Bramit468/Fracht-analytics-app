@@ -7,7 +7,7 @@ import { formatCents } from "../../../lib/money";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { saveTrip } from "../../../lib/trips";
 import { buttonPrimary, buttonSecondary } from "../../ui";
-import { previewTelematikaOrders, type OrderImportResult } from "./telematika-orders";
+import { previewTelematikaOrders, ptvRouteKm, type OrderImportResult } from "./telematika-orders";
 
 const km = (value: number) => Math.round(value).toLocaleString("lt-LT");
 
@@ -24,11 +24,13 @@ export function TelematikaImport() {
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState("");
   const [failures, setFailures] = useState<string[]>([]);
+  const [ptvFailures, setPtvFailures] = useState<string[]>([]);
 
   async function load() {
     setLoading(true);
     setProgress("");
     setFailures([]);
+    setPtvFailures([]);
     try {
       setResult(await previewTelematikaOrders());
     } catch {
@@ -42,6 +44,8 @@ export function TelematikaImport() {
     if (!result?.ok) return;
     setSaving(true);
     const errors: string[] = [];
+    const ptvMisses: string[] = [];
+    let ptvStopped = false;
     let saved = 0;
     try {
       const client = getSupabaseClient();
@@ -56,14 +60,31 @@ export function TelematikaImport() {
             if (!customers.some((known) => known.id === customer.id)) customers.push(customer);
             customerId = customer.id;
           }
-          await saveTrip({ ...item.trip, id: item.existingId ?? undefined, ...(available ? { customer_id: customerId } : {}) }, item.legs);
+          let trip = item.trip;
+          let legs = item.legs;
+          // Telematikoje km nėra – PTV per pakrautų atkarpų adresus. Nepavykus
+          // lieka peržiūroje matytas įvertis, ir tai pasakoma.
+          if (item.kmAddresses && !ptvStopped) {
+            const route = await ptvRouteKm(item.kmAddresses);
+            if (route.ok) {
+              const paidKm = Math.round(route.km * 100) / 100;
+              trip = { ...trip, paid_km: paidKm };
+              legs = [{ country: "Nemokami", km: Math.round((paidKm + trip.empty_km) * 100) / 100 }];
+            } else {
+              ptvMisses.push(`${item.trip.trip_number}: ${route.message}`);
+              if (route.quota) ptvStopped = true;
+            }
+          }
+          await saveTrip({ ...trip, id: item.existingId ?? undefined, ...(available ? { customer_id: customerId } : {}) }, legs);
           saved += 1;
         } catch {
           errors.push(`${item.trip.trip_number} (${item.trip.trip_date})`);
         }
       }
-      setProgress(`Importuota ${saved} iš ${result.trips.length}.`);
+      setProgress(`Importuota ${saved} iš ${result.trips.length}.`
+        + (ptvMisses.length > 0 ? ` PTV km neapskaičiuoti ${ptvMisses.length} – jiems liko paros ridos įvertis.` : ""));
       setFailures(errors);
+      setPtvFailures(ptvMisses);
     } catch {
       setProgress("Nepavyko pradėti importo. Patikrinkite ryšį.");
     } finally {
@@ -94,11 +115,17 @@ export function TelematikaImport() {
       Neįrašyti: {failures.join(", ")}. Dažniausia priežastis – nepaleista migracija 0019 arba trūksta „Nemokami“ įkainio.
     </p>}
 
+    {ptvFailures.length > 0 && <details className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+      <summary className="cursor-pointer">PTV km neapskaičiuoti: {ptvFailures.length}</summary>
+      <ul className="mt-2 space-y-1">{ptvFailures.map((line) => <li key={line}>{line}</li>)}</ul>
+    </details>}
+
     {result && !result.ok && <p role="alert" className="text-sm text-bad">{result.message}</p>}
 
     {result?.ok && <>
       <p className="text-sm text-muted">
         {result.trips.filter((item) => !item.existingId).length} nauji, {result.trips.filter((item) => item.existingId).length} bus atnaujinti
+        {result.trips.some((item) => item.kmAddresses) && <>; {result.trips.filter((item) => item.kmAddresses).length} užsakymų km Telematikoje nėra – importuojant juos apskaičiuos PTV</>}
         {reasons.length > 0 && <>, praleista {result.skipped.length}: {reasons.map(([reason, count]) => `${reason.replace(/\.$/, "").toLowerCase()} – ${count}`).join("; ")}</>}.
         {result.unassignedTollCents > 0 && <> Kelių mokesčių dienomis be užsakymų: {formatCents(result.unassignedTollCents)} – jie reisams nepriskirti.</>}
       </p>

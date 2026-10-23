@@ -1,6 +1,9 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
+
 import type { CountryTariff, RateType } from "@/lib/calc";
+import { ptvQuotaExceeded, PTV_QUOTA_MESSAGE, routeEstimate, routeRequestUrl, type GeocodedPlace } from "@/lib/ptv-route";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
@@ -10,6 +13,8 @@ import { buildOrderTrips, parseOrderLegs, parseOrders, type ImportedTrip, type S
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { truckRowToCalc } from "@/lib/truck";
 import type { Truck } from "@/types/truck";
+
+import { geocode, ptvJson, PtvError } from "../new/route-core";
 
 export interface OrderPreview extends ImportedTrip {
   /** Esamas reisas, jei šis užsakymas jau importuotas – bus atnaujintas. */
@@ -91,4 +96,54 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
   });
 
   return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents };
+}
+
+export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };
+
+const PTV_KM_TTL = 30 * 24 * 60 * 60;
+
+/**
+ * Tie patys adresai – tas pats atstumas: PTV klausiama vieną kartą per 30 d.
+ * Raktas imamas viduje, ne argumentu – argumentai tampa talpyklos raktu.
+ */
+const cachedRouteKm = unstable_cache(
+  async (addresses: string[]): Promise<number> => {
+    const key = process.env.PTV_API_KEY?.trim() ?? "";
+    const points: GeocodedPlace[] = [];
+    for (const address of addresses) {
+      const place = await geocode(address, key);
+      if (!place) throw new Error(`Nerastas adresas „${address}“.`);
+      points.push(place);
+    }
+    const estimate = routeEstimate(await ptvJson(routeRequestUrl(points[0], points[points.length - 1], false, { trafficMode: "AVERAGE" }, undefined, points.slice(1, -1)), key));
+    if (!estimate) throw new Error("PTV negrąžino maršruto.");
+    return estimate.km;
+  },
+  ["ptv-import-km"],
+  { revalidate: PTV_KM_TTL },
+);
+
+/**
+ * Apmokami km užsakymui, kurio atkarpos Telematikoje be km: PTV maršrutas
+ * per pakrovimo ir iškrovimo adresus. Kviečiama importuojant, po vieną.
+ */
+export async function ptvRouteKm(addresses: string[]): Promise<PtvKmResult> {
+  const key = process.env.PTV_API_KEY?.trim();
+  if (!key) return { ok: false, message: "PTV neįjungtas." };
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
+  if (!Array.isArray(addresses) || addresses.length < 2 || addresses.length > 10
+    || addresses.some((address) => typeof address !== "string" || address.trim() === "" || address.length > 300)) {
+    return { ok: false, message: "Netinkami adresai." };
+  }
+
+  try {
+    return { ok: true, km: await cachedRouteKm(addresses) };
+  } catch (cause) {
+    if (cause instanceof PtvError && ptvQuotaExceeded(cause.status, cause.body)) {
+      return { ok: false, message: PTV_QUOTA_MESSAGE, quota: true };
+    }
+    return { ok: false, message: cause instanceof Error && cause.message.startsWith("Nerastas") ? cause.message : "PTV maršruto apskaičiuoti nepavyko." };
+  }
 }

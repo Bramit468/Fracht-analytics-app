@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, parseOrderLegs, parseOrders, placeCity, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -39,6 +39,10 @@ describe("allocateTime", () => {
 describe("placeCity", () => {
   it("ima miestą ir šalį", () => {
     expect(placeCity("Tekniska Verken Linköping, SWE, Linköping, 582 75, Gärstadsvägen 5")).toBe("Linköping, SWE");
+  });
+
+  it("PTV paieškai – be įmonės pavadinimo", () => {
+    expect(placeQuery("Kund NordicNest AB, SWE, Kalmar, 394 70, ")).toBe("394 70 Kalmar, SWE");
   });
 
   it("be šalies grąžina pirmą dalį", () => {
@@ -132,12 +136,17 @@ describe("buildOrderTrips", () => {
     expect(unassignedTollCents).toBe(500);
   });
 
-  it("be atkarpų km – įvertis iš paros ridos, ne daugiau nei užsakymo valandų dalis", () => {
+  it("be atkarpų km – PTV adresai ir įvertis iš paros ridos, ne daugiau nei užsakymo valandų dalis", () => {
     const { trips } = build([leg("2", "2026-10-20 06:00:00", "2026-10-20 18:00:00", 0)], {
       daily: [{ plate: "MHE 763", date: "2026-10-20", km: 800, fuelL: 240 }],
     });
     // Užsakymas truko 12 h iš 24 → pusė dienos ridos.
     expect(trips[0].trip.paid_km).toBe(400);
-    expect(trips[0].notes[0]).toMatch(/įvertis iš paros ridos/);
+    expect(trips[0].kmAddresses).toEqual(["X, 1470 Lörenskog, NOR", "Y, 553 Jönköping, SWE"]);
+    expect(trips[0].notes[0]).toMatch(/PTV/);
+  });
+
+  it("kai km yra, PTV nereikia", () => {
+    expect(build([leg("2", "2026-10-20 06:00:00", "2026-10-20 18:00:00", 120)]).trips[0].kmAddresses).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { formatCents } from "@/lib/money";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { canUseTelematics } from "@/lib/telematics-access";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { compareTripToActuals, type TripVariance } from "@/lib/trip-variance";
 import { parseCanDaily, parseSupplies, summarizeActuals } from "@/lib/telematics-costs";
@@ -31,6 +32,11 @@ function lastDay(tripDate: string, days: number): string {
 async function loadVariance(tripId: string): Promise<TripVariance | null> {
   try {
     const supabase = await createServerSupabaseClient();
+
+    // Telematikos nuorodos yra vienos įmonės (#S2). Be šio patikrinimo kitos
+    // įmonės naudotojas, turintis furą tuo pačiu numeriu, matytų svetimus
+    // kuro ir kelių pirkimus.
+    if (!(await canUseTelematics(supabase))) return null;
 
     const [tripResult, legsResult, tariffResult] = await Promise.all([
       supabase.from("trips").select("*").eq("id", tripId).limit(1),

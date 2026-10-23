@@ -55,7 +55,7 @@ export function CostTable({ trucks, copied }: { trucks: Truck[]; copied: string[
                     {truck.plate}
                     {copiedIds.has(truck.id) && (
                       <span
-                        title="Šios furos kaštai iki cento sutampa su kita fura — greičiausiai nukopijuoti."
+                        title="Šios furos kaštai iki cento sutampa su kita fura – greičiausiai nukopijuoti."
                         className="ml-2 text-xs text-warn"
                       >
                         nepatikslinta

@@ -1,5 +1,6 @@
 import { tripRoadsByCountry, type CountryRoad } from "./country-roads";
 import { emptyFuelCents } from "./empty-km";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient } from "./supabase";
 import { calculateSavedTrip } from "./trip-input";
 import type { CountryTariff } from "./calc";
@@ -146,7 +147,14 @@ export async function getTripWithLegs(id: string): Promise<TripWithLegs> {
 }
 
 export async function listTrips(): Promise<TripSummary[]> {
-  const client = getSupabaseClient();
+  return fetchTripSummaries(getSupabaseClient());
+}
+
+/**
+ * Tas pats sąrašas su bet kuriuo klientu – ir serverio, kad pokalbio
+ * asistentas matytų tik prisijungusio vartotojo įmonės reisus (RLS).
+ */
+export async function fetchTripSummaries(client: SupabaseClient): Promise<TripSummary[]> {
   const [tripsResult, legsResult, trucksResult, tariffsResult] = await Promise.all([
     client.from("trips").select("*").order("trip_date", { ascending: false }).order("created_at", { ascending: false }),
     client.from("trip_country_legs").select("*"),

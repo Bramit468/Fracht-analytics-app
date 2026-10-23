@@ -304,6 +304,34 @@ export function summarizeActuals(
   };
 }
 
+/**
+ * Faktas kiekvienai furai per laikotarpį – Analizės lentelė ir pokalbio
+ * asistentas skaičiuoja tą patį (#208).
+ *
+ * Tas pats numeris ateina ir su tarpu, ir be jo; rodomas variantas su tarpu,
+ * nes toks yra furų sąraše. Furos, kurios per laikotarpį nei važiavo, nei
+ * pirko, praleidžiamos – sąraše jos tik trukdytų.
+ */
+export function actualsByTruck(
+  daily: DailyDistance[],
+  supplies: Supply[],
+  from: string,
+  to: string,
+): ActualCosts[] {
+  const byKey = new Map<string, string>();
+  for (const plate of [...daily.map((d) => d.plate), ...supplies.map((s) => s.plate)]) {
+    const current = byKey.get(plateKey(plate));
+    if (!current || (plate.includes(" ") && !current.includes(" "))) {
+      byKey.set(plateKey(plate), plate);
+    }
+  }
+
+  return [...byKey.values()]
+    .sort()
+    .map((plate) => summarizeActuals(daily, supplies, plate, from, to))
+    .filter((row) => row.km > 0 || row.totalCents > 0 || row.otherCents > 0);
+}
+
 /** Reiso formos laukai, užpildyti iš faktinių duomenų (#44). */
 export interface TripFill {
   days: string;

@@ -60,7 +60,7 @@ export function CustomerReport() {
   if (loading) return <p role="status">Kraunami užsakovai…</p>;
   if (error) return <p role="alert" className="text-bad">{error}</p>;
   if (!available) {
-    return <p className="rounded-2xl border border-warn bg-warn-soft p-5 text-sm text-warn">
+    return <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
       Užsakovų dar nėra duomenų bazėje – Supabase paleiskite migraciją 0014. Tada reiso formoje
       atsiras laukas „Užsakovas“.
     </p>;
@@ -68,7 +68,7 @@ export function CustomerReport() {
 
   const rows = summarizeByCustomer(trips, customers);
   if (!rows.some((row) => row.customerId !== null)) {
-    return <p className="rounded-2xl border border-dashed bg-surface p-8 text-center text-muted">
+    return <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
       Užsakovų dar nepriskirta. Atidarykite reisą ir lauke „Užsakovas“ pasirinkite arba įrašykite
       klientą. <Link href="/trips" className="font-semibold text-good underline">Reisai</Link>
     </p>;
@@ -80,11 +80,11 @@ export function CustomerReport() {
   const terms = new Map(customers.map((customer) => [customer.id, customer.payment_terms_days ?? null]));
 
   return <div className="space-y-4">
-    <div className="rounded-2xl border border-line bg-surface shadow-sm">
+    <div className="rounded-lg border border-line bg-surface">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+            <tr className="border-b border-line text-left text-xs font-medium text-muted">
               <th className="px-5 py-3 font-medium">Užsakovas</th>
               <th className="px-3 py-3 text-right font-medium">Reisai</th>
               <th className="px-3 py-3 text-right font-medium">Pajamos</th>

@@ -17,6 +17,7 @@ import { CostTable } from "./cost-table";
 import { NewTruckPanel } from "./new-truck-panel";
 import { TruckRowActions } from "./truck-row-actions";
 import { WeightTable } from "./weight-table";
+import { Page, PageHeader } from "../ui";
 
 export const metadata: Metadata = {
   title: "Furos | Bramit",
@@ -44,15 +45,13 @@ export default async function TrucksPage({
   const copied = copiedTruckIds(trucks);
 
   return (
-    <main className="mx-auto flex w-full max-w-[110rem] flex-col gap-6 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Furos</h1>
-        <p className="text-sm text-muted">
-          Paros savikaina — kiek fura kainuoja kiekvieną parą, net stovėdama. Tai didžioji reiso
-          kaštų dalis, todėl kol ji netiksli, netikslus ir kiekvienas pelno skaičius.
-        </p>
-      </header>
+    <Page>
+      <PageHeader
+        title="Furos"
+        description="Paros savikaina – kiek fura kainuoja kiekvieną parą, net stovėdama. Nuo jos priklauso kiekvienas pelno skaičius."
+      />
 
+      <div className="mt-5 flex flex-col gap-5">
       <NewTruckPanel />
 
       <Tabs active={tab} />
@@ -66,9 +65,9 @@ export default async function TrucksPage({
       ) : (
         <>
           {copied.size > 0 && tab !== "svoriai" && (
-            <p className="rounded-xl border border-warn bg-warn-soft p-4 text-sm text-warn">
+            <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
               Furų, kurių kaštai iki cento sutampa su kita fura: {copied.size} iš {trucks.length}.
-              Tokie skaičiai būna nukopijuoti — net dvi vienodos furos skiriasi bent lizingo likučiu
+              Tokie skaičiai būna nukopijuoti – net dvi vienodos furos skiriasi bent lizingo likučiu
               ar vairuotojo atlyginimu.{" "}
               {tab === "sarasas" && (
                 <Link href={truckTabHref("kastai")} className="font-medium underline">
@@ -83,7 +82,7 @@ export default async function TrucksPage({
           {tab === "kastai" && (
             <section className="flex flex-col gap-3">
               <p className="text-sm text-muted">
-                Sumos eurais už parą; priekabos nuoma — už mėnesį. Visų furų kaštai išsaugomi vienu
+                Sumos eurais už parą; priekabos nuoma – už mėnesį. Visų furų kaštai išsaugomi vienu
                 mygtuku.
               </p>
               <CostTable trucks={trucks} copied={[...copied]} />
@@ -94,14 +93,15 @@ export default async function TrucksPage({
             <section className="flex flex-col gap-3">
               <p className="text-sm text-muted">
                 Pagal juos PTV skaičiuoja kurą ir CO₂ konkrečiam maršrutui. Nežinant palikite
-                tuščią — spėtas svoris duotų tikslų atrodantį, bet neteisingą skaičių.
+                tuščią – spėtas svoris duotų tikslų atrodantį, bet neteisingą skaičių.
               </p>
               <WeightTable trucks={trucks} missing={trucksMissingWeights(trucks).length} />
             </section>
           )}
         </>
       )}
-    </main>
+      </div>
+    </Page>
   );
 }
 
@@ -115,8 +115,8 @@ function Tabs({ active }: { active: TruckTab }) {
           aria-current={key === active ? "page" : undefined}
           className={
             key === active
-              ? "-mb-px border-b-2 border-good px-4 py-2 text-sm font-medium"
-              : "-mb-px border-b-2 border-transparent px-4 py-2 text-sm text-muted hover:text-ink"
+              ? "-mb-px border-b-2 border-ink px-3 py-2 text-sm font-medium"
+              : "-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted hover:text-ink"
           }
         >
           {label}
@@ -130,30 +130,30 @@ function TruckList({ trucks, copied }: { trucks: Truck[]; copied: Set<string> })
   const today = todayInVilnius();
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-line text-left">
-            <th className="py-2 pr-4 font-medium">Numeris</th>
-            <th className="py-2 pr-4 text-right font-medium">Paros savikaina</th>
-            <th className="py-2 pr-4 text-right font-medium">Priekaba / mėn.</th>
-            <th className="py-2 pr-4 text-right font-medium">Darbo dienos</th>
-            <th className="py-2 text-right font-medium">
+          <tr className="border-b border-line text-left text-xs text-muted">
+            <th className="py-2.5 pl-4 pr-4 font-medium">Numeris</th>
+            <th className="py-2.5 pr-4 text-right font-medium">Paros savikaina</th>
+            <th className="py-2.5 pr-4 text-right font-medium">Priekaba / mėn.</th>
+            <th className="py-2.5 pr-4 text-right font-medium">Darbo dienos</th>
+            <th className="py-2.5 pr-4 text-right font-medium">
               <span className="sr-only">Veiksmai</span>
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-line">
           {trucks.map((truck) => (
-            <tr key={truck.id} className="border-b border-line">
-              <td className="py-2 pr-4">
+            <tr key={truck.id} className="hover:bg-page">
+              <td className="py-2.5 pl-4 pr-4">
                 <TruckIdentity truck={truck} today={today} />
               </td>
               <td className="py-2 pr-4 text-right tabular-nums">
                 {formatCents(calcDailyRate(truckRowToCalc(truck)))}
                 {copied.has(truck.id) && (
                   <span
-                    title="Šios furos kaštai iki cento sutampa su kita fura — greičiausiai nukopijuoti."
+                    title="Šios furos kaštai iki cento sutampa su kita fura – greičiausiai nukopijuoti."
                     className="block text-xs text-warn"
                   >
                     nepatikslinta
@@ -164,7 +164,7 @@ function TruckList({ trucks, copied }: { trucks: Truck[]; copied: Set<string> })
                 {formatCents(truck.trailer_monthly_cents)}
               </td>
               <td className="py-2 pr-4 text-right tabular-nums">{truck.working_days_per_month}</td>
-              <td className="py-2 text-right">
+              <td className="py-2 pr-4 text-right">
                 <TruckRowActions id={truck.id} plate={truck.plate} />
               </td>
             </tr>

@@ -129,7 +129,7 @@ export function ExcelImport() {
     <section>
       <h2 className="text-lg font-semibold">1. Upload Excel</h2>
       <p className="mt-1 text-sm text-muted">Naudojamas pirmas lapas ir jo pirma eilutė. Pajamos importuojamos kaip frachto kaina.</p>
-      <label className="mt-4 inline-flex cursor-pointer rounded-xl bg-accent px-5 py-3 font-semibold text-accent-ink hover:opacity-90">
+      <label className="mt-4 inline-flex cursor-pointer rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink hover:opacity-90">
         Choose .xlsx file
         <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={selectFile} disabled={importing} />
       </label>
@@ -161,7 +161,7 @@ export function ExcelImport() {
           <h2 className="text-lg font-semibold">3. Review and import</h2>
           <p className="mt-1 text-sm text-muted">{preview.validRows.length} valid · {preview.invalidRows.length} skipped</p>
         </div>
-        <button type="button" onClick={importTrips} disabled={importing || !!result || !preview.validRows.length} className="rounded-xl bg-accent px-5 py-3 font-semibold text-accent-ink disabled:opacity-50">
+        <button type="button" onClick={importTrips} disabled={importing || !!result || !preview.validRows.length} className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">
           {importing ? `Importing ${progress}/${preview.validRows.length}…` : `Import ${preview.validRows.length} trips`}
         </button>
       </div>

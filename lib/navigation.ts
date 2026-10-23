@@ -32,7 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/trucks", label: "Furos", group: "duomenys" },
   { href: "/uzsakovai", label: "Užsakovai", group: "duomenys" },
   { href: "/telematika", label: "Analizė", group: "duomenys" },
-  { href: "/trips/import", label: "Importas iš Excel", group: "duomenys" },
+  { href: "/trips/import", label: "Importas", group: "duomenys" },
   { href: "/imone", label: "Įmonė", group: "nustatymai" },
 ];
 

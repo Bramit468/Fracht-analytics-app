@@ -43,7 +43,8 @@ export function addDays(date: string, days: number): string {
  */
 export function isOnTheRoad(tripDate: string, days: number, today: string): boolean {
   if (!(days > 0)) return false;
-  return tripDate <= today && today <= addDays(tripDate, days - 1);
+  // Importuoti reisai turi paras trupmenomis – prasidėjusi para yra kelyje.
+  return tripDate <= today && today <= addDays(tripDate, Math.ceil(days) - 1);
 }
 
 /**
@@ -62,7 +63,7 @@ export function tripProgress(
   truckDailyCents: number,
   today: string,
 ): TripProgress {
-  const lastDay = addDays(tripDate, days - 1);
+  const lastDay = addDays(tripDate, Math.ceil(days) - 1);
   const through = today < lastDay ? today : lastDay;
 
   const mine = daily.filter(

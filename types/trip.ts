@@ -88,6 +88,9 @@ export interface Trip {
   /** Kiekvienos dienos šalys ir suma – kad būtų matyti, iš ko ji gauta. */
   per_diem_days?: PerDiemDay[] | null;
 
+  /** Telematikos OrderId, jei reisas importuotas (migracija 0019). */
+  telematika_order_id?: string | null;
+
   created_at: string;
 }
 

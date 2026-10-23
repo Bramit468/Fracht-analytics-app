@@ -51,12 +51,28 @@ export function slimSupplies(payload: unknown): unknown {
   );
 }
 
+/** Klaida, kurią saugu rodyti žmogui: be nuorodos ir rakto. */
+export class TelematicsFeedError extends Error {}
+
 async function load(feed: TelematicsFeed): Promise<unknown> {
-  const url = process.env[FEEDS[feed].env];
-  if (!url) throw new Error(`Nenurodytas ${FEEDS[feed].env}`);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(String(response.status));
-  const payload: unknown = await response.json();
+  const name = FEEDS[feed].env;
+  // Įklijuojant į Vercel lengvai prilimpa tarpas ar kabutės.
+  const url = process.env[name]?.trim().replace(/^["']|["']$/g, "");
+  if (!url) throw new TelematicsFeedError(`Nenurodytas ${name}`);
+  // Pranešimuose nuorodos nėra: joje prieigos raktas.
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new TelematicsFeedError(`${name}: nepavyko prisijungti (patikrinkite nuorodą)`);
+  }
+  if (!response.ok) throw new TelematicsFeedError(`${name}: atsakymas ${response.status}`);
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new TelematicsFeedError(`${name}: atsakymas ne JSON`);
+  }
   // ponytail: ~1,2 MB iš 2 MB ribos; jei parkas ar istorija stipriai išaugs, laikyti jau suskaičiuotas eilutes.
   return feed === "supplies" ? slimSupplies(payload) : payload;
 }

@@ -31,7 +31,8 @@ export default function RootLayout({
   return (
     <html lang="lt">
       <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
-        <AppShell>{children}</AppShell>
+        {/* Raktas lieka serveryje – į naršyklę keliauja tik žinia, ar jis yra. */}
+        <AppShell assistant={Boolean(process.env.OPENAI_API_KEY)}>{children}</AppShell>
       </body>
     </html>
   );

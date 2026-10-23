@@ -3,7 +3,7 @@
 import { Download } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { calculateDashboardStats, MIN_REALISTIC_REVENUE_CENTS, splitUnrealistic, utilizationPercent, type DashboardStats } from "../lib/dashboard";
+import { calculateDashboardStats, MIN_REALISTIC_REVENUE_CENTS, splitUnrealistic, utilizationPercent } from "../lib/dashboard";
 import { listCustomers, type Customer } from "../lib/customers";
 import { costStructure } from "../lib/cost-structure";
 import { getSupabaseClient } from "../lib/supabase";
@@ -75,26 +75,40 @@ function changeText(percent: number | null, better: boolean): { text: string; be
   return { text: `${sign}${Math.abs(percent).toFixed(1)} % nei anksčiau`, better };
 }
 
-function ProfitabilityBars({ stats, periodLabel }: { stats: DashboardStats; periodLabel: string }) {
-  const maximum = Math.max(stats.revenueCents, stats.totalCostCents, 1);
-  const revenueWidth = `${Math.max((stats.revenueCents / maximum) * 100, stats.revenueCents ? 3 : 0)}%`;
-  const costWidth = `${Math.max((stats.totalCostCents / maximum) * 100, stats.totalCostCents ? 3 : 0)}%`;
+function monthLabel(month: string): string {
+  return new Intl.DateTimeFormat("lt-LT", { month: "short" }).format(new Date(`${month}-01T00:00:00`));
+}
+
+/**
+ * Pajamos ir kaštai pagal mėnesį, šalia – tų pačių mėnesių pajamos pernai.
+ * Kaip ir mėnesių lentelė, laikotarpio filtro nepaiso: tai kryptis, ne pjūvis.
+ * Pernai stulpelis rodomas tik tada, kai pernai buvo reisų.
+ */
+function MonthlyChart({ trips, today }: { trips: TripSummary[]; today: string }) {
+  const months = monthlyStats(trips, today, 12);
+  const lastYear = monthlyStats(trips, `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`, 12);
+  const withLastYear = lastYear.some((month) => month.tripCount > 0);
+  const peak = Math.max(1, ...months.flatMap((month) => [month.revenueCents, month.totalCostCents]), ...(withLastYear ? lastYear.map((month) => month.revenueCents) : []));
+  if (months.every((month) => month.tripCount === 0)) return null;
+  const height = (cents: number) => `${(cents / peak) * 100}%`;
 
   return <div className="rounded-lg border border-line bg-surface p-5">
-    <div className="flex items-baseline justify-between gap-4">
-      <h3 className="font-semibold">Pajamos ir kaštai</h3>
-      <p className="text-sm text-muted">{periodLabel}</p>
+    <h3 className="font-semibold">Pajamos ir kaštai pagal mėnesį</h3>
+    <ul className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted">
+      <li className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-sm bg-brand" />pajamos</li>
+      <li className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-sm bg-ink/35" />kaštai</li>
+      {withLastYear && <li className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-sm bg-ink/15" />pajamos pernai</li>}
+    </ul>
+    <div className="mt-4 flex h-48 items-end gap-2 border-b border-line">
+      {months.map((month, index) => <div key={month.month} title={`${month.month}: pajamos ${formatCents(month.revenueCents)}, kaštai ${formatCents(month.totalCostCents)}${withLastYear ? `, pernai ${formatCents(lastYear[index].revenueCents)}` : ""}`} className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5 hover:bg-raised/60">
+        <div className="w-full max-w-4 rounded-t bg-brand" style={{ height: height(month.revenueCents) }} />
+        <div className="w-full max-w-4 rounded-t bg-ink/35" style={{ height: height(month.totalCostCents) }} />
+        {withLastYear && <div className="w-full max-w-4 rounded-t bg-ink/15" style={{ height: height(lastYear[index].revenueCents) }} />}
+      </div>)}
     </div>
-    <div className="mt-5 space-y-4">
-      <div><div className="mb-1.5 flex justify-between text-sm"><span className="text-muted">Pajamos</span><span className="font-medium tabular-nums">{formatCents(stats.revenueCents)}</span></div><div className="h-2 bg-raised"><div className="h-full bg-brand" style={{ width: revenueWidth }} /></div></div>
-      <div><div className="mb-1.5 flex justify-between text-sm"><span className="text-muted">Kaštai</span><span className="font-medium tabular-nums">{formatCents(stats.totalCostCents)}</span></div><div className="h-2 bg-raised"><div className="h-full bg-ink/30" style={{ width: costWidth }} /></div></div>
+    <div className="mt-1.5 flex gap-2 text-center text-xs text-muted">
+      {months.map((month) => <span key={month.month} className="min-w-0 flex-1 truncate">{monthLabel(month.month)}</span>)}
     </div>
-    <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-line pt-4">
-      <div><dt className="text-xs font-medium text-muted">Marža</dt><dd className="mt-1 text-lg font-semibold">{formatPercent(stats.marginPercent)}</dd></div>
-      <div><dt className="text-xs font-medium text-muted">Pajamos už km</dt><dd className="mt-1 text-lg font-semibold">{formatPerKm(stats.revenuePerKm)}</dd></div>
-      {/* Fura uždirba paromis: lėtas krovinys už km atrodo gerai, bet užima furą ilgiau (#179). */}
-      <div><dt className="text-xs font-medium text-muted">Pelnas per parą</dt><dd className="mt-1 text-lg font-semibold">{formatPerDay(stats.profitPerDayCents)}</dd></div>
-    </dl>
   </div>;
 }
 
@@ -140,6 +154,15 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   return <div className="rounded-lg border border-line bg-surface">
     <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3"><h3 className="font-semibold">Nuostolingi reisai</h3><span className={`text-sm tabular-nums ${losses.length ? "font-medium text-bad" : "text-muted"}`}>{losses.length}</span></div>
     {losses.length ? <ul className="divide-y divide-line">{losses.slice(0, 6).map((trip) => <li key={trip.id}><Link href={`/trips/${trip.id}/edit`} className="flex items-start justify-between gap-3 px-5 py-3 hover:bg-page"><div className="min-w-0"><p className="truncate text-sm font-medium">{trip.origin} → {trip.destination}</p><p className="truncate text-xs text-muted">{trip.tripNumber} · {formatDate(trip.tripDate)}</p></div><span className="whitespace-nowrap text-sm font-medium tabular-nums text-bad">{formatCents(trip.profitCents)}</span></Link></li>)}</ul> : <p className="px-5 py-4 text-sm text-muted">Šiuo laikotarpiu nuostolingų reisų nėra.</p>}
+  </div>;
+}
+
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }] as const;
+type Tab = (typeof TABS)[number]["key"];
+
+function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
+  return <div role="tablist" aria-label="Suvestinės skiltys" className="flex gap-1 overflow-x-auto border-b border-line">
+    {TABS.map((tab) => <button key={tab.key} type="button" role="tab" aria-selected={tab.key === value} onClick={() => onChange(tab.key)} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm transition-colors ${tab.key === value ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink"}`}>{tab.label}</button>)}
   </div>;
 }
 
@@ -360,6 +383,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [tab, setTab] = useState<Tab>("profit");
 
   useEffect(() => {
     let cancelled = false;
@@ -469,10 +493,25 @@ export function Dashboard() {
       </li>)}</ul>
     </details>}
 
-    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
-      <div className="space-y-5"><ProfitabilityBars stats={stats} periodLabel={periodLabel} /><RecentTrips trips={trips} /></div>
-      <div className="space-y-5"><CostStructure trips={trips} periodLabel={periodLabel} /><LossAlerts trips={trips} /></div>
-    </div>
+    <Tabs value={tab} onChange={setTab} />
+    {tab === "profit" && <div role="tabpanel" aria-label="Pelningumas" className="space-y-5">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+        <MonthlyChart trips={realistic} today={today} />
+        <CostStructure trips={trips} periodLabel={periodLabel} />
+      </div>
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+        <RecentTrips trips={trips} />
+        <LossAlerts trips={trips} />
+      </div>
+      <MonthlyTrend trips={realistic} today={today} />
+    </div>}
+    {tab === "costs" && <div role="tabpanel" aria-label="Kaštai" className="space-y-5">
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+        <CostStructure trips={trips} periodLabel={periodLabel} />
+        <EmptyKm trips={trips} periodLabel={periodLabel} />
+      </div>
+      <CountryRoads trips={trips} periodLabel={periodLabel} />
+    </div>}
     <ProfitTable
       title="Furų pelningumas"
       subtitle={periodLabel}
@@ -481,9 +520,6 @@ export function Dashboard() {
       action={{ href: "/trucks?skiltis=kastai", label: "Furų kaštai" }}
       onExport={() => downloadCsv(reportFileName("furos", todayForFileName()), trucksToCsv(summarizeByTruck(trips)))}
     />
-    <MonthlyTrend trips={realistic} today={today} />
-    <EmptyKm trips={trips} periodLabel={periodLabel} />
-    <CountryRoads trips={trips} periodLabel={periodLabel} />
     <ProfitTable
       title="Krypčių pelningumas"
       subtitle={periodLabel}

@@ -18,7 +18,7 @@ import { priceForMargin, pricePerDay, pricePerKm } from "../../../lib/pricing";
 import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
 import { groupViolations, VIOLATION_ADVICE, VIOLATION_HEADINGS } from "../../../lib/route-violations";
 import { fetchCompanySettings } from "../../../lib/company-settings";
-import { countriesByDay, fitPerDiemDays, perDiemDays, sumPerDiem, type PerDiemDay } from "../../../lib/per-diem";
+import { countriesByDay, fitPerDiemDays, perDiemCentsFor, perDiemDays, type PerDiemDay } from "../../../lib/per-diem";
 import { ensureCustomer, listCustomers, parseCustomerName, type Customer } from "../../../lib/customers";
 import { truckRowToCalc } from "../../../lib/truck";
 import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
@@ -948,7 +948,7 @@ export function TripForm({
       // Dienpinigiai pagal šalis pritaikomi prie įvestos trukmės (#187).
       const dienos = dienpinigiuProc !== null && dienpinigiai.current ? fitPerDiemDays(dienpinigiai.current, Math.ceil(trip.days)) : null;
       if (dienos && dienos.length > 0) {
-        trip.per_diem_cents = sumPerDiem(dienos);
+        trip.per_diem_cents = perDiemCentsFor(dienos, trip.days);
         trip.per_diem_days = dienos;
       }
       setSkaiciuotiDienpinigiai(dienos && dienos.length > 0 ? dienos : null);

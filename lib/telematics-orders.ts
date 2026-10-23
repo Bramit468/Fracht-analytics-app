@@ -20,6 +20,8 @@
  * užsakymai, samdytas vežėjas, nežinoma fura.
  */
 
+import { countriesByDayFromStops, fitPerDiemDays, perDiemCentsFor, perDiemDays } from "./per-diem";
+import { iso2FromIso3 } from "./per-diem-norms";
 import { plateKey, summarizeActuals, tripFillFromActuals, type DailyDistance, type Supply } from "./telematics-costs";
 import type { StoredStop, StopType } from "./stops";
 import type { TripCountryLegInsert, TripInsert } from "../types/trip";
@@ -257,6 +259,8 @@ export function buildOrderTrips(input: {
   supplies: Supply[];
   /** „2026-10-23 12:00:00“ – nebaigti užsakymai praleidžiami. */
   now: string;
+  /** Įmonės dienpinigių % pagal šalis; `null` – lieka fiksuota furos suma. */
+  perDiemPercent?: number | null;
 }): OrderImport {
   const trucks = new Map(input.trucks.map((truck) => [plateKey(truck.plate), truck]));
   const byOrder = new Map<string, OrderLeg[]>();
@@ -367,6 +371,22 @@ export function buildOrderTrips(input: {
     const days = Math.max(0.01, round(hours / 24, 3));
     const route = loadedLegs.length > 0 ? loadedLegs : legs;
 
+    // Dienpinigiai pagal pakrovimo ir iškrovimo šalis (#187). Tranzito šalių
+    // Telematika neduoda – dienos be sustojimų skaičiuojamos pagal kitą sustojimą.
+    let perDiem: Pick<TripInsert, "per_diem_cents" | "per_diem_days"> = {};
+    if (input.perDiemPercent != null) {
+      const stops = legs.flatMap((leg) => [{ at: leg.start, place: leg.startPlace }, { at: leg.end, place: leg.endPlace }])
+        .map((stop) => ({ at: stop.at, code: placeParts(stop.place)?.country ?? "" }));
+      const unknown = [...new Set(stops.filter((stop) => !iso2FromIso3(stop.code)).map((stop) => stop.code || "be šalies"))];
+      if (unknown.length > 0) {
+        notes.push(`Dienpinigiai fiksuoti: šaliai ${unknown.join(", ")} normos nėra.`);
+      } else {
+        const byDay = countriesByDayFromStops(stops.map((stop) => ({ at: stop.at, country: iso2FromIso3(stop.code)! })));
+        const fitted = fitPerDiemDays(perDiemDays(byDay, input.perDiemPercent).days, Math.ceil(days));
+        perDiem = { per_diem_cents: perDiemCentsFor(fitted, days), per_diem_days: fitted };
+      }
+    }
+
     return {
       orderId,
       kmAddresses,
@@ -399,6 +419,7 @@ export function buildOrderTrips(input: {
         freight_price_cents: order.priceCents,
         stops: stopsOf(legs),
         telematika_order_id: orderId,
+        ...perDiem,
       },
     };
   });
@@ -408,7 +429,7 @@ export function buildOrderTrips(input: {
 }
 
 /** Importuoto reiso laukai, pagal kuriuos sprendžiama, ar užsakymas pasikeitė. */
-export type StoredOrderTrip = Pick<TripInsert, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents">;
+export type StoredOrderTrip = Pick<TripInsert, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents" | "per_diem_cents">;
 
 /**
  * Kas užsakyme pasikeitė nuo paskutinio importo. Tuščias sąrašas – įrašyti
@@ -428,5 +449,7 @@ export function importChanges(stored: StoredOrderTrip, built: ImportedTrip): str
   if (differs(stored.empty_km, built.trip.empty_km, 0.01)) changes.push("tušti km");
   if (!built.kmAddresses && differs(stored.paid_km, built.trip.paid_km, 0.01)) changes.push("km");
   if (differs(stored.bridges_cents, built.trip.bridges_cents, 1)) changes.push("keliai");
+  // Ir anksčiau importuoti reisai be dienpinigių pagal šalis gauna juos per kitą atnaujinimą.
+  if ((stored.per_diem_cents ?? null) !== (built.trip.per_diem_cents ?? null)) changes.push("dienpinigiai");
   return changes;
 }

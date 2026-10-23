@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import type { CountryTariff, RateType } from "@/lib/calc";
 import { ptvQuotaExceeded, PTV_QUOTA_MESSAGE, routeEstimate, routeRequestUrl, type GeocodedPlace } from "@/lib/ptv-route";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
+import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
@@ -51,14 +52,15 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
   if (!claims?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
   if (!(await canUseTelematics(supabase))) return { ok: false, message: "Telematika šiai įmonei neprijungta." };
 
-  const [trucksResult, tariffsResult, existingResult] = await Promise.all([
+  const [trucksResult, tariffsResult, existingResult, settings] = await Promise.all([
     supabase.from("trucks").select("*"),
     supabase.from("country_tariffs").select("country,rate,rate_type"),
     // Daugiau nei 1000 importuotų reisų be puslapiavimo virstų dublikatais.
     fetchAllRows((from, to) => supabase.from("trips")
-      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents")
+      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents,per_diem_cents")
       .not("telematika_order_id", "is", null).order("id").range(from, to))
       .then((data) => ({ data, error: null }), (error: { code?: string }) => ({ data: null, error })),
+    fetchCompanySettings(supabase),
   ]);
   if (existingResult.error?.code === "42703" || existingResult.error?.code === "PGRST204") {
     return { ok: false, message: "Importui reikia migracijos 0019 – paleiskite ją Supabase SQL redaktoriuje." };
@@ -96,6 +98,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
       daily: parseCanDaily(canRaw),
       supplies: parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
       now: vilniusNow(),
+      perDiemPercent: settings.perDiemPercent,
     });
   } catch (cause) {
     console.error("Telematikos užsakymų importas: apdorojimas", cause);

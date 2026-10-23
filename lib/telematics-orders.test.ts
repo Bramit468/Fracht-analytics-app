@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { perDiemNormCents } from "./per-diem-norms";
 import type { DailyDistance, Supply } from "./telematics-costs";
 import { allocateTime, buildOrderTrips, importChanges, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
@@ -68,7 +69,7 @@ const ORDERS = [
   { OrderId: "3", OrderNo: "N3", TripClient: "X", OrderPrice: 0, AdditionalPaymentsEur: 0 },
 ];
 
-function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[] } = {}) {
+function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number } = {}) {
   return buildOrderTrips({
     orders: parseOrders(ORDERS),
     legs: parseOrderLegs(legs),
@@ -76,6 +77,7 @@ function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Sup
     daily: extra.daily ?? [],
     supplies: extra.supplies ?? [],
     now: "2026-10-23 12:00:00",
+    perDiemPercent: extra.perDiemPercent ?? null,
   });
 }
 
@@ -172,5 +174,36 @@ describe("importChanges", () => {
     const withPtv = { ...built, kmAddresses: ["A", "B"] } as typeof built;
     expect(importChanges({ ...stored, paid_km: 1500 }, withPtv)).toEqual([]);
     expect(importChanges({ ...stored, paid_km: 1500 }, built)).toEqual(["km"]);
+  });
+});
+
+describe("buildOrderTrips: dienpinigiai", () => {
+  const legs = [leg("1", "2026-10-21 09:00:00", "2026-10-22 09:00:00", 436)];
+
+  it("be įmonės % – fiksuoti, kaip anksčiau", () => {
+    expect(build(legs).trips[0].trip.per_diem_cents).toBeUndefined();
+  });
+
+  it("pagal pakrovimo ir iškrovimo šalis, pagal paras ir įmonės %", () => {
+    const { trip } = build(legs, { perDiemPercent: 50 }).trips[0];
+    // 24 h = 1 para; abi dienos – Norvegija ir Švedija, mokamas jų vidurkis.
+    const day = Math.round(((perDiemNormCents("NO")! + perDiemNormCents("SE")!) / 2) * 0.5);
+    expect(trip.per_diem_days).toEqual([{ countries: ["NO", "SE"], cents: day }]);
+    expect(trip.per_diem_cents).toBe(day);
+  });
+
+  it("nežinomos šalies normos nespėja – lieka fiksuoti ir pasakoma", () => {
+    const { trips } = build([leg("1", "2026-10-21 09:00:00", "2026-10-22 09:00:00", 436, { EndPlace: "B, USA, Austin, 1, Y" })], { perDiemPercent: 100 });
+    expect(trips[0].trip.per_diem_cents).toBeUndefined();
+    expect(trips[0].notes).toContain("Dienpinigiai fiksuoti: šaliai USA normos nėra.");
+  });
+});
+
+describe("importChanges: dienpinigiai", () => {
+  it("anksčiau be dienpinigių importuotas reisas laikomas pakitusiu", () => {
+    const trip = { trip_date: "2026-10-01", truck_id: "t1", days: 1, paid_km: 1, empty_km: 0, freight_price_cents: 1, bridges_cents: 0 };
+    const built = { kmAddresses: null, trip: { ...trip, per_diem_cents: 5_000 } } as unknown as Parameters<typeof importChanges>[1];
+    expect(importChanges({ ...trip, per_diem_cents: null }, built)).toEqual(["dienpinigiai"]);
+    expect(importChanges({ ...trip, per_diem_cents: 5_000 }, built)).toEqual([]);
   });
 });

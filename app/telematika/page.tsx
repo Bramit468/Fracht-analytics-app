@@ -13,10 +13,9 @@ import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import {
+  actualsByTruck,
   parseCanDaily,
   parseSupplies,
-  plateKey,
-  summarizeActuals,
   type ActualCosts,
   type Supply,
   type SupplyIssues,
@@ -24,6 +23,7 @@ import {
 import { fuelPricesByCountry, fuelPricesByMonth } from "@/lib/fuel-prices";
 import { fetchTelematics } from "@/lib/telematics-feed";
 
+import { buttonPrimary, input, Page, PageHeader } from "../ui";
 import { ArchiveButton } from "./archive-button";
 import { ExportButtons } from "./export-buttons";
 
@@ -73,21 +73,7 @@ async function loadCosts(
       toEuroCents(rates, amount, currency, date),
     );
 
-    // Tas pats numeris ateina ir su tarpu, ir be jo. Rodome variantą su tarpu,
-    // nes toks pat yra furų sąraše.
-    const pagalRakta = new Map<string, string>();
-    for (const plate of [...daily.map((d) => d.plate), ...supplies.map((s) => s.plate)]) {
-      const esamas = pagalRakta.get(plateKey(plate));
-      if (!esamas || (plate.includes(" ") && !esamas.includes(" "))) {
-        pagalRakta.set(plateKey(plate), plate);
-      }
-    }
-    const plates = [...pagalRakta.values()].sort();
-
-    // Furos, kurios per laikotarpį nei važiavo, nei pirko, sąraše tik trukdytų.
-    const eilutes = plates
-      .map((plate) => summarizeActuals(daily, supplies, plate, from, to))
-      .filter((row) => row.km > 0 || row.totalCents > 0 || row.otherCents > 0);
+    const eilutes = actualsByTruck(daily, supplies, from, to);
 
     return {
       eilutes,
@@ -106,7 +92,7 @@ async function loadCosts(
  * Žemiau šios ridos santykiniai rodikliai praranda prasmę (#50).
  *
  * Vienas pirkimas, padalintas iš kelių šimtų metrų, duoda šimtus eurų
- * kilometrui — skaičius teisingas, bet šalia tikrų 0,3–0,6 €/km atrodo kaip
+ * kilometrui – skaičius teisingas, bet šalia tikrų 0,3–0,6 €/km atrodo kaip
  * programos klaida. Slepiamas tik santykis; pirkimai ir rida lieka matomi.
  */
 const MIN_KM_SANTYKIAMS = 100;
@@ -150,41 +136,27 @@ export default async function TelematikaPage({
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Analizė</h1>
-        <p className="text-sm text-muted">
-          Faktiniai kaštai ir kur galima sutaupyti. Kilometrai ir kuras – iš vilkikų skaitiklių,
-          kaštai – iš tikrų pirkimų.
-        </p>
-      </header>
-
-      <form className="flex flex-wrap items-end gap-3 text-sm">
-        <label className="flex flex-col gap-1">
-          Nuo
-          <input
-            type="date"
-            name="from"
-            defaultValue={from}
-            className="rounded-md border border-line px-3 py-2 "
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          Iki
-          <input
-            type="date"
-            name="to"
-            defaultValue={to}
-            className="rounded-md border border-line px-3 py-2 "
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-md bg-accent px-4 py-2 font-medium text-accent-ink"
-        >
-          Rodyti
-        </button>
-      </form>
+    <Page>
+      <PageHeader
+        title="Analizė"
+        description="Faktiniai kaštai ir kur galima sutaupyti. Kilometrai ir kuras – iš vilkikų skaitiklių, kaštai – iš tikrų pirkimų."
+        actions={
+          <form className="flex flex-wrap items-end gap-2 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Nuo</span>
+              <input type="date" name="from" defaultValue={from} className={`${input} py-1.5`} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Iki</span>
+              <input type="date" name="to" defaultValue={to} className={`${input} py-1.5`} />
+            </label>
+            <button type="submit" className={`${buttonPrimary} py-1.5`}>
+              Rodyti
+            </button>
+          </form>
+        }
+      />
+      <div className="mt-6 flex flex-col gap-8">
 
       {klaida && (
         <p role="alert" className="text-sm text-bad">
@@ -278,7 +250,7 @@ export default async function TelematikaPage({
             <h2 className="text-lg font-medium">Kuro kaina pagal šalį</h2>
             <p className="text-sm text-muted">
               Kaina svertinė: visa suma dalinama iš visų litrų. Paprastas kainų vidurkis
-              meluotų — penkiasdešimt litrų brangioje stotelėje jame svertų tiek pat, kiek
+              meluotų – penkiasdešimt litrų brangioje stotelėje jame svertų tiek pat, kiek
               pilnas bakas pigioje.
             </p>
           </div>
@@ -339,7 +311,7 @@ export default async function TelematikaPage({
             <p className="text-sm text-muted">
               Kaina per mėnesius:{" "}
               {kuroMenesiai
-                .map((row) => `${row.key} — ${row.pricePerL === null ? "—" : `${row.pricePerL.toFixed(3)} €/l`}`)
+                .map((row) => `${row.key} – ${row.pricePerL === null ? "—" : `${row.pricePerL.toFixed(3)} €/l`}`)
                 .join(" · ")}
             </p>
           )}
@@ -381,7 +353,8 @@ export default async function TelematikaPage({
         </p>
         <ArchiveButton />
       </section>
-    </main>
+      </div>
+    </Page>
   );
 }
 

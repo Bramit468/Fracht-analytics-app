@@ -47,17 +47,17 @@ const UNIQUE_VIOLATION = "23505";
 /** Postgres klaidos kodas, kai eilutė dar naudojama per išorinį raktą. */
 const FOREIGN_KEY_VIOLATION = "23503";
 
-/** Formos `id` laukas: tuščias — nauja fura, užpildytas — taisoma esama. */
+/** Formos `id` laukas: tuščias – nauja fura, užpildytas – taisoma esama. */
 function readTruckId(formData: FormData): string | null {
   const raw = formData.get("id");
   return typeof raw === "string" && raw !== "" ? raw : null;
 }
 
 /**
- * Su `id` atnaujina esamą furą, be jo — įrašo naują (#39).
+ * Su `id` atnaujina esamą furą, be jo – įrašo naują (#39).
  *
  * Kurią furą leidžiama liesti, sprendžia RLS (`trucks_company_access`), todėl
- * svetimas `id` nepadės — tokiu atveju nepaliečiama nė viena eilutė.
+ * svetimas `id` nepadės – tokiu atveju nepaliečiama nė viena eilutė.
  */
 export async function saveTruck(
   _previous: SaveTruckState,
@@ -112,7 +112,7 @@ export async function saveTruck(
     return {
       status: "error",
       message:
-        "Duomenų bazėje dar nėra naujų furos laukų — Supabase paleiskite migracijas 0010 ir 0011. " +
+        "Duomenų bazėje dar nėra naujų furos laukų – Supabase paleiskite migracijas 0010 ir 0011. " +
         "Iki tol užpildykite tik numerį ir kaštus, ir fura išsisaugos.",
       values,
     };
@@ -272,12 +272,12 @@ export async function saveTruckWeights(
 
   const failed = results.filter((result) => result.error !== null);
 
-  // Kol migracija 0010 nepaleista, svorių stulpelių nėra visai — pasakome
+  // Kol migracija 0010 nepaleista, svorių stulpelių nėra visai – pasakome
   // tiesiai, ką daryti, o ne „nepavyko įrašyti“ prie kiekvienos furos (#161).
   if (failed.some((result) => isMissingColumnError(result.error))) {
     return {
       status: "error",
-      message: "Duomenų bazėje dar nėra svorių stulpelių — Supabase paleiskite migraciją 0010.",
+      message: "Duomenų bazėje dar nėra svorių stulpelių – Supabase paleiskite migraciją 0010.",
       values,
     };
   }
@@ -305,7 +305,7 @@ export async function saveTruckWeights(
  * Ištrina furą (#39).
  *
  * Naudojamos furos ištrinti neleidžia `trips` išorinis raktas (`on delete
- * restrict`) — Postgres grąžina 23503, ir tai parodoma žmogiškai.
+ * restrict`) – Postgres grąžina 23503, ir tai parodoma žmogiškai.
  */
 export async function deleteTruck(
   _previous: DeleteTruckState,

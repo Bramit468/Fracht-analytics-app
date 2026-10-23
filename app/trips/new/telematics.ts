@@ -29,7 +29,7 @@ export type TelematicsFillResult =
 /**
  * Faktiniai furos duomenys reiso formai (#44).
  *
- * Užklausa eina iš serverio, nes nuorodose yra prieigos raktas — į naršyklę
+ * Užklausa eina iš serverio, nes nuorodose yra prieigos raktas – į naršyklę
  * jis patekti negali. Prisijungimas tikrinamas ir čia: server action pasiekiama
  * adresu, o ne tik per mygtuką.
  */

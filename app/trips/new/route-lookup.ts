@@ -91,7 +91,7 @@ function optionUrl(routeId: string | null, from: GeocodedPlace, to: GeocodedPlac
 /**
  * Keli PTV keliai su kaštais (#84).
  *
- * PTV alternatyvas grąžina be mokesčių — tik su `routeId`. Kiekvieno varianto
+ * PTV alternatyvas grąžina be mokesčių – tik su `routeId`. Kiekvieno varianto
  * kaina paimama atskira užklausa pagal tą raktą; kitaip lentelėje būtų
  * kilometrai be pinigų, o būtent pinigai čia ir skiriasi.
  */

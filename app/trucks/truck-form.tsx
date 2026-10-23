@@ -64,7 +64,7 @@ export function TruckForm({ truck }: { truck?: Truck }) {
         ))}
       </Section>
 
-      <Section title="Paros kaštai, EUR/parą" hint="Didžioji reiso kaštų dalis — nuo jų priklauso kiekvieno reiso pelnas.">
+      <Section title="Paros kaštai, EUR/parą" hint="Didžioji reiso kaštų dalis – nuo jų priklauso kiekvieno reiso pelnas.">
         {Object.values(DAILY_COSTS).map(({ column, label }) => (
           <Field key={column} name={column} label={label} placeholder="0" inputMode="decimal" {...common} />
         ))}
@@ -125,7 +125,7 @@ function Section({
     <fieldset className="flex flex-col gap-3">
       <legend className="text-base font-semibold">{title}</legend>
       {hint && <p className="-mt-1 text-sm text-muted">{hint}</p>}
-      <div className={wide ? "grid gap-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"}>
+      <div className={wide ? "grid gap-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"}>
         {children}
       </div>
     </fieldset>

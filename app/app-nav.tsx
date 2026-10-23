@@ -16,16 +16,16 @@ export function AppNav({ className = "" }: { className?: string }) {
   const active = activeNavHref(usePathname());
 
   return (
-    <nav aria-label="Pagrindinis meniu" className={`flex gap-2 overflow-x-auto pb-1 ${className}`}>
+    <nav aria-label="Pagrindinis meniu" className={`-mx-1 flex gap-1 overflow-x-auto pb-1 ${className}`}>
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.href}
           href={item.href}
           aria-current={item.href === active ? "page" : undefined}
-          className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+          className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
             item.href === active
-              ? "bg-accent text-accent-ink"
-              : "bg-surface text-muted hover:text-ink"
+              ? "bg-accent-soft text-ink"
+              : "text-muted hover:text-ink"
           }`}
         >
           {item.label}

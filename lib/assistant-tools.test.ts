@@ -47,12 +47,11 @@ const truck: Truck = {
   insurance_kasko_cents: 0,
   insurance_civil_cents: 0,
   insurance_cmr_cents: 0,
-  driver_salary_cents: 10000,
+  driver_salary_monthly_cents: 304167, // 100,00 €/parą
   per_diem_cents: 0,
   repairs_cents: 0,
   management_cents: 0,
   trailer_monthly_cents: 0,
-  working_days_per_month: 22,
   empty_weight_kg: null,
   total_permitted_weight_kg: null,
   // Draudimas baigiasi po 7 d. – turi būti įspėjimas.

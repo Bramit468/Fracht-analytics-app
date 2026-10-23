@@ -6,7 +6,7 @@
  * kad skaičiavimai ir toliau nieko nežinotų apie duomenų bazę.
  */
 
-import type { Truck as CalcTruck, TruckDailyCosts } from "./calc";
+import { DAYS_PER_MONTH, type Truck as CalcTruck, type TruckDailyCosts } from "./calc";
 import { centsToInput, parseEuroToCents } from "./money";
 import {
   parseTruckProfile,
@@ -31,7 +31,7 @@ export const DAILY_COSTS = {
   insuranceKasko: { column: "insurance_kasko_cents", label: "Draudimas kasko" },
   insuranceCivil: { column: "insurance_civil_cents", label: "Civilinis draudimas" },
   insuranceCmr: { column: "insurance_cmr_cents", label: "CMR + DCA + sveikatos draudimas" },
-  driverSalary: { column: "driver_salary_cents", label: "Vairuotojo atlyginimas ir mokesčiai" },
+  driverSalary: { column: "driver_salary_monthly_cents", label: "Vairuotojo atlyginimas ir mokesčiai, EUR/mėn." },
   perDiem: { column: "per_diem_cents", label: "Komandiruotpinigiai" },
   repairs: { column: "repairs_cents", label: "Remontas" },
   management: { column: "management_cents", label: "Vadyba" },
@@ -64,7 +64,6 @@ export const TRUCK_FORM_FIELDS: readonly TruckFormField[] = [
   "plate",
   ...DAILY_COST_KEYS.map((key) => DAILY_COSTS[key].column),
   "trailer_monthly_cents",
-  "working_days_per_month",
   ...WEIGHT_FIELDS,
   ...PROFILE_FIELD_NAMES,
 ];
@@ -82,10 +81,7 @@ function isProfileField(field: TruckFormField): field is TruckProfileField {
   return (PROFILE_FIELD_NAMES as readonly string[]).includes(field);
 }
 
-export const DEFAULT_WORKING_DAYS_PER_MONTH = 22;
-
 const PLATE_MAX_LENGTH = 20;
-const WORKING_DAYS_MAX = 31;
 
 export type TruckFormErrors = Partial<Record<TruckFormField, string>>;
 
@@ -147,12 +143,6 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
   }
   const trailerMonthly = money("trailer_monthly_cents");
 
-  const daysText = (values.working_days_per_month ?? "").trim();
-  const workingDays = daysText === "" ? DEFAULT_WORKING_DAYS_PER_MONTH : Number(daysText);
-  if (!Number.isInteger(workingDays) || workingDays < 1 || workingDays > WORKING_DAYS_MAX) {
-    errors.working_days_per_month = `Įveskite sveiką skaičių nuo 1 iki ${WORKING_DAYS_MAX}.`;
-  }
-
   /** Tuščias svoris reiškia „nežinoma“, o ne nulį: spėti masės negalima (#86). */
   const weight = (field: TruckWeightField): number | null => {
     const raw = (values[field] ?? "").trim().replace(/\s/g, "");
@@ -194,7 +184,6 @@ export function parseTruckForm(values: TruckFormValues): ParseTruckFormResult {
       plate,
       ...daily,
       trailer_monthly_cents: trailerMonthly,
-      working_days_per_month: workingDays,
       ...weights,
     },
   };
@@ -253,8 +242,6 @@ export function truckRowToFormValues(row: TruckInsert): TruckFormValues {
       continue;
     } else if (field === "plate") {
       values[field] = row.plate;
-    } else if (field === "working_days_per_month") {
-      values[field] = String(row.working_days_per_month);
     } else if (field === "empty_weight_kg" || field === "total_permitted_weight_kg") {
       // Nežinomas svoris lieka tuščias laukas, o ne „0“ — nulis būtų netiesa.
       // `undefined` – kai duomenų bazė dar neturi stulpelio (0010 nepaleista):
@@ -273,10 +260,13 @@ export function truckRowToCalc(row: TruckInsert): CalcTruck {
   for (const key of DAILY_COST_KEYS) {
     dailyCents[key] = row[DAILY_COSTS[key].column];
   }
+  // Atlyginimas įvedamas per mėnesį – paroje kaip ir priekaba. Ta pati
+  // formulė kaip `truck_cost_snapshot()` (0017), kad peržiūra sutaptų su įrašu.
+  dailyCents.driverSalary = Math.round((row.driver_salary_monthly_cents * 12) / 365);
 
   return {
     dailyCents,
     trailerMonthlyCents: row.trailer_monthly_cents,
-    workingDaysPerMonth: row.working_days_per_month,
+    workingDaysPerMonth: DAYS_PER_MONTH,
   };
 }

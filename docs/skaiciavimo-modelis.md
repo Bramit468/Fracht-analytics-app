@@ -43,11 +43,15 @@ Dešimties dedamųjų suma. Pavyzdys — vilkikas NNN 888:
 | Priekaba | 25 |
 | **Viso paros kaina** | **269** |
 
-Dalis dedamųjų įvedamos kaip **mėnesinės** ir dalinamos iš darbo dienų
-skaičiaus per mėnesį (Excel'yje — 22). Pavyzdžiui priekaba: 550 / 22 = 25.
+Paros dedamosios yra **kalendorinės** paros kaina: metų suma / 365. Fura
+kainuoja kiekvieną parą, ne tik darbo dieną, todėl 31 dienos mėnuo gauna 31
+parą kaštų.
 
-Dalikliui reikia atskiro lauko (`working_days_per_month`, numatytoji 22), nes
-skirtingos įmonės skaičiuoja skirtingai.
+Priekaba ir vairuotojo atlyginimas (visų furos vairuotojų, su mokesčiais, be
+dienpinigių) įvedami per mėnesį ir verčiami tuo pačiu matu: 550 × 12 / 365 = 18,08.
+Excel'yje (ir programoje iki migracijos `0017`) ji buvo dalinama iš 22 darbo
+dienų — tada 30 parų reisuose fura „sumokėdavo" 136 % nuomos. Seni reisai
+įšaldyti su 22, kontrolinis pavyzdys žemiau irgi.
 
 ## 2. Kuras ir AdBlue
 

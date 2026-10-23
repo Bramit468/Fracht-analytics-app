@@ -50,9 +50,19 @@ export interface Truck {
   dailyCents: TruckDailyCosts;
   /** Priekabos nuoma per mėnesį, centais. */
   trailerMonthlyCents: number;
-  /** Daliklis mėnesiniams dydžiams. Įprastai 22. */
+  /**
+   * Iš kiek parų dalinama mėnesinė priekabos nuoma. Nuo 0017 – `DAYS_PER_MONTH`:
+   * fura kainuoja kiekvieną kalendorinę parą, ne tik darbo dieną. Seni reisai
+   * įšaldyti su 22, todėl laukas lieka kopijoje, o ne konstanta skaičiavime.
+   */
   workingDaysPerMonth: number;
 }
+
+/**
+ * Vidutinis kalendorinis mėnuo, paromis. Paros sumos įvedamos kaip metų suma
+ * / 365, tad mėnesinė priekaba verčiama tuo pačiu matu: × 12 / 365.
+ */
+export const DAYS_PER_MONTH = 365 / 12;
 
 /** Atskiri kelio mokesčiai, centais. Sumuojami per Object.values(). */
 export interface RoadExtras {

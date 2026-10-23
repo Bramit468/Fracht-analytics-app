@@ -23,12 +23,11 @@ const OMNIVA_FORM: TruckFormValues = {
   insurance_kasko_cents: "4",
   insurance_civil_cents: "8",
   insurance_cmr_cents: "2",
-  driver_salary_cents: "145",
+  driver_salary_monthly_cents: "4410,42",
   per_diem_cents: "",
   repairs_cents: "28",
   management_cents: "",
   trailer_monthly_cents: "550",
-  working_days_per_month: "22",
   // Svoriai nežinomi: forma turi juos priimti tuščius (#86).
   empty_weight_kg: "",
   total_permitted_weight_kg: "",
@@ -52,12 +51,11 @@ describe("parseTruckForm", () => {
         insurance_kasko_cents: 400,
         insurance_civil_cents: 800,
         insurance_cmr_cents: 200,
-        driver_salary_cents: 14500,
+        driver_salary_monthly_cents: 441042,
         per_diem_cents: 0,
         repairs_cents: 2800,
         management_cents: 0,
         trailer_monthly_cents: 55000,
-        working_days_per_month: 22,
         empty_weight_kg: null,
         total_permitted_weight_kg: null,
         ...EMPTY_PROFILE,
@@ -100,32 +98,19 @@ describe("parseTruckForm", () => {
     expect(!result.ok && result.errors.empty_weight_kg).toBeTruthy();
   });
 
-  it("tuščios darbo dienos reiškia 22", () => {
-    const result = parseTruckForm({ ...OMNIVA_FORM, working_days_per_month: "" });
-    expect(result.ok && result.value.working_days_per_month).toBe(22);
-  });
-
   it("rodo klaidą kiekvienam blogam laukui", () => {
     const result = parseTruckForm({
       ...OMNIVA_FORM,
       plate: "   ",
       repairs_cents: "-5",
       trailer_monthly_cents: "abc",
-      working_days_per_month: "0",
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(Object.keys(result.errors).sort()).toEqual(
-        ["plate", "repairs_cents", "trailer_monthly_cents", "working_days_per_month"].sort(),
+        ["plate", "repairs_cents", "trailer_monthly_cents"].sort(),
       );
-    }
-  });
-
-  it("darbo dienos turi būti sveikas skaičius nuo 1 iki 31", () => {
-    for (const bad of ["0", "32", "21.5", "abc"]) {
-      const result = parseTruckForm({ ...OMNIVA_FORM, working_days_per_month: bad });
-      expect(result.ok, bad).toBe(false);
     }
   });
 
@@ -135,11 +120,12 @@ describe("parseTruckForm", () => {
 });
 
 describe("truckRowToCalc", () => {
-  it("Omniva fura: paros savikaina 269,00 EUR", () => {
+  it("Omniva fura: priekaba per kalendorinę parą, ne per 22 darbo dienas", () => {
     const parsed = parseTruckForm(OMNIVA_FORM);
     if (!parsed.ok) throw new Error("forma turėjo būti teisinga");
 
-    expect(calcDailyRate(truckRowToCalc(parsed.value))).toBe(26900);
+    // 244 + 550 × 12 / 365 = 262,08 EUR (su 22 d. buvo 269,00)
+    expect(calcDailyRate(truckRowToCalc(parsed.value))).toBe(26208);
   });
 
   it("kiekviena paros dedamoji patenka į skaičiavimą", () => {
@@ -155,7 +141,9 @@ describe("truckRowToCalc", () => {
 
     const truck = truckRowToCalc(row);
     keys.forEach((key, i) => {
-      expect(truck.dailyCents[key], key).toBe(10 ** i);
+      // Atlyginimas įvedamas per mėnesį: paroje × 12 / 365.
+      const expected = key === "driverSalary" ? Math.round((10 ** i * 12) / 365) : 10 ** i;
+      expect(truck.dailyCents[key], key).toBe(expected);
     });
   });
 });
@@ -229,7 +217,7 @@ describe("truckPayload", () => {
 
   it("kaštų niekada neišmeta", () => {
     const payload = truckPayload(value, null);
-    expect(payload.driver_salary_cents).toBe(14500);
+    expect(payload.driver_salary_monthly_cents).toBe(441042);
   });
 });
 

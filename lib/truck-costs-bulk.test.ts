@@ -21,12 +21,11 @@ function truck(id: string, plate: string, overrides: Partial<Truck> = {}): Truck
     insurance_kasko_cents: 800,
     insurance_civil_cents: 200,
     insurance_cmr_cents: 300,
-    driver_salary_cents: 9000,
+    driver_salary_monthly_cents: 9000,
     per_diem_cents: 5500,
     repairs_cents: 2500,
     management_cents: 1500,
     trailer_monthly_cents: 40000,
-    working_days_per_month: 22,
     empty_weight_kg: null,
     total_permitted_weight_kg: null,
     ...overrides,
@@ -44,7 +43,7 @@ describe("TRUCK_COST_FIELDS", () => {
   });
 
   it("apima visus kaštų laukus", () => {
-    expect(TRUCK_COST_FIELDS).toHaveLength(11);
+    expect(TRUCK_COST_FIELDS).toHaveLength(10);
   });
 
   it("kiekvienas laukas turi trumpą ir pilną pavadinimą", () => {
@@ -89,7 +88,7 @@ describe("parseBulkCosts", () => {
 
   it("grąžina tik pakeistą eilutę", () => {
     const values = {
-      a: { ...rowFor(first), driver_salary_cents: "120" },
+      a: { ...rowFor(first), driver_salary_monthly_cents: "120" },
       b: rowFor(second),
     };
 
@@ -97,7 +96,7 @@ describe("parseBulkCosts", () => {
 
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({ id: "a", plate: "LOV 141" });
-    expect(updates[0].value.driver_salary_cents).toBe(12000);
+    expect(updates[0].value.driver_salary_monthly_cents).toBe(12000);
   });
 
   it("į atnaujinimą numerio nededa", () => {
@@ -110,7 +109,7 @@ describe("parseBulkCosts", () => {
   it("klaidą priskiria tai furai, kurioje ji yra", () => {
     const values = {
       a: { ...rowFor(first), repairs_cents: "trisdešimt" },
-      b: { ...rowFor(second), driver_salary_cents: "95" },
+      b: { ...rowFor(second), driver_salary_monthly_cents: "95" },
     };
 
     const { updates, errors } = parseBulkCosts(values, [first, second]);
@@ -134,7 +133,7 @@ describe("copiedTruckIds", () => {
     const copied = copiedTruckIds([
       truck("a", "LOV 141"),
       truck("b", "LSE 728"),
-      truck("c", "NNN 888", { driver_salary_cents: 9500 }),
+      truck("c", "NNN 888", { driver_salary_monthly_cents: 9500 }),
     ]);
 
     expect([...copied].sort()).toEqual(["a", "b"]);

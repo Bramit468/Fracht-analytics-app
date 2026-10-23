@@ -137,7 +137,6 @@ function TruckList({ trucks, copied }: { trucks: Truck[]; copied: Set<string> })
             <th className="py-2.5 pl-4 pr-4 font-medium">Numeris</th>
             <th className="py-2.5 pr-4 text-right font-medium">Paros savikaina</th>
             <th className="py-2.5 pr-4 text-right font-medium">Priekaba / mėn.</th>
-            <th className="py-2.5 pr-4 text-right font-medium">Darbo dienos</th>
             <th className="py-2.5 pr-4 text-right font-medium">
               <span className="sr-only">Veiksmai</span>
             </th>
@@ -163,7 +162,6 @@ function TruckList({ trucks, copied }: { trucks: Truck[]; copied: Set<string> })
               <td className="py-2 pr-4 text-right tabular-nums">
                 {formatCents(truck.trailer_monthly_cents)}
               </td>
-              <td className="py-2 pr-4 text-right tabular-nums">{truck.working_days_per_month}</td>
               <td className="py-2 pr-4 text-right">
                 <TruckRowActions id={truck.id} plate={truck.plate} />
               </td>

@@ -53,17 +53,15 @@ export const COST_SHORT_LABELS: Record<TruckCostField, string> = {
   insurance_kasko_cents: "Kasko",
   insurance_civil_cents: "Civilinis",
   insurance_cmr_cents: "CMR",
-  driver_salary_cents: "Vairuotojas",
+  driver_salary_monthly_cents: "Vairuot./mėn.",
   per_diem_cents: "Komand.",
   repairs_cents: "Remontas",
   management_cents: "Vadyba",
   trailer_monthly_cents: "Priekaba/mėn.",
-  working_days_per_month: "D. d./mėn.",
 };
 
 const EXTRA_LABELS: Partial<Record<TruckCostField, string>> = {
   trailer_monthly_cents: "Priekabos nuoma, EUR/mėn.",
-  working_days_per_month: "Darbo dienų per mėnesį",
 };
 
 /** Pilnas lauko pavadinimas — toks pat kaip vienos furos formoje. */

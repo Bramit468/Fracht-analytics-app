@@ -13,6 +13,11 @@ const FEEDS = {
   snapshot: { env: "TELEMATIKA_SNAPSHOT_URL", revalidate: 180 },
   canDaily: { env: "TELEMATIKA_CANDAILY_URL", revalidate: 6 * 60 * 60 },
   supplies: { env: "TELEMATIKA_SUPPLIES_URL", revalidate: 6 * 60 * 60 },
+  // Užsakymai ir jų kelionės (atkarpos) – importui mygtuku. 15 min.: peržiūra
+  // ir importas iš karto po jos turi matyti tą patį, o ne siųsti du kartus.
+  // Kelionių tiekėjas duoda tik paskutinį mėnesį (~1 MB).
+  orders: { env: "TELEMATIKA_ORDERS_URL", revalidate: 15 * 60 },
+  trips: { env: "TELEMATIKA_TRIPS_URL", revalidate: 15 * 60 },
 } as const;
 
 export type TelematicsFeed = keyof typeof FEEDS;

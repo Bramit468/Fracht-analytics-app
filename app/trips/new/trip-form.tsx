@@ -79,7 +79,7 @@ import type { TripInsert } from "../../../types/trip";
  * pavadinimo panašumą.
  */
 const apimtiesFields = [
-  ["days", "Reiso trukmė (paros)", "1"],
+  ["days", "Reiso trukmė (paros)", "0.001"],
   ["paid_km", "Apmokami km", "0.01"],
   ["empty_km", "Tušti km", "0.01"],
 ] as const;
@@ -943,9 +943,10 @@ export function TripForm({
         rate_per_km: mode === "per_km" ? (hasRevenue ? number("revenue") : 0) : null,
         stops: toStoredStops(routedStops(stops)),
       };
-      if (!Number.isInteger(trip.days) || trip.days < 1) throw new Error("Reiso trukmė turi būti sveikas skaičius, didesnis už nulį.");
+      // Importuoti reisai turi paras trupmenomis (valandos / 24, 0019).
+      if (!(trip.days > 0)) throw new Error("Reiso trukmė turi būti didesnė už nulį.");
       // Dienpinigiai pagal šalis pritaikomi prie įvestos trukmės (#187).
-      const dienos = dienpinigiuProc !== null && dienpinigiai.current ? fitPerDiemDays(dienpinigiai.current, trip.days) : null;
+      const dienos = dienpinigiuProc !== null && dienpinigiai.current ? fitPerDiemDays(dienpinigiai.current, Math.ceil(trip.days)) : null;
       if (dienos && dienos.length > 0) {
         trip.per_diem_cents = sumPerDiem(dienos);
         trip.per_diem_days = dienos;
@@ -1231,7 +1232,7 @@ export function TripForm({
           <label>Išvykimo laikas<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
           {/* Jei vairuotojas jau vairavo, pirmas poilsis ateina anksčiau – keičia paras. */}
           {routeLookup && <label>Vairuotojas jau vairavo, val.<input type="text" inputMode="decimal" value={jauVairavo} onChange={(event) => setJauVairavo(event.target.value)} placeholder="0" className={inputClass} /></label>}
-          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 1 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : undefined} />
+          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 0.001 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : undefined} />
             {name === "days" && dienuSaltinis && <span className="mt-1 block text-sm text-muted">
               {dienuSaltinis.source === "schedule" ? "Iš PTV vairavimo laiko plano." : "Apytiksliai pagal kelio valandas – plano nėra."}
               {dienuSaltinis.stale && <strong className="text-warn"> Maršrutas pakeistas – paspauskite „Skaičiuoti kainą“ iš naujo.</strong>}

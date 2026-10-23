@@ -26,7 +26,8 @@ import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, ty
 import { listTrips, type TripSummary } from "../lib/trips";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
-import { loadFuelReport, type FuelReport } from "./dashboard-fuel";
+import { isCovered, planVsActual, tripSpan, type CostPair } from "../lib/plan-actual";
+import { loadFuelReport, loadPlanActuals, type FuelReport, type PlanActualReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(1)}%`;
@@ -159,7 +160,7 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }] as const;
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }] as const;
 type Tab = (typeof TABS)[number]["key"];
 
 function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
@@ -234,6 +235,69 @@ function FuelTab({ range, plate }: { range: PeriodRange; plate: string }) {
       </div>}
     </div>
     <p className="text-xs text-muted">Faktas iš vilkikų skaitiklių ir pirkimų, visos įmonės – užsakovo filtras čia netaikomas. Telematika laiko tik ~3 paskutinius mėnesius. Daugiau – <Link href="/telematika" className="underline">Analizė</Link>.</p>
+  </div>;
+}
+
+function PlanActualCell({ planned, actual }: { planned: number; actual: number }) {
+  return <td className="px-3 py-3 text-right tabular-nums"><span className="text-muted">{formatCents(planned)} → </span>{formatCents(actual)}</td>;
+}
+
+const costTotal = (pair: CostPair) => pair.fuelCents + pair.adblueCents + pair.roadCents;
+
+/**
+ * Planas ir faktas pagal furą: kiek kuras, AdBlue ir keliai turėjo kainuoti
+ * pagal reisus ir kiek fura išleido tomis pačiomis dienomis. Furos paros
+ * kaštai nelyginami – Telematika jų neturi.
+ */
+function PlanActualTab({ trips }: { trips: TripSummary[] }) {
+  const [report, setReport] = useState<PlanActualReport | null>(null);
+  // Eilutė, o ne masyvas: masyvas kiekvieną kartą naujas ir krautų be galo.
+  const spansJson = JSON.stringify(trips.map(tripSpan));
+  useEffect(() => {
+    let cancelled = false;
+    loadPlanActuals(JSON.parse(spansJson))
+      .then((result) => { if (!cancelled) setReport(result); })
+      .catch(() => { if (!cancelled) setReport({ ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." }); });
+    return () => { cancelled = true; };
+  }, [spansJson]);
+
+  if (!report) return <p role="status" className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Kraunami Telematikos duomenys…</p>;
+  if (!report.ok) return <p role="alert" className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4 text-sm text-bad">{report.message}</p>;
+
+  const { coverage } = report;
+  const covered = coverage ? trips.filter((trip) => isCovered(tripSpan(trip), coverage)) : [];
+  const { rows, total, missing } = planVsActual(covered, report.actuals);
+  const skipped = trips.length - covered.length;
+  if (!coverage || !rows.length) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Šio laikotarpio reisų nėra su kuo palyginti: Telematika laiko tik ~3 paskutinius mėnesius, o vykstantys reisai lyginami grįžus.</p>;
+
+  const planned = costTotal(total.planned);
+  const worse = total.diffCents > 0;
+  return <div className="space-y-3">
+    <p className={`text-lg font-semibold ${worse ? "text-bad" : "text-good"}`}>
+      Kuras, AdBlue ir keliai kainavo {formatCents(Math.abs(total.diffCents))} {worse ? "daugiau" : "mažiau"}, nei skaičiuota
+      {planned > 0 && ` (${worse ? "+" : "−"}${formatPercent((Math.abs(total.diffCents) / planned) * 100)})`}.
+    </p>
+    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Km planas → faktas</th><th className="px-3 py-3 text-right font-medium">Kuras</th><th className="px-3 py-3 text-right font-medium">AdBlue</th><th className="px-3 py-3 text-right font-medium">Keliai</th><th className="px-3 py-3 text-right font-medium">l/100 faktas</th><th className="px-5 py-3 text-right font-medium">Skirtumas</th></tr></thead>
+        <tbody className="divide-y divide-line">{[...rows, total].map((row) => <tr key={row.plate} className={row === total ? "font-medium" : ""}>
+          <td className={`px-5 py-3 ${row === total ? "" : "font-mono"}`}>{row.plate}</td>
+          <td className="px-3 py-3 text-right tabular-nums text-muted">{row.tripCount}</td>
+          <td className="px-3 py-3 text-right tabular-nums"><span className="text-muted">{Math.round(row.plannedKm).toLocaleString("lt-LT")} → </span>{Math.round(row.actualKm).toLocaleString("lt-LT")}</td>
+          <PlanActualCell planned={row.planned.fuelCents} actual={row.actual.fuelCents} />
+          <PlanActualCell planned={row.planned.adblueCents} actual={row.actual.adblueCents} />
+          <PlanActualCell planned={row.planned.roadCents} actual={row.actual.roadCents} />
+          <td className="px-3 py-3 text-right tabular-nums text-muted">{row.actualLitresPer100Km === null ? "—" : row.actualLitresPer100Km.toFixed(1)}</td>
+          <td className={`px-5 py-3 text-right font-medium tabular-nums ${row.diffCents > 0 ? "text-bad" : row.diffCents < 0 ? "text-good" : ""}`}>{row.diffCents > 0 ? "+" : ""}{formatCents(row.diffCents)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <div className="space-y-1 text-xs text-muted">
+      <p>Faktas skaičiuojamas tik reisų dienomis, kiekviena furos diena vieną kartą, stovėjimo dienos neįeina. Telematikos duomenys: {coverage.from} – {coverage.to}.</p>
+      {skipped > 0 && <p>Nelyginta {skipped} reis.: ne visos jų dienos patenka į Telematikos duomenis (seni arba dar vyksta).</p>}
+      {missing.length > 0 && <p>Be Telematikos duomenų: {missing.join(", ")}.</p>}
+      <p>Importuoti reisai jau skaičiuoti su faktinėmis sąnaudomis ir keliais, todėl jų skirtumas mažas. Kelių mokestis kartais Telematikoje atsiranda vėliau.</p>
+    </div>
   </div>;
 }
 
@@ -585,6 +649,9 @@ export function Dashboard() {
     </div>}
     {tab === "fuel" && <div role="tabpanel" aria-label="Kuras">
       <FuelTab key={`${span.from}/${span.to}`} range={span} plate={filters.plate} />
+    </div>}
+    {tab === "variance" && <div role="tabpanel" aria-label="Planas ir faktas">
+      <PlanActualTab trips={trips} />
     </div>}
     <ProfitTable
       title="Furų pelningumas"

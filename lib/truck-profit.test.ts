@@ -112,3 +112,21 @@ describe("summarizeByTruck", () => {
     expect(summarizeByTruck([])).toEqual([]);
   });
 });
+
+describe("€/km ir l/100", () => {
+  it("skaičiuoja pajamas už km ir ridos svertą l/100 tik iš reisų su litrais", () => {
+    const [row] = summarizeByTruck([
+      trip({ id: "1", paidKm: 900, emptyKm: 100, revenueCents: 150000, fuelLitres: 300 }),
+      trip({ id: "2", paidKm: 600, emptyKm: 0, revenueCents: 60000, fuelLitres: 150 }),
+      trip({ id: "3", paidKm: 500, emptyKm: 0, revenueCents: 40000 }),
+    ]);
+    expect(row.revenuePerKm).toBeCloseTo(2500 / 2000, 10);
+    expect(row.litresPer100Km).toBeCloseTo((450 / 1600) * 100, 10);
+  });
+
+  it("be km ir be litrų – null", () => {
+    const [row] = summarizeByTruck([trip({ paidKm: 0, emptyKm: 0 })]);
+    expect(row.revenuePerKm).toBeNull();
+    expect(row.litresPer100Km).toBeNull();
+  });
+});

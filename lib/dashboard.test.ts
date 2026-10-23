@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { calculateDashboardStats } from "./dashboard";
+import { calculateDashboardStats, splitUnrealistic, utilizationPercent } from "./dashboard";
 import type { TripSummary } from "./trips";
 
 const trips: TripSummary[] = [
@@ -67,6 +67,13 @@ it("be reisų grąžina nulius, o santykinius rodiklius – null", () => {
     profitPerKm: null,
     costPerKm: null,
     profitPerDayCents: null,
+    days: 0,
+    paidKm: 0,
+    emptyKm: 0,
+    revenuePerDayCents: null,
+    costPerDayCents: null,
+    revenuePerKm: null,
+    emptySharePercent: null,
   });
 });
 
@@ -91,4 +98,34 @@ it("nuostolingas reisas mažina bendrą maržą", () => {
 
   expect(stats.marginPercent).toBeCloseTo(-10);
   expect(stats.profitPerKm).toBeCloseTo(-0.1);
+});
+
+it("skaičiuoja paros ir km rodiklius iš bendrų sumų", () => {
+  const stats = calculateDashboardStats(trips);
+  // 2 paros, 3400 € pajamų, 2629 € kaštų, 2740 km.
+  expect(stats.days).toBe(2);
+  expect(stats.revenuePerDayCents).toBe(170000);
+  expect(stats.costPerDayCents).toBe(131450);
+  expect(stats.revenuePerKm).toBeCloseTo(3400 / 2740, 6);
+  expect(stats.emptySharePercent).toBe(0);
+});
+
+it("be parų ir km per parą ir per km rodiklių nėra", () => {
+  const stats = calculateDashboardStats([]);
+  expect(stats.revenuePerDayCents).toBeNull();
+  expect(stats.revenuePerKm).toBeNull();
+  expect(stats.emptySharePercent).toBeNull();
+});
+
+it("atskiria nerealius reisus: pajamos < 200 €", () => {
+  const cheap = { ...trips[0], id: "cheap", revenueCents: 7000 };
+  const { realistic, unrealistic } = splitUnrealistic([...trips, cheap]);
+  expect(realistic.map((trip) => trip.id)).toEqual(["trip-1", "trip-2"]);
+  expect(unrealistic.map((trip) => trip.id)).toEqual(["cheap"]);
+});
+
+it("užimtumas skaičiuojamas iki šiandien, ne iki mėnesio galo", () => {
+  // 2 furos × 10 dienų (spalio 1–10) = 20 parų, dirbta 15.
+  expect(utilizationPercent(15, 2, "2026-10-01", "2026-10-31", "2026-10-10")).toBe(75);
+  expect(utilizationPercent(15, 0, "2026-10-01", "2026-10-31", "2026-10-10")).toBeNull();
 });

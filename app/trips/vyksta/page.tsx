@@ -88,7 +88,7 @@ export default async function VykstaPage() {
   const today = isoDate(new Date());
   const supabase = await createServerSupabaseClient();
 
-  const [tripResult, truckResult, daily, allowed] = await Promise.all([
+  const [tripResult, truckResult, allowed] = await Promise.all([
     supabase
       .from("trips")
       .select("*")
@@ -96,9 +96,11 @@ export default async function VykstaPage() {
       .gte("trip_date", addDays(today, -SENIAUSIA_PRADZIA))
       .order("trip_date"),
     supabase.from("trucks").select("id,plate").overrideTypes<Pick<Truck, "id" | "plate">[], { merge: false }>(),
-    loadDaily(),
     canUseTelematics(supabase),
   ]);
+  // Rida ir kuras – tos pačios vienos įmonės Telematikos (#S2): kitos įmonės
+  // fura tuo pačiu numeriu kitaip rodytų svetimus kilometrus ir sąnaudas.
+  const daily = allowed ? await loadDaily() : [];
 
   const plates = new Map((truckResult.data ?? []).map((truck) => [truck.id, truck.plate]));
   const live = await loadLive(allowed, [...plates.values()], today);

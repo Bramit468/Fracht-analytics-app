@@ -7,6 +7,7 @@ import { activeNavHref, NAV_GROUP_LABELS, NAV_ITEMS, type NavGroup } from "@/lib
 
 import { AccountMenu } from "./account-menu";
 import { AppNav } from "./app-nav";
+import { AssistantChat } from "./assistant-chat";
 import { BrandMark } from "./brand-mark";
 import { NAV_ICONS } from "./nav-icons";
 
@@ -22,7 +23,11 @@ const GROUPS: NavGroup[] = ["darbas", "duomenys", "nustatymai"];
  * Aktyvus punktas pažymimas plona žalia juostele ir šviesesniu fonu, o ne
  * užpildytu mygtuku – meniu yra navigacija, ne veiksmas.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, assistant = false }: {
+  children: React.ReactNode;
+  /** Ar įjungtas „Klausk Bramit“ – serveryje yra OpenAI raktas. */
+  assistant?: boolean;
+}) {
   const pathname = usePathname();
   const active = activeNavHref(pathname);
 
@@ -98,6 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {children}
       </div>
+      {assistant && <AssistantChat />}
     </div>
   );
 }

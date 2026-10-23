@@ -1,4 +1,5 @@
 import { tripRoadsByCountry, type CountryRoad } from "./country-roads";
+import { tripCostBreakdown, type CostBreakdown } from "./cost-structure";
 import { emptyFuelCents } from "./empty-km";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient } from "./supabase";
@@ -39,6 +40,11 @@ export interface TripSummary {
   profitPerDayCents: number | null;
   /** Kelių kaštai pagal šalį — atskirų mokesčių čia nėra (#125). */
   roadByCountry: CountryRoad[];
+  /**
+   * Kaštai pagal dedamąsias – „Kur dingsta pinigai“. Visada užpildo
+   * `buildTripSummaries`; neprivalomas tik tam, kad testų reisams nereikėtų jo.
+   */
+  costs?: CostBreakdown;
 }
 
 export function buildTripSummaries(
@@ -95,6 +101,7 @@ export function buildTripSummaries(
         (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
         tariffs,
       ),
+      costs: tripCostBreakdown(trip.truck_costs, trip.days, result),
     }];
   });
 }

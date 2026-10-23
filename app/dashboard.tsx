@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateDashboardStats, MIN_REALISTIC_REVENUE_CENTS, splitUnrealistic, utilizationPercent, type DashboardStats } from "../lib/dashboard";
 import { listCustomers, type Customer } from "../lib/customers";
+import { costStructure } from "../lib/cost-structure";
 import { getSupabaseClient } from "../lib/supabase";
 import { formatCents } from "../lib/money";
 import { summarizeCountryRoads } from "../lib/country-roads";
@@ -108,6 +109,29 @@ function RecentTrips({ trips }: { trips: TripSummary[] }) {
         <span className={`text-right text-sm font-medium tabular-nums ${trip.profitCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(trip.profitCents)}</span>
       </Link>)}
     </div>
+  </div>;
+}
+
+/**
+ * Kur dingsta pinigai: kaštai pagal dedamąsias. Per parą – nes fura kainuoja
+ * paromis, o dalis parodo, ką verta derinti pirmiausia.
+ */
+function CostStructure({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
+  const rows = costStructure(trips);
+  if (rows.length === 0) return null;
+  const peak = Math.max(...rows.map((row) => row.sharePercent ?? 0), 1);
+
+  return <div className="rounded-lg border border-line bg-surface">
+    <div className="flex items-baseline justify-between gap-4 border-b border-line px-5 py-3"><h3 className="font-semibold">Kur dingsta pinigai</h3><p className="text-sm text-muted">{periodLabel}</p></div>
+    <ul className="space-y-3 px-5 py-4">
+      {rows.map((row) => <li key={row.key}>
+        <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+          <span className="min-w-0 truncate">{row.label}</span>
+          <span className="whitespace-nowrap tabular-nums"><span className="text-muted">{formatCents(Math.round(row.cents))} · {formatPerDay(row.perDayCents)}/d. · </span><span className="font-medium">{formatPercent(row.sharePercent)}</span></span>
+        </div>
+        <div className="h-1.5 bg-raised"><div className="h-full bg-brand" style={{ width: `${((row.sharePercent ?? 0) / peak) * 100}%` }} /></div>
+      </li>)}
+    </ul>
   </div>;
 }
 
@@ -447,7 +471,7 @@ export function Dashboard() {
 
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
       <div className="space-y-5"><ProfitabilityBars stats={stats} periodLabel={periodLabel} /><RecentTrips trips={trips} /></div>
-      <LossAlerts trips={trips} />
+      <div className="space-y-5"><CostStructure trips={trips} periodLabel={periodLabel} /><LossAlerts trips={trips} /></div>
     </div>
     <ProfitTable
       title="Furų pelningumas"

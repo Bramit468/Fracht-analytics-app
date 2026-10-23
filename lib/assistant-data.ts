@@ -19,7 +19,7 @@ import { canUseTelematics } from "./telematics-access";
 import { parseCanDaily, parseSupplies } from "./telematics-costs";
 import { fetchTelematics } from "./telematics-feed";
 import { addDays } from "./trip-progress";
-import { buildTripSummaries } from "./trips";
+import { buildTripSummaries, fetchAllRows } from "./trips";
 import type { Trip, TripCountryLeg } from "../types/trip";
 import type { Truck } from "../types/truck";
 
@@ -27,19 +27,18 @@ import type { Truck } from "../types/truck";
 const LIVE_SIGNAL_DAYS = 7;
 
 async function loadData(client: SupabaseClient, today: string): Promise<AssistantData> {
-  const [trips, legs, trucks, tariffs, customers, settings] = await Promise.all([
-    client.from("trips").select("*").order("trip_date", { ascending: false }),
-    client.from("trip_country_legs").select("*"),
+  const [rawTrips, allLegs, trucks, tariffs, customers, settings] = await Promise.all([
+    fetchAllRows<Trip>((from, to) => client.from("trips").select("*")
+      .order("trip_date", { ascending: false }).order("id").range(from, to)),
+    fetchAllRows<TripCountryLeg>((from, to) => client.from("trip_country_legs").select("*").order("id").range(from, to)),
     client.from("trucks").select("*").order("plate"),
     client.from("country_tariffs").select("country,rate,rate_type"),
     listCustomers(client),
     fetchCompanySettings(client),
   ]);
-  const error = trips.error ?? legs.error ?? trucks.error ?? tariffs.error;
+  const error = trucks.error ?? tariffs.error;
   if (error) throw error;
 
-  const rawTrips = (trips.data ?? []) as Trip[];
-  const allLegs = (legs.data ?? []) as TripCountryLeg[];
   const truckRows = (trucks.data ?? []) as Truck[];
   const tariffRows: CountryTariff[] = (tariffs.data ?? []).map((row) => ({
     country: row.country as string,

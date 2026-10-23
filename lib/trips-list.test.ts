@@ -75,6 +75,7 @@ it("builds list values with the shared trip calculation", () => {
     profitPerKm: 1.5,
     profitPerDayCents: 15000,
     customerId: null,
+    telematikaOrderId: null,
     roadByCountry: [{ country: "Nemokami", km: 100, costCents: 0 }],
     costs: { drivers: 10000, perDiem: 0, truck: 0, repairs: 0, management: 0, trailer: 0, fuel: 0, adblue: 0, roads: 0 },
   }]);

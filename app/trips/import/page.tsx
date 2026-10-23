@@ -9,7 +9,7 @@ export default function ImportTripsPage() {
       <h2 className="font-semibold">Iš Telematikos</h2>
       <p className="mt-1 mb-4 text-sm text-muted">
         Užsakymai su atkarpomis, kainomis ir faktiniais keliais bei kuru. Telematika duoda paskutinį mėnesį –
-        importuokite bent kas kelias savaites. Pakartotinai importuotas užsakymas atnaujinamas, ne dubliuojamas.
+        atnaujinkite bent kas kelias savaites. Įrašomi tik nauji ir pakitę užsakymai, nepakitę neliečiami.
       </p>
       <TelematikaImport />
     </section>

@@ -64,12 +64,12 @@ export type RouteLookupResult =
       line: LineCoordinate[];
       /** PTV kuro ir CO2e įvertis pagal maršrutą ir masę (#86). */
       emissions: RouteEmissions | null;
-      /** Ar buvo perduoti svoriai — nuo to priklauso įverčio tikslumas. */
+      /** Ar buvo perduoti svoriai – nuo to priklauso įverčio tikslumas. */
       weightsUsed: boolean;
     }
   | { ok: false; message: string };
 
-/** PTV atsakymo klaida su kodu — kad žinutė galėtų pasakyti, kas negerai. */
+/** PTV atsakymo klaida su kodu – kad žinutė galėtų pasakyti, kas negerai. */
 export class PtvError extends Error {
   constructor(readonly status: number, readonly body: string) {
     super(`PTV ${status}`);

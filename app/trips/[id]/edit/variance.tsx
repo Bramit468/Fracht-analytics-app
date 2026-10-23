@@ -1,6 +1,7 @@
 import { formatCents } from "@/lib/money";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { canUseTelematics } from "@/lib/telematics-access";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { compareTripToActuals, type TripVariance } from "@/lib/trip-variance";
 import { parseCanDaily, parseSupplies, summarizeActuals } from "@/lib/telematics-costs";
@@ -25,12 +26,17 @@ function lastDay(tripDate: string, days: number): string {
 /**
  * Surenka abi puses: reiso skaičiavimą ir to paties vilkiko faktą.
  *
- * Grąžina `null`, kai palyginti nėra su kuo — telematikos duomenų nėra arba
+ * Grąžina `null`, kai palyginti nėra su kuo – telematikos duomenų nėra arba
  * fura tomis dienomis nevažiavo. Tada geriau nerodyti nieko, nei rodyti nulius.
  */
 async function loadVariance(tripId: string): Promise<TripVariance | null> {
   try {
     const supabase = await createServerSupabaseClient();
+
+    // Telematikos nuorodos yra vienos įmonės (#S2). Be šio patikrinimo kitos
+    // įmonės naudotojas, turintis furą tuo pačiu numeriu, matytų svetimus
+    // kuro ir kelių pirkimus.
+    if (!(await canUseTelematics(supabase))) return null;
 
     const [tripResult, legsResult, tariffResult] = await Promise.all([
       supabase.from("trips").select("*").eq("id", tripId).limit(1),
@@ -126,7 +132,7 @@ export async function TripVarianceSection({ tripId }: { tripId: string }) {
   const brangiau = variance.profitImpactCents > 0;
 
   return (
-    <section className="mt-6 rounded-2xl border bg-surface p-6 shadow-sm">
+    <section className="mt-6 rounded-lg border border-line bg-surface p-5 sm:p-6">
       <h2 className="text-xl font-semibold">Planas prieš faktą</h2>
       <p className="mt-1 text-sm text-muted">
         Kairėje – kiek reisas turėjo kainuoti pagal suvestas normas, dešinėje – kiek

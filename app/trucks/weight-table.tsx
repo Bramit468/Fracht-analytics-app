@@ -25,7 +25,7 @@ export function WeightTable({ trucks, missing }: { trucks: Truck[]; missing: num
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {missing > 0 && (
-        <p className="rounded-xl border border-warn bg-warn-soft p-4 text-sm text-warn  ">
+        <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
           Furų be svorių: {missing} iš {trucks.length}. Joms PTV kuro ir CO₂ skaičiuoja pagal
           numatytą 40 t vilkiką, o ne pagal jūsiškį.
         </p>

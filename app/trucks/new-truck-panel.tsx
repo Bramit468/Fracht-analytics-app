@@ -7,7 +7,7 @@ import { TruckForm } from "./truck-form";
 /**
  * „Pridėti furą“ mygtukas, o forma atsiskleidžia tik jį paspaudus (#166).
  *
- * Kortelė ilga, o furų puslapį dažniausiai atidaro pažiūrėti sąrašo — todėl
+ * Kortelė ilga, o furų puslapį dažniausiai atidaro pažiūrėti sąrašo – todėl
  * forma neužima ekrano, kol jos neprireikia.
  */
 export function NewTruckPanel() {

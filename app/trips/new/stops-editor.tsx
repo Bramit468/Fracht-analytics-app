@@ -52,7 +52,7 @@ export function StopsEditor({
         const isEnd = index === 0 || index === last;
         return <li key={stop.id} className="rounded-lg border bg-page p-3">
           <div className="flex items-center gap-2">
-            <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-raised text-sm font-bold">
+            <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-raised text-sm font-semibold">
               {stopLetter(index)}
             </span>
             {isEnd

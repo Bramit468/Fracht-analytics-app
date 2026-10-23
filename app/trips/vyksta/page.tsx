@@ -20,6 +20,7 @@ import {
 import type { Trip } from "@/types/trip";
 import type { Truck } from "@/types/truck";
 
+import { Page, PageHeader } from "../../ui";
 import { LiveMap } from "./live-map";
 
 export const metadata: Metadata = {
@@ -87,7 +88,7 @@ export default async function VykstaPage() {
   const today = isoDate(new Date());
   const supabase = await createServerSupabaseClient();
 
-  const [tripResult, truckResult, daily, allowed] = await Promise.all([
+  const [tripResult, truckResult, allowed] = await Promise.all([
     supabase
       .from("trips")
       .select("*")
@@ -95,9 +96,11 @@ export default async function VykstaPage() {
       .gte("trip_date", addDays(today, -SENIAUSIA_PRADZIA))
       .order("trip_date"),
     supabase.from("trucks").select("id,plate").overrideTypes<Pick<Truck, "id" | "plate">[], { merge: false }>(),
-    loadDaily(),
     canUseTelematics(supabase),
   ]);
+  // Rida ir kuras – tos pačios vienos įmonės Telematikos (#S2): kitos įmonės
+  // fura tuo pačiu numeriu kitaip rodytų svetimus kilometrus ir sąnaudas.
+  const daily = allowed ? await loadDaily() : [];
 
   const plates = new Map((truckResult.data ?? []).map((truck) => [truck.id, truck.plate]));
   const live = await loadLive(allowed, [...plates.values()], today);
@@ -132,14 +135,9 @@ export default async function VykstaPage() {
     });
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold tracking-tight">Vyksta dabar</h1>
-        <p className="text-sm text-muted">
-          Reisai, kurių šiandiena patenka tarp pradžios ir pabaigos. Žymėti nieko nereikia –
-          tai matyti iš datos ir trukmės.
-        </p>
-      </header>
+    <Page>
+      <PageHeader title="Vyksta dabar" description="Reisai, kurių šiandiena patenka tarp pradžios ir pabaigos." />
+      <div className="mt-5 flex flex-col gap-6">
 
       {live.status === "error" && (
         <p role="alert" className="rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
@@ -178,13 +176,13 @@ export default async function VykstaPage() {
       )}
 
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-8 text-center text-muted">
+        <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
           Šiandien nė vienas reisas nevyksta.
         </p>
       ) : (
-        <ul className="flex flex-col gap-4">
+        <ul className="grid gap-3 xl:grid-cols-2">
           {rows.map(({ trip, plate, progress, drift }) => (
-            <li key={trip.id} className="rounded-2xl border p-5">
+            <li key={trip.id} className="rounded-lg border border-line bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-muted">
@@ -265,6 +263,7 @@ export default async function VykstaPage() {
         nuo tada, kai atsiranda matavimas. Kuro ir kelių išlaidos čia neįtrauktos: jos matomos
         reiso skaičiavime, o pirkimai telematikoje atsiranda su vėlavimu.
       </p>
-    </main>
+      </div>
+    </Page>
   );
 }

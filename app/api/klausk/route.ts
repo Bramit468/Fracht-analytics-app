@@ -4,6 +4,7 @@ import { parseChatTurns } from "@/lib/assistant-chat";
 import { answerQuestion, DEFAULT_ASSISTANT_MODEL } from "@/lib/assistant-run";
 import { listCustomers } from "@/lib/customers";
 import { todayInVilnius } from "@/lib/local-date";
+import { openAiKey } from "@/lib/openai-key";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchTripSummaries } from "@/lib/trips";
 import type { Truck } from "@/types/truck";
@@ -22,7 +23,7 @@ export const maxDuration = 60;
  * statiškai sugeneruotas maketas rakto nematė ir mygtukas nepasirodydavo.
  */
 export function GET() {
-  return Response.json({ enabled: Boolean(process.env.OPENAI_API_KEY) });
+  return Response.json({ enabled: openAiKey() !== null });
 }
 
 function failure(message: string, status: number) {
@@ -30,7 +31,7 @@ function failure(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = openAiKey();
   if (!apiKey) return failure("AI asistentas dar neprijungtas.", 503);
 
   const turns = parseChatTurns(await request.json().catch(() => null));

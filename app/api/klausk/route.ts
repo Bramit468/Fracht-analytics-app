@@ -17,6 +17,14 @@ import type { Truck } from "@/types/truck";
 
 export const maxDuration = 60;
 
+/**
+ * Ar asistentas įjungtas. Tikrinama užklausos metu, ne build metu:
+ * statiškai sugeneruotas maketas rakto nematė ir mygtukas nepasirodydavo.
+ */
+export function GET() {
+  return Response.json({ enabled: Boolean(process.env.OPENAI_API_KEY) });
+}
+
 function failure(message: string, status: number) {
   return Response.json({ error: message }, { status });
 }

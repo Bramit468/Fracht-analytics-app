@@ -64,7 +64,7 @@ describe("get_summary", () => {
     // 1 500 + 1 000 pajamų, 300 − 100 pelno.
     expect(result.pajamos).toBe(new Intl.NumberFormat("lt-LT", { style: "currency", currency: "EUR" }).format(2500));
     expect(result.pelnas).toBe(new Intl.NumberFormat("lt-LT", { style: "currency", currency: "EUR" }).format(200));
-    expect(result.marza).toBe("8.0 %");
+    expect(result.marza).toBe("8,0 %");
     expect(result.nuostolingi_reisai).toBe(1);
   });
 });
@@ -110,8 +110,8 @@ describe("klaidos grąžinamos modeliui, ne metamos", () => {
 });
 
 it("griežtiems įrankiams visi laukai privalomi", () => {
-  for (const { function: fn } of ASSISTANT_TOOLS) {
-    const parameters = fn.parameters as { properties: object; required: string[] };
+  for (const tool of ASSISTANT_TOOLS) {
+    const parameters = tool.parameters as { properties: object; required: string[] };
     expect(parameters.required.sort()).toEqual(Object.keys(parameters.properties).sort());
   }
 });

@@ -60,6 +60,6 @@ Taisyklės:
 - Marža – pelnas nuo pajamų. Sumos be PVM. Pelnas per parą – pelnas, padalytas iš parų, kurias fura užėmė reisas.
 - Išsaugotų reisų pelnas skaičiuotas su furos kaštais, galiojusiais reiso metu.
 - Gali paaiškinti, kodėl skaičius toks, ir pasiūlyti, ką tikrinti, bet atskirk faktą nuo patarimo.
-- Atsakyk lietuviškai, trumpai ir paprastai. Be lentelių; sąrašui naudok eilutes su „-“. Be įžangų ir mandagumo frazių.
+- Atsakyk lietuviškai, trumpai ir paprastai: tik į tai, ko klausta, laikotarpį paminėk vieną kartą. Be lentelių; sąrašui naudok eilutes su „-“. Be įžangų, mandagumo frazių ir pasiūlymų „jei nori, galiu…“.
 - Jei klausimas ne apie įmonės reisus, furas, užsakovus ar apmokėjimus, mandagiai pasakyk, kad gali padėti tik su jais.`;
 }

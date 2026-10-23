@@ -10,7 +10,7 @@
  * modelyje būtų dar viena vieta suklysti.
  */
 
-import type { ChatCompletionFunctionTool } from "openai/resources/chat/completions";
+import type { FunctionTool } from "openai/resources/responses/responses";
 
 import { calcDailyRate } from "./calc";
 import { calculateDashboardStats } from "./dashboard";
@@ -49,12 +49,17 @@ export class ToolInputError extends Error {}
 
 // --- Formatavimas -----------------------------------------------------------
 
+/** Lietuviškai: kablelis ir tikras minusas, kaip ir sumose („−100,00 €“). */
+function decimal(value: number, places: number): string {
+  return value.toFixed(places).replace(".", ",").replace("-", "−");
+}
+
 function percent(value: number | null): string | null {
-  return value === null ? null : `${value.toFixed(1)} %`;
+  return value === null ? null : `${decimal(value, 1)} %`;
 }
 
 function perKm(value: number | null): string | null {
-  return value === null ? null : `${value.toFixed(2)} €/km`;
+  return value === null ? null : `${decimal(value, 2)} €/km`;
 }
 
 function money(cents: number | null): string | null {
@@ -353,24 +358,22 @@ function tool(
   name: string,
   description: string,
   properties: Record<string, unknown>,
-): ChatCompletionFunctionTool {
+): FunctionTool {
   return {
     type: "function",
-    function: {
-      name,
-      description,
-      strict: true,
-      parameters: {
-        type: "object",
-        properties,
-        required: Object.keys(properties),
-        additionalProperties: false,
-      },
+    name,
+    description,
+    strict: true,
+    parameters: {
+      type: "object",
+      properties,
+      required: Object.keys(properties),
+      additionalProperties: false,
     },
   };
 }
 
-export const ASSISTANT_TOOLS: ChatCompletionFunctionTool[] = [
+export const ASSISTANT_TOOLS: FunctionTool[] = [
   tool(
     "get_summary",
     "Bendri išsaugotų reisų skaičiai: reisų skaičius, pajamos, kaštai, pelnas, marža, savikaina ir pelnas už km, pelnas per parą, tuščia rida. Su atranka pagal datas, furą, užsakovą.",

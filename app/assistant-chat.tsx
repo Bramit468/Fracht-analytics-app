@@ -18,6 +18,8 @@ const EXAMPLES = [
  * Istorija – tik šioje naršyklės kortelėje: perkrovus prasideda iš naujo.
  */
 export function AssistantChat() {
+  /** Ar serveryje yra OpenAI raktas. Kol nežinoma – mygtuko nėra. */
+  const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
@@ -25,6 +27,15 @@ export function AssistantChat() {
   const [error, setError] = useState("");
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/klausk")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { enabled?: boolean } | null) => { if (active) setEnabled(body?.enabled === true); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     list.current?.scrollTo({ top: list.current.scrollHeight });
@@ -61,6 +72,8 @@ export function AssistantChat() {
       input.current?.focus();
     }
   }
+
+  if (!enabled) return null;
 
   if (!open) {
     return (

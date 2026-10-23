@@ -23,11 +23,7 @@ const GROUPS: NavGroup[] = ["darbas", "duomenys", "nustatymai"];
  * Aktyvus punktas pažymimas plona žalia juostele ir šviesesniu fonu, o ne
  * užpildytu mygtuku – meniu yra navigacija, ne veiksmas.
  */
-export function AppShell({ children, assistant = false }: {
-  children: React.ReactNode;
-  /** Ar įjungtas „Klausk Bramit“ – serveryje yra OpenAI raktas. */
-  assistant?: boolean;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const active = activeNavHref(pathname);
 
@@ -103,7 +99,7 @@ export function AppShell({ children, assistant = false }: {
 
         {children}
       </div>
-      {assistant && <AssistantChat />}
+      <AssistantChat />
     </div>
   );
 }

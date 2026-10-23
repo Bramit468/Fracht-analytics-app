@@ -8,7 +8,7 @@ import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
-import { fetchTelematics } from "@/lib/telematics-feed";
+import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
 import { buildOrderTrips, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { truckRowToCalc } from "@/lib/truck";
@@ -60,15 +60,28 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
     return { ok: false, message: "Nepavyko nuskaityti furų ar reisų. Bandykite dar kartą." };
   }
 
-  let built;
+  let feeds;
   try {
-    const [ordersRaw, tripsRaw, canRaw, suppliesRaw, rates] = await Promise.all([
+    feeds = await Promise.all([
       fetchTelematics("orders"),
       fetchTelematics("trips"),
       fetchTelematics("canDaily"),
       fetchTelematics("supplies"),
       fetchEcbRates(),
     ]);
+  } catch (cause) {
+    console.error("Telematikos užsakymų importas: srautai", cause instanceof TelematicsFeedError ? cause.message : cause);
+    return {
+      ok: false,
+      message: cause instanceof TelematicsFeedError
+        ? `Nepavyko gauti duomenų iš Telematikos – ${cause.message}.`
+        : "Nepavyko gauti duomenų iš Telematikos arba ECB kursų. Bandykite po kelių minučių.",
+    };
+  }
+
+  let built;
+  try {
+    const [ordersRaw, tripsRaw, canRaw, suppliesRaw, rates] = feeds;
     built = buildOrderTrips({
       orders: parseOrders(ordersRaw),
       legs: parseOrderLegs(tripsRaw),
@@ -77,8 +90,9 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
       supplies: parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
       now: vilniusNow(),
     });
-  } catch {
-    return { ok: false, message: "Nepavyko gauti užsakymų iš Telematikos. Bandykite po kelių minučių." };
+  } catch (cause) {
+    console.error("Telematikos užsakymų importas: apdorojimas", cause);
+    return { ok: false, message: `Telematikos duomenys gauti, bet jų nepavyko apdoroti: ${cause instanceof Error ? cause.message : "nežinoma klaida"}.` };
   }
 
   const trucks = new Map((trucksResult.data as Truck[]).map((truck) => [truck.id, truck]));

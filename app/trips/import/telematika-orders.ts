@@ -9,7 +9,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
-import { buildOrderTrips, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder } from "@/lib/telematics-orders";
+import { buildOrderTrips, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { fetchAllRows } from "@/lib/trips";
 import { truckRowToCalc } from "@/lib/truck";
@@ -18,8 +18,10 @@ import type { Truck } from "@/types/truck";
 import { geocode, ptvJson, PtvError } from "../new/route-core";
 
 export interface OrderPreview extends ImportedTrip {
-  /** Esamas reisas, jei šis užsakymas jau importuotas – bus atnaujintas. */
+  /** Esamas reisas, jei šis užsakymas jau importuotas. */
   existingId: string | null;
+  /** Kas pasikeitė nuo paskutinio importo; tuščias – nieko. `null` – naujas. */
+  changes: string[] | null;
   profitCents: number;
   marginPercent: number | null;
 }
@@ -38,12 +40,12 @@ function vilniusNow(): string {
 }
 
 /**
- * Telematikos užsakymai, paversti reisais – peržiūrai prieš importą.
+ * Telematikos užsakymai, paversti reisais, su žyma, kurie nauji ar pakitę.
  *
  * Serveryje, nes nuorodose yra prieigos raktas. Įrašo naršyklė per tą patį
  * `save_trip_with_legs`, kaip ir Excel importas: taip veikia RLS ir kaštų kopija.
  */
-export async function previewTelematikaOrders(): Promise<OrderImportResult> {
+export async function loadTelematikaOrders(): Promise<OrderImportResult> {
   const supabase = await createServerSupabaseClient();
   const { data: claims } = await supabase.auth.getClaims();
   if (!claims?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
@@ -53,7 +55,8 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
     supabase.from("trucks").select("*"),
     supabase.from("country_tariffs").select("country,rate,rate_type"),
     // Daugiau nei 1000 importuotų reisų be puslapiavimo virstų dublikatais.
-    fetchAllRows((from, to) => supabase.from("trips").select("id,telematika_order_id")
+    fetchAllRows((from, to) => supabase.from("trips")
+      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents")
       .not("telematika_order_id", "is", null).order("id").range(from, to))
       .then((data) => ({ data, error: null }), (error: { code?: string }) => ({ data: null, error })),
   ]);
@@ -105,12 +108,19 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
     rate: Number(row.rate),
     rateType: row.rate_type as RateType,
   }));
-  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row.id as string]));
+  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string }]));
 
   const trips = built.trips.map((item): OrderPreview => {
     // Peržiūrai – dabartiniai furos kaštai; įrašant kopiją padarys duomenų bazė.
     const result = calculateSavedTrip(item.trip, item.legs, truckRowToCalc(trucks.get(item.trip.truck_id)!), tariffs);
-    return { ...item, existingId: existing.get(item.orderId) ?? null, profitCents: result.profitCents, marginPercent: result.marginPercent };
+    const stored = existing.get(item.orderId);
+    return {
+      ...item,
+      existingId: stored?.id ?? null,
+      changes: stored ? importChanges(stored, item) : null,
+      profitCents: result.profitCents,
+      marginPercent: result.marginPercent,
+    };
   });
 
   return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents };

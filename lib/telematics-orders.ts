@@ -406,3 +406,27 @@ export function buildOrderTrips(input: {
   trips.sort((a, b) => a.start.localeCompare(b.start));
   return { trips, skipped, unassignedTollCents: Math.round(unassignedTollCents) };
 }
+
+/** Importuoto reiso laukai, pagal kuriuos sprendžiama, ar užsakymas pasikeitė. */
+export type StoredOrderTrip = Pick<TripInsert, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents">;
+
+/**
+ * Kas užsakyme pasikeitė nuo paskutinio importo. Tuščias sąrašas – įrašyti
+ * nereikia: perrašymas be reikalo atnaujintų ir furos kaštų kopiją.
+ *
+ * Kuro normos nelyginamos – jos imamos iš to meto fakto ir svyruoja kas dieną.
+ * Apmokami km nelyginami, kai juos skaičiuoja PTV (`kmAddresses`): įraše jau
+ * PTV km, o čia – tik paros ridos įvertis.
+ */
+export function importChanges(stored: StoredOrderTrip, built: ImportedTrip): string[] {
+  const differs = (a: number | null | undefined, b: number | null | undefined, step: number) =>
+    Math.abs(Number(a ?? 0) - Number(b ?? 0)) >= step;
+  const changes: string[] = [];
+  if (differs(stored.freight_price_cents, built.trip.freight_price_cents, 1)) changes.push("kaina");
+  if (stored.trip_date !== built.trip.trip_date || differs(stored.days, built.trip.days, 0.001)) changes.push("datos");
+  if (stored.truck_id !== built.trip.truck_id) changes.push("fura");
+  if (differs(stored.empty_km, built.trip.empty_km, 0.01)) changes.push("tušti km");
+  if (!built.kmAddresses && differs(stored.paid_km, built.trip.paid_km, 0.01)) changes.push("km");
+  if (differs(stored.bridges_cents, built.trip.bridges_cents, 1)) changes.push("keliai");
+  return changes;
+}

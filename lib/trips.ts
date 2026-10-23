@@ -16,6 +16,8 @@ export interface TripSummary {
   destination: string;
   tripDate: string;
   truckPlate: string;
+  /** Iš kurio Telematikos užsakymo importuotas. `null` arba nėra – ne importuotas. */
+  telematikaOrderId?: string | null;
   /** Užsakovas (#183). `null` arba nėra – reisas be užsakovo. */
   customerId?: string | null;
   /**
@@ -91,6 +93,7 @@ export function buildTripSummaries(
       tripDate: trip.trip_date,
       truckPlate: truck.plate,
       customerId: trip.customer_id ?? null,
+      telematikaOrderId: trip.telematika_order_id ?? null,
       ...("invoiced_on" in trip ? { invoicedOn: trip.invoiced_on ?? null, paidOn: trip.paid_on ?? null } : {}),
       paidKm: trip.paid_km,
       days: trip.days,

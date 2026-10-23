@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, importChanges, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -148,5 +148,29 @@ describe("buildOrderTrips", () => {
 
   it("kai km yra, PTV nereikia", () => {
     expect(build([leg("2", "2026-10-20 06:00:00", "2026-10-20 18:00:00", 120)]).trips[0].kmAddresses).toBeNull();
+  });
+});
+
+describe("importChanges", () => {
+  const built = {
+    kmAddresses: null,
+    trip: { trip_date: "2026-10-01", truck_id: "t1", days: 2.375, paid_km: 1200.5, empty_km: 80, freight_price_cents: 250_000, bridges_cents: 4_200 },
+  } as unknown as Parameters<typeof importChanges>[1];
+  const stored = { ...built.trip } as Parameters<typeof importChanges>[0];
+
+  it("nieko nekeičia, kai sutampa (ir kai duomenų bazė grąžina skaičius tekstu)", () => {
+    expect(importChanges(stored, built)).toEqual([]);
+    expect(importChanges({ ...stored, days: "2.375" as unknown as number, paid_km: "1200.50" as unknown as number }, built)).toEqual([]);
+  });
+
+  it("išvardija pakitusius laukus", () => {
+    expect(importChanges({ ...stored, freight_price_cents: 240_000, bridges_cents: 0, truck_id: "t2" }, built)).toEqual(["kaina", "fura", "keliai"]);
+    expect(importChanges({ ...stored, days: 2 }, built)).toEqual(["datos"]);
+  });
+
+  it("PTV km nelygina su paros ridos įverčiu", () => {
+    const withPtv = { ...built, kmAddresses: ["A", "B"] } as typeof built;
+    expect(importChanges({ ...stored, paid_km: 1500 }, withPtv)).toEqual([]);
+    expect(importChanges({ ...stored, paid_km: 1500 }, built)).toEqual(["km"]);
   });
 });

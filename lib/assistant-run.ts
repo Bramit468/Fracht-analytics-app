@@ -2,7 +2,7 @@ import type OpenAI from "openai";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 
 import { systemPrompt, type ChatTurn } from "./assistant-chat";
-import { ASSISTANT_TOOLS, runAssistantTool, type AssistantData } from "./assistant-tools";
+import { ASSISTANT_TOOLS, runAssistantTool, type AssistantContext } from "./assistant-tools";
 
 /**
  * Šiek tiek silpnesnis ir perpus pigesnis už Etsy naudojamą gpt-5.5:
@@ -25,17 +25,16 @@ export type AssistantAnswer =
  * nesaugomi; todėl mąstymo dalis grąžinama užšifruota ir siunčiama atgal
  * kitame rate.
  *
- * Duomenys kraunami tik tada, kai modelis jų paprašo, ir vieną kartą.
+ * Duomenys kraunami tik tada, kai modelis jų paprašo (`AssistantContext`).
  */
 export async function answerQuestion(
   client: OpenAI,
   turns: ChatTurn[],
-  loadData: () => Promise<AssistantData>,
+  context: AssistantContext,
   options: { model: string; today: string },
 ): Promise<AssistantAnswer> {
   const input: ResponseInputItem[] = turns.map((turn) => ({ role: turn.role, content: turn.content }));
   const toolCalls: string[] = [];
-  let data: Promise<AssistantData> | null = null;
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
     const response = await client.responses.create({
@@ -58,11 +57,13 @@ export async function answerQuestion(
     }
 
     input.push(...(response.output as ResponseInputItem[]));
-    for (const call of calls) {
+    // Kelis įrankius vienu metu – kitaip Telematikos ir duomenų bazės
+    // užklausos lauktų viena kitos.
+    const results = await Promise.all(calls.map((call) => runAssistantTool(call.name, call.arguments, context)));
+    calls.forEach((call, index) => {
       toolCalls.push(`${call.name}(${call.arguments})`);
-      const result = runAssistantTool(call.name, call.arguments, await (data ??= loadData()));
-      input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(result) });
-    }
+      input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(results[index]) });
+    });
   }
 
   return { ok: false, error: "Klausimas per sudėtingas vienam kartui – paklauskite siauriau." };

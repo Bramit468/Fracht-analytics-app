@@ -13,10 +13,9 @@ import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import {
+  actualsByTruck,
   parseCanDaily,
   parseSupplies,
-  plateKey,
-  summarizeActuals,
   type ActualCosts,
   type Supply,
   type SupplyIssues,
@@ -74,21 +73,7 @@ async function loadCosts(
       toEuroCents(rates, amount, currency, date),
     );
 
-    // Tas pats numeris ateina ir su tarpu, ir be jo. Rodome variantą su tarpu,
-    // nes toks pat yra furų sąraše.
-    const pagalRakta = new Map<string, string>();
-    for (const plate of [...daily.map((d) => d.plate), ...supplies.map((s) => s.plate)]) {
-      const esamas = pagalRakta.get(plateKey(plate));
-      if (!esamas || (plate.includes(" ") && !esamas.includes(" "))) {
-        pagalRakta.set(plateKey(plate), plate);
-      }
-    }
-    const plates = [...pagalRakta.values()].sort();
-
-    // Furos, kurios per laikotarpį nei važiavo, nei pirko, sąraše tik trukdytų.
-    const eilutes = plates
-      .map((plate) => summarizeActuals(daily, supplies, plate, from, to))
-      .filter((row) => row.km > 0 || row.totalCents > 0 || row.otherCents > 0);
+    const eilutes = actualsByTruck(daily, supplies, from, to);
 
     return {
       eilutes,

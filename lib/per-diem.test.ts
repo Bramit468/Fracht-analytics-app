@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { countriesByDay, fitPerDiemDays, parsePerDiemPercent, perDiemDays } from "./per-diem";
-import { perDiemNormCents } from "./per-diem-norms";
+import { countriesByDay, countriesByDayFromStops, fitPerDiemDays, parsePerDiemPercent, perDiemCentsFor, perDiemDays } from "./per-diem";
+import { iso2FromIso3, PER_DIEM_NORMS_EUR, perDiemNormCents } from "./per-diem-norms";
 
 /** Tikras PTV tvarkaraštis Panevėžys–Roterdamas, išvykstant 2026-10-12 06:00 (patikrinta 2026-10-10). */
 const PANEVEZYS_ROTTERDAM = {
@@ -128,5 +128,41 @@ describe("parsePerDiemPercent", () => {
     expect(parsePerDiemPercent("65 %")).toEqual({ ok: true, value: 65 });
     expect(parsePerDiemPercent("49").ok).toBe(false);
     expect(parsePerDiemPercent("101").ok).toBe(false);
+  });
+});
+
+describe("iso2FromIso3", () => {
+  it("maps every norm country and nothing unknown", () => {
+    expect(iso2FromIso3("swe")).toBe("SE");
+    expect(iso2FromIso3("DEU")).toBe("DE");
+    expect(iso2FromIso3("USA")).toBeNull();
+    // Kiekviena normų šalis turi trijų raidžių atitikmenį.
+    const mapped = ["AND","ALB","AUT","BIH","BEL","BGR","BLR","CHE","CYP","CZE","DEU","DNK","EST","ESP","FIN","FRA","GBR","GRC","HRV","HUN","IRL","ISL","ITA","LIE","LTU","LUX","LVA","MCO","MDA","MNE","MKD","MLT","NLD","NOR","POL","PRT","ROU","SRB","RUS","SWE","SVN","SVK","SMR","TUR","UKR","VAT","XKX","ARM","AZE","GEO","KGZ","KAZ","MNG","TJK","TKM","UZB","CHN","AFG","PAK","ARE","BHR","ISR","IRQ","IRN","JOR","KWT","LBN","OMN","QAT","SAU","SYR","YEM","DZA","EGY","LBY","MAR","TUN"].map(iso2FromIso3);
+    expect(new Set(mapped)).toEqual(new Set(Object.keys(PER_DIEM_NORMS_EUR)));
+  });
+});
+
+describe("countriesByDayFromStops", () => {
+  it("fills days without stops with travel toward the next stop", () => {
+    expect(countriesByDayFromStops([
+      { at: "2026-10-01 08:00:00", country: "LT" },
+      { at: "2026-10-01 10:00:00", country: "LT" },
+      { at: "2026-10-03 14:00:00", country: "DE" },
+      { at: "2026-10-04 09:00:00", country: "NL" },
+    ])).toEqual([["LT", "DE"], ["LT", "DE"], ["LT", "DE"], ["DE", "NL"]]);
+  });
+
+  it("returns nothing for no stops or a bad date", () => {
+    expect(countriesByDayFromStops([])).toEqual([]);
+    expect(countriesByDayFromStops([{ at: "vakar", country: "LT" }])).toEqual([]);
+  });
+});
+
+describe("perDiemCentsFor", () => {
+  const days = [{ countries: ["DE"], cents: 6200 }, { countries: ["NL"], cents: 6400 }, { countries: ["NL"], cents: 6400 }];
+  it("is the plain sum for whole days and pro rata for fractional ones", () => {
+    expect(perDiemCentsFor(days, 3)).toBe(19_000);
+    expect(perDiemCentsFor(days, 2.375)).toBe(Math.round((19_000 * 2.375) / 3));
+    expect(perDiemCentsFor([], 2)).toBe(0);
   });
 });

@@ -157,3 +157,37 @@ export function parsePerDiemPercent(text: string): ParsedPerDiemPercent {
   }
   return { ok: true, value: Math.round(value * 100) / 100 };
 }
+
+/**
+ * Šalys pagal dieną iš sustojimų (Telematikos atkarpų pradžios ir pabaigos),
+ * kai PTV tvarkaraščio nėra. Tranzito šalys nežinomos: diena be sustojimų
+ * laikoma kelione link kito sustojimo šalies.
+ */
+export function countriesByDayFromStops(stops: { at: string; country: string }[]): string[][] {
+  const sorted = [...stops].sort((a, b) => a.at.localeCompare(b.at));
+  if (!sorted.length || sorted.some((stop) => !/^\d{4}-\d{2}-\d{2}/.test(stop.at))) return [];
+  const last = datePart(sorted[sorted.length - 1].at);
+  const days: string[][] = [];
+  let current = sorted[0].country;
+  let next = 0;
+  for (let date = datePart(sorted[0].at); date <= last; date = nextDate(date)) {
+    const present = [current];
+    for (; next < sorted.length && datePart(sorted[next].at) === date; next++) {
+      current = sorted[next].country;
+      if (!present.includes(current)) present.push(current);
+    }
+    if (present.length === 1 && next < sorted.length && sorted[next].country !== current) present.push(sorted[next].country);
+    days.push(present);
+  }
+  return days;
+}
+
+/**
+ * Dienpinigiai reisui centais. Trupmeninės paros (importas: valandos / 24)
+ * moka dienų vidurkį × paros – kaip ir furos paros kaštai; sveikoms paroms
+ * tai tiesiog dienų suma.
+ */
+export function perDiemCentsFor(days: PerDiemDay[], tripDays: number): number {
+  if (days.length === 0 || !(tripDays > 0)) return 0;
+  return Math.round((sumPerDiem(days) * tripDays) / days.length);
+}

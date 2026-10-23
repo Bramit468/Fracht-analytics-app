@@ -111,3 +111,23 @@ export function perDiemNormCents(countryCode: string): number | null {
   const eur = PER_DIEM_NORMS_EUR[countryCode.toUpperCase()];
   return eur === undefined ? null : eur * 100;
 }
+
+/**
+ * Telematika šalį rašo trimis raidėmis („SWE“), normos – dviem („SE“).
+ * Tik sąrašo šalims: kitų normos vis tiek nežinomos.
+ */
+const ISO3_TO_ISO2: Readonly<Record<string, string>> = {
+  AND: "AD", ALB: "AL", AUT: "AT", BIH: "BA", BEL: "BE", BGR: "BG", BLR: "BY", CHE: "CH", CYP: "CY", CZE: "CZ",
+  DEU: "DE", DNK: "DK", EST: "EE", ESP: "ES", FIN: "FI", FRA: "FR", GBR: "GB", GRC: "GR", HRV: "HR", HUN: "HU",
+  IRL: "IE", ISL: "IS", ITA: "IT", LIE: "LI", LTU: "LT", LUX: "LU", LVA: "LV", MCO: "MC", MDA: "MD", MNE: "ME",
+  MKD: "MK", MLT: "MT", NLD: "NL", NOR: "NO", POL: "PL", PRT: "PT", ROU: "RO", SRB: "RS", RUS: "RU", SWE: "SE",
+  SVN: "SI", SVK: "SK", SMR: "SM", TUR: "TR", UKR: "UA", VAT: "VA", XKX: "XK",
+  ARM: "AM", AZE: "AZ", GEO: "GE", KGZ: "KG", KAZ: "KZ", MNG: "MN", TJK: "TJ", TKM: "TM", UZB: "UZ", CHN: "CN",
+  AFG: "AF", PAK: "PK", ARE: "AE", BHR: "BH", ISR: "IL", IRQ: "IQ", IRN: "IR", JOR: "JO", KWT: "KW", LBN: "LB",
+  OMN: "OM", QAT: "QA", SAU: "SA", SYR: "SY", YEM: "YE", DZA: "DZ", EGY: "EG", LBY: "LY", MAR: "MA", TUN: "TN",
+};
+
+/** „SWE“ → „SE“. `null` – šalies sąraše nėra. */
+export function iso2FromIso3(code: string): string | null {
+  return ISO3_TO_ISO2[code.toUpperCase()] ?? null;
+}

@@ -33,7 +33,7 @@ function readEmail(formData: FormData): string {
  *
  * Nieko nesiunčiame: pakvietimas tiesiog laukia lentelėje, o suveikia tada, kai
  * tuo adresu kas nors užsiregistruoja. Kvietimą į kurią įmonę rašyti, sprendžia
- * `company_id` numatytoji reikšmė, o ar leidžiama — RLS.
+ * `company_id` numatytoji reikšmė, o ar leidžiama – RLS.
  */
 export async function inviteMember(
   _previous: InviteState,
@@ -223,7 +223,7 @@ export async function cancelInvitation(
   const supabase = await createServerSupabaseClient();
 
   // `is("accepted_at", null)` saugo nuo priimto pakvietimo trynimo: jį ištrynus
-  // dingtų istorija, o prieigos žmogus vis tiek nebeprarastų — narystė jau
+  // dingtų istorija, o prieigos žmogus vis tiek nebeprarastų – narystė jau
   // įrašyta atskirai.
   const { data, error } = await supabase
     .from("company_invitations")

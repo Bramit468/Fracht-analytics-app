@@ -7,23 +7,33 @@
  * galima tik įrašius adresą ranka.
  */
 
+/** Meniu grupės: kasdienis darbas, duomenys ir nustatymai (#205). */
+export type NavGroup = "darbas" | "duomenys" | "nustatymai";
+
 export interface NavItem {
   href: string;
   label: string;
+  group: NavGroup;
 }
 
+export const NAV_GROUP_LABELS: Record<NavGroup, string | null> = {
+  darbas: null,
+  duomenys: "Duomenys",
+  nustatymai: null,
+};
+
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Suvestinė" },
-  { href: "/trips", label: "Reisai" },
-  { href: "/trips/new", label: "Naujas reisas" },
-  { href: "/trips/vyksta", label: "Vyksta dabar" },
-  { href: "/trips/import", label: "Importas iš Excel" },
+  { href: "/", label: "Suvestinė", group: "darbas" },
+  { href: "/trips", label: "Reisai", group: "darbas" },
+  { href: "/trips/new", label: "Naujas reisas", group: "darbas" },
+  { href: "/trips/vyksta", label: "Vyksta dabar", group: "darbas" },
+  { href: "/dedikuoti", label: "Dedikuoti", group: "darbas" },
   // Kaštai ir svoriai – skirtukai furų puslapyje, ne atskiri punktai (#169).
-  { href: "/trucks", label: "Furos" },
-  { href: "/uzsakovai", label: "Užsakovai" },
-  { href: "/dedikuoti", label: "Dedikuoti" },
-  { href: "/telematika", label: "Analizė" },
-  { href: "/imone", label: "Įmonė" },
+  { href: "/trucks", label: "Furos", group: "duomenys" },
+  { href: "/uzsakovai", label: "Užsakovai", group: "duomenys" },
+  { href: "/telematika", label: "Analizė", group: "duomenys" },
+  { href: "/trips/import", label: "Importas iš Excel", group: "duomenys" },
+  { href: "/imone", label: "Įmonė", group: "nustatymai" },
 ];
 
 /**
@@ -31,7 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
  *
  * Imamas ilgiausias tinkantis adresas: `/trips/new` turi pažymėti „Naują
  * reisą“, o ne „Reisus“, nors abu prasideda vienodai. Pagrindinis puslapis
- * lyginamas tiksliai — kitaip jis būtų pažymėtas visur.
+ * lyginamas tiksliai – kitaip jis būtų pažymėtas visur.
  */
 export function activeNavHref(pathname: string): string | null {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;

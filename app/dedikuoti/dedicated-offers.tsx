@@ -19,8 +19,9 @@ import { centsToInput, formatCents } from "../../lib/money";
 import { getSupabaseClient } from "../../lib/supabase";
 import { truckRowToCalc } from "../../lib/truck";
 import type { Truck } from "../../types/truck";
+import { buttonPrimary, input } from "../ui";
 
-const inputClass = "mt-1 block w-full rounded-lg border border-line bg-surface p-3";
+const inputClass = `${input} mt-1 block w-full`;
 
 const EMPTY: DedicatedFormValues = { pricing_model: "km_with_min", status: "draft", margin_percent: "15", empty_km_month: "0" };
 
@@ -158,11 +159,11 @@ export function DedicatedOffers() {
   </label>;
 
   return <div className="space-y-6">
-    {!available && <p className="rounded-xl border border-warn bg-warn-soft p-4 text-sm text-warn">
+    {!available && <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
       Pasiūlymų lentelės dar nėra – Supabase paleiskite migraciją 0018. Skaičiuoti galima jau dabar, įrašyti – ne.
     </p>}
 
-    {offers.length > 0 && <section className="overflow-x-auto rounded-xl border p-4">
+    {offers.length > 0 && <section className="overflow-x-auto rounded-lg border border-line bg-surface p-4">
       <h2 className="mb-3 font-semibold">Įrašyti pasiūlymai</h2>
       <table className="w-full text-sm">
         <thead><tr className="border-b border-line text-left text-muted">
@@ -190,7 +191,7 @@ export function DedicatedOffers() {
     </section>}
 
     <form onSubmit={(event) => { event.preventDefault(); void save(); }} className="space-y-6">
-      <section className="rounded-xl border p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-semibold">{editingId ? "Taisomas pasiūlymas" : "Naujas pasiūlymas"}</h2>
           {editingId && <button type="button" className="text-sm underline" onClick={() => { setEditingId(null); setValues(EMPTY); setErrors({}); setMessage(""); }}>Pradėti naują</button>}
@@ -206,7 +207,7 @@ export function DedicatedOffers() {
         </div>
       </section>
 
-      <section className="rounded-xl border p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <h2 className="mb-3 font-semibold">Fura ir rida per mėnesį</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="text-sm">Fura
@@ -226,7 +227,7 @@ export function DedicatedOffers() {
         </div>
       </section>
 
-      <section className="rounded-xl border p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <h2 className="mb-3 font-semibold">Kaina</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="text-sm">Kainos modelis
@@ -243,7 +244,7 @@ export function DedicatedOffers() {
 
       {!result && <p className="text-sm text-muted">Įveskite furos paros savikainą ir km per mėnesį – rezultatas atsiras čia.</p>}
 
-      {result && offer && <section aria-label="Pasiūlymo rezultatai" className="rounded-xl border-2 border-line bg-surface p-4">
+      {result && offer && <section aria-label="Pasiūlymo rezultatai" className="rounded-lg border-2 border-line bg-surface p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="font-semibold">Per mėnesį</h2>
           <p className={`text-2xl font-bold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
@@ -300,7 +301,7 @@ export function DedicatedOffers() {
         </div>
       </section>}
 
-      <section className="rounded-xl border p-4">
+      <section className="rounded-lg border border-line bg-surface p-4">
         <h2 className="font-semibold">Derybiniai klausimai</h2>
         <p className="mt-1 text-sm text-muted">Kuras, keliai, tušti km ir minimumas keičia skaičiavimą viršuje.</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -320,7 +321,7 @@ export function DedicatedOffers() {
       </section>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={saving || !available} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">
+        <button type="submit" disabled={saving || !available} className={buttonPrimary}>
           {saving ? "Saugoma…" : editingId ? "Išsaugoti pakeitimus" : "Išsaugoti pasiūlymą"}
         </button>
         {message && <p role="status" className={message.startsWith("Pasiūlymas") ? "text-good" : "text-bad"}>{message}</p>}

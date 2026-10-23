@@ -7,7 +7,7 @@
  */
 
 import { calculateDashboardStats, type DashboardStats } from "./dashboard";
-import { filterByRange, previousPeriodRange, type PeriodKey } from "./trip-period";
+import { filterByRange, previousPeriodRange, type PeriodKey, type PeriodRange } from "./trip-period";
 import type { TripSummary } from "./trips";
 
 export interface Change {
@@ -49,8 +49,15 @@ export function comparePeriod(
   current: DashboardStats,
 ): PeriodComparison | null {
   const range = previousPeriodRange(key, today);
-  if (range === null) return null;
+  return range === null ? null : compareWithRange(trips, range, current);
+}
 
+/** Tas pats palyginimas su bet kuriuo ankstesniu laikotarpiu. */
+export function compareWithRange(
+  trips: TripSummary[],
+  range: PeriodRange,
+  current: DashboardStats,
+): PeriodComparison | null {
   const earlier = filterByRange(trips, range);
   // Tuščias praėjęs mėnuo nėra nulis: tada palyginimo tiesiog nėra, ir rodyti
   // „+100 %“ reikštų sugalvotą pagerėjimą.

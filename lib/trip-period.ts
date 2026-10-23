@@ -94,6 +94,15 @@ export function previousPeriodRange(key: PeriodKey, today: string): PeriodRange 
   }
 }
 
+/** Tokio pat ilgio laikotarpis prieš pat šį – kai datos pasirinktos ranka. */
+export function precedingRange(range: PeriodRange): PeriodRange {
+  const day = 86_400_000;
+  const start = Date.parse(range.from);
+  const length = Math.round((Date.parse(range.to) - start) / day) + 1;
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return { from: iso(start - length * day), to: iso(start - day) };
+}
+
 /** Reisai, patenkantys į ribas. Ribos imtinės. */
 export function filterByRange(trips: TripSummary[], range: PeriodRange): TripSummary[] {
   return trips.filter((trip) => trip.tripDate >= range.from && trip.tripDate <= range.to);

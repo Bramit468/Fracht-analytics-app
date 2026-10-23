@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterByPeriod, periodRange, PERIODS } from "./trip-period";
+import { filterByPeriod, periodRange, precedingRange, PERIODS } from "./trip-period";
 import type { TripSummary } from "./trips";
 
 function trip(id: string, tripDate: string): TripSummary {
@@ -107,5 +107,11 @@ describe("PERIODS", () => {
     for (const period of PERIODS) {
       expect(period.label).toBeTruthy();
     }
+  });
+});
+
+describe("precedingRange", () => {
+  it("tokio pat ilgio laikotarpis prieš pat pasirinktą", () => {
+    expect(precedingRange({ from: "2026-10-01", to: "2026-10-10" })).toEqual({ from: "2026-09-21", to: "2026-09-30" });
   });
 });

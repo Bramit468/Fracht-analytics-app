@@ -3,7 +3,9 @@
 import { Download } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { calculateDashboardStats, type DashboardStats } from "../lib/dashboard";
+import { calculateDashboardStats, MIN_REALISTIC_REVENUE_CENTS, splitUnrealistic, utilizationPercent, type DashboardStats } from "../lib/dashboard";
+import { listCustomers, type Customer } from "../lib/customers";
+import { getSupabaseClient } from "../lib/supabase";
 import { formatCents } from "../lib/money";
 import { summarizeCountryRoads } from "../lib/country-roads";
 import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
@@ -17,9 +19,9 @@ import {
 } from "../lib/report-export";
 import { downloadCsv, todayForFileName } from "./download-csv";
 import type { ProfitGroup } from "../lib/group-profit";
-import { comparePeriod } from "../lib/period-compare";
+import { comparePeriod, compareWithRange } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
-import { filterByPeriod, PERIODS, type PeriodKey } from "../lib/trip-period";
+import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, type PeriodRange } from "../lib/trip-period";
 import { listTrips, type TripSummary } from "../lib/trips";
 import { summarizeByTruck } from "../lib/truck-profit";
 
@@ -88,7 +90,7 @@ function ProfitabilityBars({ stats, periodLabel }: { stats: DashboardStats; peri
     </div>
     <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-line pt-4">
       <div><dt className="text-xs font-medium text-muted">Marža</dt><dd className="mt-1 text-lg font-semibold">{formatPercent(stats.marginPercent)}</dd></div>
-      <div><dt className="text-xs font-medium text-muted">Pelnas už km</dt><dd className="mt-1 text-lg font-semibold">{formatPerKm(stats.profitPerKm)}</dd></div>
+      <div><dt className="text-xs font-medium text-muted">Pajamos už km</dt><dd className="mt-1 text-lg font-semibold">{formatPerKm(stats.revenuePerKm)}</dd></div>
       {/* Fura uždirba paromis: lėtas krovinys už km atrodo gerai, bet užima furą ilgiau (#179). */}
       <div><dt className="text-xs font-medium text-muted">Pelnas per parą</dt><dd className="mt-1 text-lg font-semibold">{formatPerDay(stats.profitPerDayCents)}</dd></div>
     </dl>
@@ -117,10 +119,47 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-/** Laikotarpio pasirinkimas. Liečia visą suvestinę, kad skaičiai nesiskirtų tarp kortelių (#103). */
-function PeriodPicker({ value, onChange }: { value: PeriodKey; onChange: (key: PeriodKey) => void }) {
-  return <div role="group" aria-label="Laikotarpis" className="inline-flex max-w-full flex-wrap rounded-md border border-line-strong bg-surface p-0.5">
-    {PERIODS.map((period) => <button key={period.key} type="button" aria-pressed={period.key === value} onClick={() => onChange(period.key)} className={`rounded-[3px] px-3 py-1 text-sm transition-colors ${period.key === value ? "bg-accent font-medium text-accent-ink" : "text-muted hover:text-ink"}`}>{period.label}</button>)}
+type Period = PeriodKey | "custom";
+
+const PERIOD_OPTIONS: { key: Period; label: string }[] = [...PERIODS, { key: "custom", label: "Nuo–iki" }];
+
+const filterInput = "rounded-md border border-line-strong bg-surface px-2.5 py-1 text-sm";
+
+interface Filters {
+  period: Period;
+  from: string;
+  to: string;
+  customerId: string;
+  plate: string;
+}
+
+/**
+ * Filtrai liečia visą suvestinę, kad skaičiai nesiskirtų tarp kortelių (#103):
+ * laikotarpis (arba savos datos), užsakovas ir fura.
+ */
+function FilterBar({ value, onChange, customers, plates }: {
+  value: Filters;
+  onChange: (next: Filters) => void;
+  customers: Customer[];
+  plates: string[];
+}) {
+  const set = (patch: Partial<Filters>) => onChange({ ...value, ...patch });
+  return <div className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label="Laikotarpis" className="inline-flex max-w-full flex-wrap rounded-md border border-line-strong bg-surface p-0.5">
+      {PERIOD_OPTIONS.map((period) => <button key={period.key} type="button" aria-pressed={period.key === value.period} onClick={() => set({ period: period.key })} className={`rounded-[3px] px-3 py-1 text-sm transition-colors ${period.key === value.period ? "bg-accent font-medium text-accent-ink" : "text-muted hover:text-ink"}`}>{period.label}</button>)}
+    </div>
+    {value.period === "custom" && <>
+      <label className="text-sm text-muted">Nuo <input type="date" value={value.from} onChange={(event) => set({ from: event.target.value })} className={filterInput} /></label>
+      <label className="text-sm text-muted">iki <input type="date" value={value.to} onChange={(event) => set({ to: event.target.value })} className={filterInput} /></label>
+    </>}
+    {customers.length > 0 && <select aria-label="Užsakovas" value={value.customerId} onChange={(event) => set({ customerId: event.target.value })} className={filterInput}>
+      <option value="">Visi užsakovai</option>
+      {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+    </select>}
+    <select aria-label="Fura" value={value.plate} onChange={(event) => set({ plate: event.target.value })} className={filterInput}>
+      <option value="">Visos furos</option>
+      {plates.map((plate) => <option key={plate} value={plate}>{plate}</option>)}
+    </select>
   </div>;
 }
 
@@ -285,9 +324,15 @@ function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: 
   </div>;
 }
 
+/** Šiandiena už komponento ribų: render metu laiko imti negalima (React compiler). */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function Dashboard() {
   const [allTrips, setAllTrips] = useState<TripSummary[]>([]);
-  const [period, setPeriod] = useState<PeriodKey>("all");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [filters, setFilters] = useState<Filters>({ period: "all", from: "", to: "", customerId: "", plate: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -296,8 +341,14 @@ export function Dashboard() {
     let cancelled = false;
     async function loadDashboard() {
       try {
-        const loadedTrips = await listTrips();
-        if (!cancelled) setAllTrips(loadedTrips);
+        const [loadedTrips, loadedCustomers] = await Promise.all([
+          listTrips(),
+          // Užsakovų filtras – patogumas: be lentelės (0014) suvestinė veikia ir be jo.
+          listCustomers(getSupabaseClient()).catch(() => ({ customers: [] as Customer[], available: false })),
+        ]);
+        if (cancelled) return;
+        setAllTrips(loadedTrips);
+        setCustomers(loadedCustomers.customers);
       } catch { if (!cancelled) setError("Nepavyko užkrauti suvestinės. Patikrinkite ryšį ir bandykite dar kartą."); }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -305,44 +356,95 @@ export function Dashboard() {
     return () => { cancelled = true; };
   }, [attempt]);
 
-  // Šiandiena imama piešimo metu: reisai užkraunami vieną kartą, o laikotarpis
-  // keičiamas vietoje, be naujos užklausos.
-  const today = new Date().toISOString().slice(0, 10);
-  const trips = filterByPeriod(allTrips, period, today);
-  const stats = calculateDashboardStats(trips);
-
   if (loading) return <div role="status" className="space-y-5"><div className="h-[30px] w-80 max-w-full animate-pulse rounded-md bg-raised" /><div className="h-[106px] animate-pulse rounded-lg border border-line bg-surface" /><div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]"><div className="h-72 animate-pulse rounded-lg border border-line bg-surface" /><div className="h-72 animate-pulse rounded-lg border border-line bg-surface" /></div><span className="sr-only">Kraunama suvestinė…</span></div>;
 
   if (error) return <div className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4"><p role="alert" className="text-sm text-bad">{error}</p><button type="button" className="mt-2 text-sm font-medium text-bad underline" onClick={() => { setLoading(true); setError(""); setAttempt((value) => value + 1); }}>Bandyti dar kartą</button></div>;
 
-  if (!allTrips.length) return <div className="rounded-lg border border-line bg-surface px-6 py-12 text-center"><h3 className="font-semibold">Reisų dar nėra</h3><p className="mt-1 text-sm text-muted">Sukurkite pirmą reisą arba importuokite iš Excel.</p><div className="mt-5 flex justify-center gap-3"><Link href="/trips/new" className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink">Naujas reisas</Link><Link href="/trips/import" className="rounded-md border border-line-strong px-3.5 py-2 text-sm font-medium hover:bg-page">Importas iš Excel</Link></div></div>;
+  if (!allTrips.length) return <div className="rounded-lg border border-line bg-surface px-6 py-12 text-center"><h3 className="font-semibold">Reisų dar nėra</h3><p className="mt-1 text-sm text-muted">Sukurkite pirmą reisą arba importuokite.</p><div className="mt-5 flex justify-center gap-3"><Link href="/trips/new" className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink">Naujas reisas</Link><Link href="/trips/import" className="rounded-md border border-line-strong px-3.5 py-2 text-sm font-medium hover:bg-page">Importas</Link></div></div>;
 
-  // Tuščias laikotarpis nėra klaida, todėl mygtukai lieka matomi – kitaip
+  const today = todayIso();
+  const plates = [...new Set(allTrips.map((trip) => trip.truckPlate))].sort();
+  const usedCustomers = customers.filter((customer) => allTrips.some((trip) => trip.customerId === customer.id));
+
+  // Užsakovo ir furos filtrai taikomi prieš viską – ir palyginimui, ir mėnesių eigai.
+  const scoped = allTrips.filter((trip) =>
+    (!filters.customerId || trip.customerId === filters.customerId) && (!filters.plate || trip.truckPlate === filters.plate));
+  const { realistic, unrealistic } = splitUnrealistic(scoped);
+
+  const range: PeriodRange | null = filters.period === "custom"
+    ? (filters.from && filters.to && filters.from <= filters.to ? { from: filters.from, to: filters.to } : null)
+    : periodRange(filters.period, today);
+  const trips = range ? filterByRange(realistic, range) : realistic;
+  const excluded = range ? filterByRange(unrealistic, range) : unrealistic;
+  const stats = calculateDashboardStats(trips);
+
+  const filterBar = <FilterBar value={filters} onChange={setFilters} customers={usedCustomers} plates={plates} />;
+
+  // Tuščias laikotarpis nėra klaida, todėl filtrai lieka matomi – kitaip
   // pasirinkus mėnesį be reisų nebūtų kaip grįžti atgal.
   if (!trips.length) return <div className="space-y-5">
-    <PeriodPicker value={period} onChange={setPeriod} />
-    <p className="rounded-lg border border-line bg-surface px-6 py-12 text-center text-sm text-muted">Šiuo laikotarpiu reisų nėra.</p>
+    {filterBar}
+    <p className="rounded-lg border border-line bg-surface px-6 py-12 text-center text-sm text-muted">
+      {filters.period === "custom" && !range ? "Pasirinkite datas „nuo“ ir „iki“." : "Pagal šiuos filtrus reisų nėra."}
+    </p>
   </div>;
 
+  const periodLabel = filters.period === "custom" && range
+    ? `${range.from} – ${range.to}`
+    : PERIODS.find((item) => item.key === filters.period)?.label ?? "";
+  const comparison = filters.period === "custom"
+    ? (range ? compareWithRange(realistic, precedingRange(range), stats) : null)
+    : comparePeriod(realistic, filters.period, today, stats);
+  // Visiems laikams – nuo pirmo reiso iki šiandien.
+  const span = range ?? { from: trips.reduce((min, trip) => (trip.tripDate < min ? trip.tripDate : min), today), to: today };
+  const utilization = utilizationPercent(stats.days, filters.plate ? 1 : plates.length, span.from, span.to, today);
   const profitTone = stats.profitCents >= 0 ? "positive" : "negative";
-  const periodLabel = PERIODS.find((item) => item.key === period)?.label ?? "";
-  const comparison = comparePeriod(allTrips, period, today, stats);
+  const perDayChange = (current: number | null, previous: number | null, higherIsBetter: boolean) => {
+    if (current === null || previous === null || previous === 0) return null;
+    const percent = ((current - previous) / Math.abs(previous)) * 100;
+    return changeText(percent, higherIsBetter ? percent >= 0 : percent <= 0);
+  };
 
   return <div className="space-y-5">
-    <PeriodPicker value={period} onChange={setPeriod} />
-    <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard label="Pajamos iš viso" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${periodLabel.toLowerCase()}`} change={comparison && changeText(comparison.revenue.percent, comparison.revenue.difference >= 0)} />
-      {/* Savikaina už km yra tas skaičius, kuriuo deramasi: siūloma kaina turi
-          prasmę tik žinant, kiek kainuoja kilometras (#127). */}
-      <StatCard label="Kaštai iš viso" value={formatCents(stats.totalCostCents)} detail={`Savikaina ${formatPerKm(stats.costPerKm)}`} />
-      <StatCard label="Pelnas iš viso" value={formatCents(stats.profitCents)} detail="Pajamos minus kaštai" tone={profitTone} change={comparison && changeText(comparison.profit.percent, comparison.profit.difference >= 0)} />
-      <StatCard label="Pelnas už km" value={formatPerKm(stats.profitPerKm)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={stats.profitPerKm !== null && stats.profitPerKm < 0 ? "negative" : "neutral"} change={comparison?.profitPerKm == null ? null : { text: `${comparison.profitPerKm >= 0 ? "+" : "−"}${Math.abs(comparison.profitPerKm).toFixed(2)} €/km nei anksčiau`, better: comparison.profitPerKm >= 0 }} />
-    </dl>
+    {filterBar}
+
+    {/* Fura kainuoja paromis – todėl paros rodikliai pirmi (#179). */}
+    <section aria-label="Per parą">
+      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Per parą · {periodLabel.toLowerCase()}</h2>
+      <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Pelnas per parą" value={formatPerDay(stats.profitPerDayCents)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={stats.profitPerDayCents !== null && stats.profitPerDayCents < 0 ? "negative" : "positive"} change={comparison && perDayChange(stats.profitPerDayCents, comparison.previous.profitPerDayCents, true)} />
+        <StatCard label="Pajamos per parą" value={formatPerDay(stats.revenuePerDayCents)} detail="Visos pajamos / furų paros" change={comparison && perDayChange(stats.revenuePerDayCents, comparison.previous.revenuePerDayCents, true)} />
+        <StatCard label="Kaštai per parą" value={formatPerDay(stats.costPerDayCents)} detail="Fura, kuras, keliai" change={comparison && perDayChange(stats.costPerDayCents, comparison.previous.costPerDayCents, false)} />
+        <StatCard label="Pradirbtos paros" value={stats.days.toLocaleString("lt-LT", { maximumFractionDigits: 1 })} detail={utilization === null ? `${stats.tripCount} reisai` : `Užimtumas ${formatPercent(utilization)} · ${filters.plate ? "1 fura" : `${plates.length} furos`}`} />
+      </dl>
+    </section>
+
+    <section aria-label="Iš viso ir per km">
+      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Iš viso ir per km</h2>
+      <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Pajamos" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${formatPerKm(stats.revenuePerKm)}`} change={comparison && changeText(comparison.revenue.percent, comparison.revenue.difference >= 0)} />
+        {/* Savikaina už km yra tas skaičius, kuriuo deramasi (#127). */}
+        <StatCard label="Kaštai" value={formatCents(stats.totalCostCents)} detail={`Savikaina ${formatPerKm(stats.costPerKm)}`} />
+        <StatCard label="Pelnas" value={formatCents(stats.profitCents)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={profitTone} change={comparison && changeText(comparison.profit.percent, comparison.profit.difference >= 0)} />
+        <StatCard label="Tuščia rida" value={formatPercent(stats.emptySharePercent)} detail={`${Math.round(stats.emptyKm).toLocaleString("lt-LT")} km iš ${Math.round(stats.paidKm + stats.emptyKm).toLocaleString("lt-LT")}`} tone={stats.emptySharePercent !== null && stats.emptySharePercent > 20 ? "negative" : "neutral"} />
+      </dl>
+    </section>
+
     {comparison && <p className="text-xs text-muted">
-      Lyginama su tokiu pat ankstesniu laikotarpiu: tada {comparison.previous.tripCount} reis.,
-      pelnas {formatCents(comparison.previous.profitCents)}, marža {formatPercent(comparison.previous.marginPercent)}.
+      Lyginama su tokio pat ilgio ankstesniu laikotarpiu: tada {comparison.previous.tripCount} reis.,
+      pelnas per parą {formatPerDay(comparison.previous.profitPerDayCents)}, marža {formatPercent(comparison.previous.marginPercent)}.
       {comparison.marginPoints !== null && ` Marža ${comparison.marginPoints >= 0 ? "pakilo" : "nukrito"} ${Math.abs(comparison.marginPoints).toFixed(1)} punkto.`}
     </p>}
+
+    {excluded.length > 0 && <details className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+      <summary className="cursor-pointer">
+        Neįskaičiuota: {excluded.length} su pajamomis iki {formatCents(MIN_REALISTIC_REVENUE_CENTS)} – tai ne pervežimai, o priemokos, paslaugos ar klaidos.
+      </summary>
+      <ul className="mt-2 space-y-1">{excluded.map((trip) => <li key={trip.id}>
+        <Link href={`/trips/${trip.id}/edit`} className="underline">{trip.tripNumber}</Link> · {trip.tripDate} · {trip.origin} → {trip.destination} · {formatCents(trip.revenueCents)}
+      </li>)}</ul>
+    </details>}
+
     <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
       <div className="space-y-5"><ProfitabilityBars stats={stats} periodLabel={periodLabel} /><RecentTrips trips={trips} /></div>
       <LossAlerts trips={trips} />
@@ -355,7 +457,7 @@ export function Dashboard() {
       action={{ href: "/trucks?skiltis=kastai", label: "Furų kaštai" }}
       onExport={() => downloadCsv(reportFileName("furos", todayForFileName()), trucksToCsv(summarizeByTruck(trips)))}
     />
-    <MonthlyTrend trips={allTrips} today={today} />
+    <MonthlyTrend trips={realistic} today={today} />
     <EmptyKm trips={trips} periodLabel={periodLabel} />
     <CountryRoads trips={trips} periodLabel={periodLabel} />
     <ProfitTable

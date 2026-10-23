@@ -19,6 +19,44 @@ export interface DashboardStats {
   costPerKm: number | null;
   /** Visas pelnas / visos furų paros, centais (#179). `null`, kai parų nėra. */
   profitPerDayCents: number | null;
+  /** Furų paros reisuose – kiek fura iš tikrųjų dirbo. */
+  days: number;
+  paidKm: number;
+  emptyKm: number;
+  /** Pajamos ir kaštai per parą – fura kainuoja paromis, todėl tai pagrindinis matas. */
+  revenuePerDayCents: number | null;
+  costPerDayCents: number | null;
+  /** Pajamos už apmokamą km – tuo deramasi su užsakovu. */
+  revenuePerKm: number | null;
+  /** Tuščios ridos dalis nuo visos, %. */
+  emptySharePercent: number | null;
+}
+
+/**
+ * Žemiau šios sumos „pervežimas" yra ne pervežimas, o priemoka, paslauga ar
+ * klaida (Telematikoje, pvz., 70 € užsakymas be km). Tokie reisai iškreiptų
+ * €/km ir pelną per parą, todėl suvestinėje neskaičiuojami, bet parodomi.
+ * Visų kitų užsakymų kaina ≥ 500 € (2026-10 duomenys).
+ */
+export const MIN_REALISTIC_REVENUE_CENTS = 20_000;
+
+export function splitUnrealistic(trips: TripSummary[]): { realistic: TripSummary[]; unrealistic: TripSummary[] } {
+  const realistic: TripSummary[] = [];
+  const unrealistic: TripSummary[] = [];
+  for (const trip of trips) (trip.revenueCents < MIN_REALISTIC_REVENUE_CENTS ? unrealistic : realistic).push(trip);
+  return { realistic, unrealistic };
+}
+
+/**
+ * Kiek furų parų išnaudota: reisų paros / (furos × kalendorinės dienos iki
+ * šiandien). Ateities dienos nesiskaito – mėnesio viduryje užimtumas kitaip
+ * atrodytų perpus mažesnis. `null`, kai nėra iš ko skaičiuoti.
+ */
+export function utilizationPercent(days: number, truckCount: number, from: string, to: string, today: string): number | null {
+  const end = to < today ? to : today;
+  const calendarDays = Math.round((Date.parse(end) - Date.parse(from)) / 86_400_000) + 1;
+  if (!(truckCount > 0) || !(calendarDays > 0)) return null;
+  return (days / (truckCount * calendarDays)) * 100;
 }
 
 /**
@@ -33,6 +71,7 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
   const profitCents = sum((trip) => trip.profitCents);
   const totalCostCents = sum((trip) => trip.totalCostCents);
   const paidKm = sum((trip) => trip.paidKm);
+  const emptyKm = sum((trip) => trip.emptyKm);
   const days = sum((trip) => trip.days);
 
   return {
@@ -44,5 +83,12 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
     profitPerKm: paidKm > 0 ? profitCents / 100 / paidKm : null,
     costPerKm: paidKm > 0 ? totalCostCents / 100 / paidKm : null,
     profitPerDayCents: calcProfitPerDay(profitCents, days),
+    days,
+    paidKm,
+    emptyKm,
+    revenuePerDayCents: days > 0 ? Math.round(revenueCents / days) : null,
+    costPerDayCents: days > 0 ? Math.round(totalCostCents / days) : null,
+    revenuePerKm: paidKm > 0 ? revenueCents / 100 / paidKm : null,
+    emptySharePercent: paidKm + emptyKm > 0 ? (emptyKm / (paidKm + emptyKm)) * 100 : null,
   };
 }

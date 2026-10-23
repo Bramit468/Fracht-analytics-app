@@ -7,6 +7,7 @@ import {
   monthsToCsv,
   reportFileName,
   routesToCsv,
+  customersToCsv,
   trucksToCsv,
 } from "./report-export";
 
@@ -21,7 +22,17 @@ const PROFIT = {
   profitPerKm: 0.2789,
   days: 4,
   profitPerDayCents: 14363,
+  revenuePerKm: 1.1648,
+  litresPer100Km: 28.5,
 };
+
+describe("customersToCsv", () => {
+  it("rašo užsakovo pavadinimą pirmu stulpeliu", () => {
+    const rows = customersToCsv([{ customerId: null, name: "Be užsakovo", ...PROFIT }]).split("\r\n");
+    expect(rows[0].startsWith("Užsakovas;Reisai;")).toBe(true);
+    expect(rows[1]).toBe("Be užsakovo;3;2060;2400,00;1825,50;574,50;23,9;0,89;0,28");
+  });
+});
 
 describe("trucksToCsv", () => {
   it("rašo antraštę ir eilutę", () => {

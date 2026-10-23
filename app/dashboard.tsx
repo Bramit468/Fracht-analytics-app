@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { calculateDashboardStats, MIN_REALISTIC_REVENUE_CENTS, splitUnrealistic, utilizationPercent } from "../lib/dashboard";
-import { listCustomers, type Customer } from "../lib/customers";
+import { listCustomers, summarizeByCustomer, type Customer } from "../lib/customers";
 import { costStructure } from "../lib/cost-structure";
 import { getSupabaseClient } from "../lib/supabase";
 import { formatCents } from "../lib/money";
@@ -15,6 +15,7 @@ import {
   countriesToCsv,
   monthsToCsv,
   reportFileName,
+  customersToCsv,
   routesToCsv,
   trucksToCsv,
 } from "../lib/report-export";
@@ -465,44 +466,86 @@ function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabe
 }
 
 interface ProfitRow extends Omit<ProfitGroup, "key"> {
-  /** Ką rodo pirmas stulpelis: furos numeris arba kryptis. */
+  /** Ką rodo pirmas stulpelis: furos numeris, užsakovas arba kryptis. */
   label: string;
   mono?: boolean;
 }
 
+const DETAIL_GROUPS = [
+  { key: "trucks", label: "Furos", column: "Fura" },
+  { key: "customers", label: "Užsakovai", column: "Užsakovas" },
+  { key: "routes", label: "Kryptys", column: "Kryptis" },
+] as const;
+type DetailGroup = (typeof DETAIL_GROUPS)[number]["key"];
+
 /**
- * Pelningumo pjūvis. Ta pati lentelė furoms ir kryptims (#101, #107):
- * skiriasi tik antraštė ir pirmas stulpelis.
+ * Pelnas per parą spalvinamas pagal visą parką: virš vidurkio žalia, nuostolis
+ * raudona, tarp jų be spalvos – kitaip žalia būtų beveik viskas.
  */
-function ProfitTable({ title, subtitle, column, rows, note, action, onExport }: {
-  title: string;
-  subtitle: string;
-  column: string;
-  rows: ProfitRow[];
-  note?: string;
-  action?: { href: string; label: string };
-  onExport?: () => void;
+function perDayTone(cents: number | null, fleetCents: number | null): string {
+  if (cents === null) return "text-muted";
+  if (cents < 0) return "bg-bad-soft text-bad";
+  if (fleetCents !== null && cents > fleetCents) return "bg-good/10 text-good";
+  return "";
+}
+
+/**
+ * Viena detalių lentelė su pjūviu: furos, užsakovai arba kryptys (#101, #107).
+ * Pakeitė atskiras furų ir krypčių lenteles – stulpeliai tie patys, keičiasi
+ * tik grupavimas.
+ */
+function DetailsTable({ trips, customers, fleetPerDayCents, periodLabel }: {
+  trips: TripSummary[];
+  customers: Customer[];
+  fleetPerDayCents: number | null;
+  periodLabel: string;
 }) {
+  const [group, setGroup] = useState<DetailGroup>("trucks");
+  // Be užsakovų pjūvis rodytų vieną eilutę „Be užsakovo“.
+  const groups = DETAIL_GROUPS.filter((item) => item.key !== "customers" || customers.length > 0);
+  const active = groups.find((item) => item.key === group) ?? groups[0];
+
+  const rows: ProfitRow[] = active.key === "customers"
+    ? summarizeByCustomer(trips, customers).map(({ name, ...totals }) => ({ label: name, ...totals }))
+    : active.key === "routes"
+      ? summarizeByRoute(trips).map(({ origin, destination, ...totals }) => ({ label: `${origin} → ${destination}`, ...totals }))
+      : summarizeByTruck(trips).map(({ plate, ...totals }) => ({ label: plate, mono: true, ...totals }));
+  const exportCsv = () => {
+    const today = todayForFileName();
+    if (active.key === "customers") downloadCsv(reportFileName("uzsakovai", today), customersToCsv(summarizeByCustomer(trips, customers)));
+    else if (active.key === "routes") downloadCsv(reportFileName("kryptys", today), routesToCsv(summarizeByRoute(trips)));
+    else downloadCsv(reportFileName("furos", today), trucksToCsv(summarizeByTruck(trips)));
+  };
+
   return <div className="rounded-lg border border-line bg-surface">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3"><div><h3 className="font-semibold">{title}</h3><p className="text-sm text-muted">{subtitle}</p></div><div className="flex items-center gap-4">{action && <Link href={action.href} className="text-sm font-medium text-muted hover:text-ink">{action.label}</Link>}<ExportButton onExport={onExport} /></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
+      <div><h3 className="font-semibold">Detalės</h3><p className="text-sm text-muted">{periodLabel}</p></div>
+      <div className="flex flex-wrap items-center gap-3">
+        {active.key === "trucks" && <Link href="/trucks?skiltis=kastai" className="text-sm font-medium text-muted hover:text-ink">Furų kaštai</Link>}
+        <div role="group" aria-label="Pjūvis" className="inline-flex rounded-md border border-line-strong p-0.5">
+          {groups.map((item) => <button key={item.key} type="button" aria-pressed={item.key === active.key} onClick={() => setGroup(item.key)} className={`rounded-[3px] px-3 py-1 text-sm transition-colors ${item.key === active.key ? "bg-accent font-medium text-accent-ink" : "text-muted hover:text-ink"}`}>{item.label}</button>)}
+        </div>
+        <ExportButton onExport={exportCsv} />
+      </div>
+    </div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">{column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Pajamos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Marža</th><th className="px-3 py-3 text-right font-medium">Savikaina €/km</th><th className="px-3 py-3 text-right font-medium">Pelnas €/km</th><th className="px-5 py-3 text-right font-medium">Pelnas per parą</th></tr></thead>
+        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">{active.column}</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Dienos</th><th className="px-3 py-3 text-right font-medium">Pelnas</th><th className="px-3 py-3 text-right font-medium">Pelnas/d.</th><th className="px-3 py-3 text-right font-medium">€/km</th><th className="px-3 py-3 text-right font-medium">Sav. €/km</th><th className="px-5 py-3 text-right font-medium" title="Pagal reisų kuro normas">l/100</th></tr></thead>
         <tbody className="divide-y divide-line">
           {rows.map((row) => <tr key={row.label}>
             <td className={`px-5 py-3 ${row.mono ? "font-mono" : ""}`}>{row.label}</td>
             <td className="px-3 py-3 text-right tabular-nums text-muted">{row.tripCount}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatCents(row.revenueCents)}</td>
-            <td className={`px-3 py-3 text-right font-medium tabular-nums ${row.profitCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(row.profitCents)}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPercent(row.marginPercent)}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPerKm(row.costPerKm)}</td>
-            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatPerKm(row.profitPerKm)}</td>
-            <td className="px-5 py-3 text-right tabular-nums text-muted">{formatPerDay(row.profitPerDayCents)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{row.days.toLocaleString("lt-LT", { maximumFractionDigits: 1 })}</td>
+            <td className={`px-3 py-3 text-right font-medium tabular-nums ${row.profitCents >= 0 ? "" : "text-bad"}`}>{formatCents(row.profitCents)}</td>
+            <td className={`px-3 py-3 text-right font-medium tabular-nums ${perDayTone(row.profitPerDayCents, fleetPerDayCents)}`}>{formatPerDay(row.profitPerDayCents)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{row.revenuePerKm === null ? "—" : row.revenuePerKm.toFixed(2)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{row.costPerKm === null ? "—" : row.costPerKm.toFixed(2)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-muted">{row.litresPer100Km === null ? "—" : row.litresPer100Km.toFixed(1)}</td>
           </tr>)}
         </tbody>
       </table>
     </div>
-    {note && <p className="border-t border-line px-5 py-3 text-xs text-muted">{note}</p>}
+    <p className="border-t border-line px-5 py-3 text-xs text-muted">Pelnas per parą žalias – virš parko vidurkio ({formatPerDay(fleetPerDayCents)}), raudonas – nuostolis. l/100 – pagal reisų kuro normas; faktinės – skirtuke „Kuras“.</p>
   </div>;
 }
 
@@ -653,20 +696,6 @@ export function Dashboard() {
     {tab === "variance" && <div role="tabpanel" aria-label="Planas ir faktas">
       <PlanActualTab trips={trips} />
     </div>}
-    <ProfitTable
-      title="Furų pelningumas"
-      subtitle={periodLabel}
-      column="Fura"
-      rows={summarizeByTruck(trips).map(({ plate, ...totals }) => ({ label: plate, mono: true, ...totals }))}
-      action={{ href: "/trucks?skiltis=kastai", label: "Furų kaštai" }}
-      onExport={() => downloadCsv(reportFileName("furos", todayForFileName()), trucksToCsv(summarizeByTruck(trips)))}
-    />
-    <ProfitTable
-      title="Krypčių pelningumas"
-      subtitle={periodLabel}
-      column="Kryptis"
-      rows={summarizeByRoute(trips).map(({ origin, destination, ...totals }) => ({ label: `${origin} → ${destination}`, ...totals }))}
-      onExport={() => downloadCsv(reportFileName("kryptys", todayForFileName()), routesToCsv(summarizeByRoute(trips)))}
-    />
+    <DetailsTable trips={trips} customers={usedCustomers} fleetPerDayCents={stats.profitPerDayCents} periodLabel={periodLabel} />
   </div>;
 }

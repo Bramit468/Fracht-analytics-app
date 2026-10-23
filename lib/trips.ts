@@ -31,6 +31,11 @@ export interface TripSummary {
   emptyKm: number;
   /** Kuras, sudegintas tuščiais kilometrais. */
   emptyFuelCents: number;
+  /**
+   * Reiso kuro litrai pagal jo normą (importe – faktinę). Visada užpildo
+   * `buildTripSummaries`; neprivalomas tik testų reisams.
+   */
+  fuelLitres?: number;
   revenueCents: number;
   totalCostCents: number;
   profitCents: number;
@@ -91,6 +96,7 @@ export function buildTripSummaries(
       days: trip.days,
       emptyKm: trip.empty_km,
       emptyFuelCents: emptyFuelCents(trip.empty_km, trip.fuel_l_per_100km, trip.fuel_price),
+      fuelLitres: ((trip.paid_km + trip.empty_km) * trip.fuel_l_per_100km) / 100,
       revenueCents: result.revenueCents,
       totalCostCents: result.totalCostCents,
       profitCents: result.profitCents,

@@ -29,6 +29,13 @@ export interface ProfitGroup {
   days: number;
   /** Pelnas centais per furos parą (#179). `null`, kai parų nėra. */
   profitPerDayCents: number | null;
+  /** Pajamos eurais už apmokamą km – tuo deramasi su užsakovu. `null`, kai km nėra. */
+  revenuePerKm: number | null;
+  /**
+   * Reisų normų l/100 km, sverta ridos. Tik reisams, kurių litrai žinomi;
+   * `null`, kai tokių nėra.
+   */
+  litresPer100Km: number | null;
 }
 
 /** Grupės, pelningiausia viršuje. Vienodo pelno atveju — pagal raktą. */
@@ -37,6 +44,8 @@ export function groupProfit(
   keyOf: (trip: TripSummary) => string,
 ): ProfitGroup[] {
   const groups = new Map<string, ProfitGroup>();
+  // Litrai ir jų km atskirai: be litrų reisas l/100 nesumažintų.
+  const fuel = new Map<string, { litres: number; km: number }>();
 
   for (const trip of trips) {
     const key = keyOf(trip);
@@ -52,7 +61,16 @@ export function groupProfit(
       costPerKm: null,
       days: 0,
       profitPerDayCents: null,
+      revenuePerKm: null,
+      litresPer100Km: null,
     };
+
+    if (trip.fuelLitres !== undefined) {
+      const used = fuel.get(key) ?? { litres: 0, km: 0 };
+      used.litres += trip.fuelLitres;
+      used.km += trip.paidKm + trip.emptyKm;
+      fuel.set(key, used);
+    }
 
     group.tripCount += 1;
     group.paidKm += trip.paidKm;
@@ -70,6 +88,9 @@ export function groupProfit(
     group.profitPerKm = group.paidKm > 0 ? group.profitCents / 100 / group.paidKm : null;
     group.costPerKm = group.paidKm > 0 ? group.totalCostCents / 100 / group.paidKm : null;
     group.profitPerDayCents = calcProfitPerDay(group.profitCents, group.days);
+    group.revenuePerKm = group.paidKm > 0 ? group.revenueCents / 100 / group.paidKm : null;
+    const used = fuel.get(group.key);
+    group.litresPer100Km = used && used.km > 0 ? (used.litres / used.km) * 100 : null;
   }
 
   return [...groups.values()].sort(

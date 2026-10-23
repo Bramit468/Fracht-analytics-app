@@ -8,6 +8,7 @@
 
 import { buildCsv, centsToCsv, csvField, decimalToCsv } from "./csv";
 import type { CountryRoadSummary } from "./country-roads";
+import type { CustomerProfit } from "./customers";
 import type { FuelPriceRow } from "./fuel-prices";
 import type { ActualCosts } from "./telematics-costs";
 import type { MonthStats } from "./monthly";
@@ -58,6 +59,13 @@ export function routesToCsv(rows: RouteProfit[]): string {
   return buildCsv(
     ["Iš", "Į", ...PROFIT_COLUMNS],
     rows.map((row) => [csvField(row.origin), csvField(row.destination), ...profitCells(row)]),
+  );
+}
+
+export function customersToCsv(rows: CustomerProfit[]): string {
+  return buildCsv(
+    ["Užsakovas", ...PROFIT_COLUMNS],
+    rows.map((row) => [csvField(row.name), ...profitCells(row)]),
   );
 }
 

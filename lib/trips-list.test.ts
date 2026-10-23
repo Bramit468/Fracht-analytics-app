@@ -67,6 +67,7 @@ it("builds list values with the shared trip calculation", () => {
     days: 1,
     emptyKm: 0,
     emptyFuelCents: 0,
+    fuelLitres: 0,
     revenueCents: 25000,
     totalCostCents: 10000,
     profitCents: 15000,

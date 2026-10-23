@@ -25,6 +25,8 @@ import { summarizeByRoute } from "../lib/route-profit";
 import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, type PeriodRange } from "../lib/trip-period";
 import { listTrips, type TripSummary } from "../lib/trips";
 import { summarizeByTruck } from "../lib/truck-profit";
+import { plateKey } from "../lib/telematics-costs";
+import { loadFuelReport, type FuelReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(1)}%`;
@@ -157,12 +159,81 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }] as const;
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }] as const;
 type Tab = (typeof TABS)[number]["key"];
 
 function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
   return <div role="tablist" aria-label="Suvestinės skiltys" className="flex gap-1 overflow-x-auto border-b border-line">
     {TABS.map((tab) => <button key={tab.key} type="button" role="tab" aria-selected={tab.key === value} onClick={() => onChange(tab.key)} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm transition-colors ${tab.key === value ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink"}`}>{tab.label}</button>)}
+  </div>;
+}
+
+/** Kaip /telematika: trumpa rida l/100 km paverčia vieno pylimo triukšmu. */
+const MIN_KM_FOR_RATIO = 100;
+
+/**
+ * Kuras iš Telematikos suvestinės laikotarpiui. Kraunamas tik atidarius
+ * skirtuką: Telematikos srautai lėti, o kitiems skirtukams jų nereikia.
+ * Komponentas raktuojamas laikotarpiu, todėl pakeitus jį kraunama iš naujo.
+ */
+function FuelTab({ range, plate }: { range: PeriodRange; plate: string }) {
+  const [report, setReport] = useState<FuelReport | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadFuelReport(range.from, range.to)
+      .then((result) => { if (!cancelled) setReport(result); })
+      .catch(() => { if (!cancelled) setReport({ ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." }); });
+    return () => { cancelled = true; };
+  }, [range.from, range.to]);
+
+  if (!report) return <p role="status" className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Kraunami Telematikos duomenys…</p>;
+  if (!report.ok) return <p role="alert" className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4 text-sm text-bad">{report.message}</p>;
+
+  // Užsakovo filtras kurui netaikomas: Telematika kuro su užsakovu nesieja.
+  const key = plate ? plateKey(plate) : "";
+  const trucks = report.trucks
+    .filter((row) => !key || plateKey(row.plate) === key)
+    .sort((a, b) => (b.litresPer100Km ?? -1) - (a.litresPer100Km ?? -1));
+  const insights = report.insights.filter((insight) => !key || insight.plate === null || plateKey(insight.plate) === key);
+  const countries = report.byCountry.filter((row) => row.key !== "");
+
+  if (!trucks.length) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Šiuo laikotarpiu Telematika kuro duomenų neturi. Ji laiko tik paskutinius ~3 mėnesius.</p>;
+
+  return <div className="space-y-5">
+    {insights.length > 0 && <div className="rounded-lg border border-line bg-surface">
+      <h3 className="border-b border-line px-5 py-3 font-semibold">Kur galima sutaupyti</h3>
+      <ul className="divide-y divide-line">{insights.map((insight) => <li key={`${insight.kind}-${insight.plate ?? ""}`} className="flex items-start justify-between gap-4 px-5 py-3">
+        <div className="min-w-0"><p className="text-sm font-medium">{insight.title}</p><p className="text-xs text-muted">{insight.detail}</p></div>
+        <span className="whitespace-nowrap text-sm font-medium tabular-nums text-bad">{formatCents(insight.cents)}</span>
+      </li>)}</ul>
+    </div>}
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Fura</th><th className="px-3 py-3 text-right font-medium">Km</th><th className="px-3 py-3 text-right font-medium">l/100</th><th className="px-3 py-3 text-right font-medium">€/l</th><th className="px-3 py-3 text-right font-medium">Kuras</th><th className="px-5 py-3 text-right font-medium">AdBlue</th></tr></thead>
+          <tbody className="divide-y divide-line">{trucks.map((row) => <tr key={row.plate}>
+            <td className="px-5 py-3 font-mono">{row.plate}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{Math.round(row.km).toLocaleString("lt-LT")}</td>
+            <td className="px-3 py-3 text-right font-medium tabular-nums">{row.litresPer100Km === null || row.km < MIN_KM_FOR_RATIO ? "—" : row.litresPer100Km.toFixed(1)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{row.fuelPricePerL === null ? "—" : row.fuelPricePerL.toFixed(3)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{formatCents(row.dieselCents)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-muted">{formatCents(row.adblueCents)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      {countries.length > 0 && <div className="rounded-lg border border-line bg-surface">
+        <h3 className="border-b border-line px-5 py-3 font-semibold">Kuro kaina pagal šalį</h3>
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Šalis</th><th className="px-3 py-3 text-right font-medium">Litrai</th><th className="px-5 py-3 text-right font-medium">€/l</th></tr></thead>
+          <tbody className="divide-y divide-line">{countries.map((row) => <tr key={row.key}>
+            <td className="px-5 py-3">{row.key}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{Math.round(row.litres).toLocaleString("lt-LT")}</td>
+            <td className="px-5 py-3 text-right font-medium tabular-nums">{row.pricePerL === null ? "—" : row.pricePerL.toFixed(3)}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+    </div>
+    <p className="text-xs text-muted">Faktas iš vilkikų skaitiklių ir pirkimų, visos įmonės – užsakovo filtras čia netaikomas. Telematika laiko tik ~3 paskutinius mėnesius. Daugiau – <Link href="/telematika" className="underline">Analizė</Link>.</p>
   </div>;
 }
 
@@ -511,6 +582,9 @@ export function Dashboard() {
         <EmptyKm trips={trips} periodLabel={periodLabel} />
       </div>
       <CountryRoads trips={trips} periodLabel={periodLabel} />
+    </div>}
+    {tab === "fuel" && <div role="tabpanel" aria-label="Kuras">
+      <FuelTab key={`${span.from}/${span.to}`} range={span} plate={filters.plate} />
     </div>}
     <ProfitTable
       title="Furų pelningumas"

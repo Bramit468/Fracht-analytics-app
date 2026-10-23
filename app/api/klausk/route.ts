@@ -1,19 +1,18 @@
 import OpenAI from "openai";
 
 import { parseChatTurns } from "@/lib/assistant-chat";
+import { assistantContext } from "@/lib/assistant-data";
 import { answerQuestion, DEFAULT_ASSISTANT_MODEL } from "@/lib/assistant-run";
-import { listCustomers } from "@/lib/customers";
 import { todayInVilnius } from "@/lib/local-date";
 import { openAiKey } from "@/lib/openai-key";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { fetchTripSummaries } from "@/lib/trips";
-import type { Truck } from "@/types/truck";
 
 /**
  * „Klausk Bramit“ pokalbis (#208).
  *
  * Raktas lieka serveryje; modelis duomenų bazės nemato – jis kviečia
  * įrankius, o šie skaito duomenis prisijungusio vartotojo teisėmis (RLS).
+ * Įrankiai tik skaito: botas nieko nekeičia ir netrina.
  */
 
 export const maxDuration = 60;
@@ -42,18 +41,8 @@ export async function POST(request: Request) {
   if (!claims?.claims) return failure("Prisijunkite iš naujo.", 401);
 
   const today = todayInVilnius();
-  const loadData = async () => {
-    const [trips, customers, trucks] = await Promise.all([
-      fetchTripSummaries(supabase),
-      listCustomers(supabase),
-      supabase.from("trucks").select("*").order("plate").overrideTypes<Truck[], { merge: false }>(),
-    ]);
-    if (trucks.error) throw trucks.error;
-    return { trips, customers: customers.customers, trucks: trucks.data ?? [], today };
-  };
-
   try {
-    const result = await answerQuestion(new OpenAI({ apiKey }), turns, loadData, {
+    const result = await answerQuestion(new OpenAI({ apiKey }), turns, assistantContext(supabase, today), {
       model: process.env.OPENAI_CHAT_MODEL?.trim() || DEFAULT_ASSISTANT_MODEL,
       today,
     });

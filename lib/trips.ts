@@ -153,6 +153,25 @@ export async function getTripWithLegs(id: string): Promise<TripWithLegs> {
   return { ...(tripResult.data as Trip), legs: (legsResult.data ?? []) as TripCountryLeg[] };
 }
 
+/**
+ * PostgREST grąžina ne daugiau kaip 1000 eilučių ir apie tai nepraneša, todėl
+ * be puslapiavimo suvestinė tyliai prarastų reisus ir atkarpas (AUDIT P1).
+ * Užklausa turi būti rūšiuojama unikaliai, kitaip puslapiai persidengtų.
+ */
+export async function fetchAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < PAGE_SIZE) return rows;
+  }
+}
+
+const PAGE_SIZE = 1000;
+
 export async function listTrips(): Promise<TripSummary[]> {
   return fetchTripSummaries(getSupabaseClient());
 }
@@ -162,14 +181,16 @@ export async function listTrips(): Promise<TripSummary[]> {
  * asistentas matytų tik prisijungusio vartotojo įmonės reisus (RLS).
  */
 export async function fetchTripSummaries(client: SupabaseClient): Promise<TripSummary[]> {
-  const [tripsResult, legsResult, trucksResult, tariffsResult] = await Promise.all([
-    client.from("trips").select("*").order("trip_date", { ascending: false }).order("created_at", { ascending: false }),
-    client.from("trip_country_legs").select("*"),
+  const [trips, legs, trucksResult, tariffsResult] = await Promise.all([
+    fetchAllRows<Trip>((from, to) => client.from("trips").select("*")
+      .order("trip_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
+      .range(from, to)),
+    fetchAllRows<TripCountryLeg>((from, to) => client.from("trip_country_legs").select("*").order("id").range(from, to)),
     client.from("trucks").select("*"),
     client.from("country_tariffs").select("country,rate,rate_type"),
   ]);
 
-  const error = tripsResult.error ?? legsResult.error ?? trucksResult.error ?? tariffsResult.error;
+  const error = trucksResult.error ?? tariffsResult.error;
   if (error) throw error;
 
   const tariffs: CountryTariff[] = (tariffsResult.data ?? []).map((tariff) => ({
@@ -179,8 +200,8 @@ export async function fetchTripSummaries(client: SupabaseClient): Promise<TripSu
   }));
 
   return buildTripSummaries(
-    (tripsResult.data ?? []) as Trip[],
-    (legsResult.data ?? []) as TripCountryLeg[],
+    trips,
+    legs,
     (trucksResult.data ?? []) as Truck[],
     tariffs,
   );

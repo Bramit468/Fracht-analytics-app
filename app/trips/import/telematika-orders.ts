@@ -11,6 +11,7 @@ import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
 import { buildOrderTrips, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
+import { fetchAllRows } from "@/lib/trips";
 import { truckRowToCalc } from "@/lib/truck";
 import type { Truck } from "@/types/truck";
 
@@ -51,7 +52,10 @@ export async function previewTelematikaOrders(): Promise<OrderImportResult> {
   const [trucksResult, tariffsResult, existingResult] = await Promise.all([
     supabase.from("trucks").select("*"),
     supabase.from("country_tariffs").select("country,rate,rate_type"),
-    supabase.from("trips").select("id,telematika_order_id").not("telematika_order_id", "is", null),
+    // Daugiau nei 1000 importuotų reisų be puslapiavimo virstų dublikatais.
+    fetchAllRows((from, to) => supabase.from("trips").select("id,telematika_order_id")
+      .not("telematika_order_id", "is", null).order("id").range(from, to))
+      .then((data) => ({ data, error: null }), (error: { code?: string }) => ({ data: null, error })),
   ]);
   if (existingResult.error?.code === "42703" || existingResult.error?.code === "PGRST204") {
     return { ok: false, message: "Importui reikia migracijos 0019 – paleiskite ją Supabase SQL redaktoriuje." };

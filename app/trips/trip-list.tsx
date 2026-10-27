@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Copy, Download, Pencil, Search, Trash2 } from "lucide-react";
-import { buttonSecondary, input } from "../ui";
+import { buttonSecondary, input, SkippedTripsNotice } from "../ui";
 import { formatCents } from "../../lib/money";
 import {
   EMPTY_FILTER,
@@ -17,7 +17,7 @@ import {
 import { PERIODS, type PeriodKey } from "../../lib/trip-period";
 import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
-import { deleteTrip, listTrips, updateTripPayment, type TripSummary } from "../../lib/trips";
+import { deleteTrip, listTrips, updateTripPayment, type SkippedTrip, type TripSummary } from "../../lib/trips";
 import { fetchMinMarginPercent } from "../../lib/company-settings";
 import { checkMargin, formatMinMargin } from "../../lib/margin-guard";
 import { getSupabaseClient } from "../../lib/supabase";
@@ -96,6 +96,7 @@ function downloadTrips(trips: TripSummary[], today: string) {
 
 export function TripList() {
   const [trips, setTrips] = useState<TripSummary[]>([]);
+  const [skipped, setSkipped] = useState<SkippedTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -128,14 +129,16 @@ export function TripList() {
 
     async function loadTrips() {
       try {
+        const skippedTrips: SkippedTrip[] = [];
         const [loadedTrips, riba, uzsakovai] = await Promise.all([
-          listTrips(),
+          listTrips(skippedTrips),
           fetchMinMarginPercent(getSupabaseClient()),
           // Užsakovų klaida neturi paslėpti reisų sąrašo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [], available: false })),
         ]);
         if (!cancelled) {
           setTrips(loadedTrips);
+          setSkipped(skippedTrips);
           setMinMargin(riba);
           setCustomers(uzsakovai.customers);
         }
@@ -164,9 +167,12 @@ export function TripList() {
   }
 
   if (!trips.length) {
-    return <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
-      Reisų dar nėra. Sukurkite pirmą – čia matysite jo pelną.
-    </p>;
+    return <div className="space-y-4">
+      <SkippedTripsNotice skipped={skipped} />
+      <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
+        Reisų dar nėra. Sukurkite pirmą – čia matysite jo pelną.
+      </p>
+    </div>;
   }
 
   const shown = sortTrips(
@@ -179,6 +185,7 @@ export function TripList() {
   const payments = trips.some((trip) => trip.invoicedOn !== undefined);
 
   return <div className="space-y-4">
+    <SkippedTripsNotice skipped={skipped} />
     <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
 
     {shown.length === 0 ? <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">

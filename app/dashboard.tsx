@@ -26,7 +26,8 @@ import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod, compareWithRange } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
 import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, type PeriodRange } from "../lib/trip-period";
-import { listTrips, type TripSummary } from "../lib/trips";
+import { listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
+import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
 import { isCovered, planVsActual, tripSpan, type CostPair } from "../lib/plan-actual";
@@ -629,6 +630,7 @@ function todayIso(): string {
 
 export function Dashboard() {
   const [allTrips, setAllTrips] = useState<TripSummary[]>([]);
+  const [skipped, setSkipped] = useState<SkippedTrip[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filters, setFilters] = useState<Filters>({ period: "all", from: "", to: "", customerId: "", plate: "" });
   const [loading, setLoading] = useState(true);
@@ -640,13 +642,15 @@ export function Dashboard() {
     let cancelled = false;
     async function loadDashboard() {
       try {
+        const skippedTrips: SkippedTrip[] = [];
         const [loadedTrips, loadedCustomers] = await Promise.all([
-          listTrips(),
+          listTrips(skippedTrips),
           // Užsakovų filtras – patogumas: be lentelės (0014) suvestinė veikia ir be jo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [] as Customer[], available: false })),
         ]);
         if (cancelled) return;
         setAllTrips(loadedTrips);
+        setSkipped(skippedTrips);
         setCustomers(loadedCustomers.customers);
       } catch { if (!cancelled) setError("Nepavyko užkrauti suvestinės. Patikrinkite ryšį ir bandykite dar kartą."); }
       finally { if (!cancelled) setLoading(false); }
@@ -659,7 +663,7 @@ export function Dashboard() {
 
   if (error) return <div className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4"><p role="alert" className="text-sm text-bad">{error}</p><button type="button" className="mt-2 text-sm font-medium text-bad underline" onClick={() => { setLoading(true); setError(""); setAttempt((value) => value + 1); }}>Bandyti dar kartą</button></div>;
 
-  if (!allTrips.length) return <div className="rounded-lg border border-line bg-surface px-6 py-12 text-center"><h3 className="font-semibold">Reisų dar nėra</h3><p className="mt-1 text-sm text-muted">Sukurkite pirmą reisą arba importuokite.</p><div className="mt-5 flex justify-center gap-3"><Link href="/trips/new" className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink">Naujas reisas</Link><Link href="/trips/import" className="rounded-md border border-line-strong px-3.5 py-2 text-sm font-medium hover:bg-page">Importas</Link></div></div>;
+  if (!allTrips.length) return <div className="space-y-5"><SkippedTripsNotice skipped={skipped} /><div className="rounded-lg border border-line bg-surface px-6 py-12 text-center"><h3 className="font-semibold">Reisų dar nėra</h3><p className="mt-1 text-sm text-muted">Sukurkite pirmą reisą arba importuokite.</p><div className="mt-5 flex justify-center gap-3"><Link href="/trips/new" className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink">Naujas reisas</Link><Link href="/trips/import" className="rounded-md border border-line-strong px-3.5 py-2 text-sm font-medium hover:bg-page">Importas</Link></div></div></div>;
 
   const today = todayIso();
   const plates = [...new Set(allTrips.map((trip) => trip.truckPlate))].sort();
@@ -705,6 +709,7 @@ export function Dashboard() {
   };
 
   return <div className="space-y-5">
+    <SkippedTripsNotice skipped={skipped} />
     {filterBar}
 
     {/* Fura kainuoja paromis – todėl paros rodikliai pirmi (#179). */}

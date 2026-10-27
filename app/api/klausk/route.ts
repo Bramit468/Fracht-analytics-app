@@ -1,10 +1,11 @@
 import OpenAI from "openai";
 
-import { parseChatTurns } from "@/lib/assistant-chat";
+import { parseChatTurns, type ChatTurn } from "@/lib/assistant-chat";
 import { assistantContext } from "@/lib/assistant-data";
 import { answerQuestion, DEFAULT_ASSISTANT_MODEL } from "@/lib/assistant-run";
 import { todayInVilnius } from "@/lib/local-date";
 import { openAiKey } from "@/lib/openai-key";
+import { assistantLimiter, rateLimitHeaders, rateLimitMessage, withRateLimitHeaders } from "@/lib/rate-limit";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 /**
@@ -40,6 +41,13 @@ export async function POST(request: Request) {
   const { data: claims } = await supabase.auth.getClaims();
   if (!claims?.claims) return failure("Prisijunkite iš naujo.", 401);
 
+  // Kiekvienas klausimas – mokamas OpenAI kvietimas (dažnai keli).
+  const limit = assistantLimiter(claims.claims.sub);
+  if (!limit.ok) return Response.json({ error: rateLimitMessage(limit) }, { status: 429, headers: rateLimitHeaders(limit) });
+  return withRateLimitHeaders(await ask(apiKey, turns, supabase), limit);
+}
+
+async function ask(apiKey: string, turns: ChatTurn[], supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>): Promise<Response> {
   const today = todayInVilnius();
   try {
     const result = await answerQuestion(new OpenAI({ apiKey }), turns, assistantContext(supabase, today), {

@@ -54,6 +54,12 @@ Next-specific code.
   through server actions or route handlers.
 - PTV is feature-flagged by `PTV_API_KEY` presence, so the app degrades cleanly
   without it.
+- API rate limits are per user ID (not IP: the office shares one) in an
+  in-memory sliding window (`lib/rate-limit.ts`), approximate per Vercel
+  instance: `/api/klausk` 10/min + 100/day, `/api/route-lookup` and
+  `/api/address-search` 60/min. Over the limit: 429 + `Retry-After`, no
+  auto-retry. Map tiles, login (Supabase Auth limits it) and server actions are
+  not limited.
 - The archive stores raw provider rows (classification changes, summaries can't
   be recomputed) and is button-triggered; cron would need a `service_role` key
   that bypasses RLS.

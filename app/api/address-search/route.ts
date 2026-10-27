@@ -1,5 +1,6 @@
 import { MIN_ADDRESS_QUERY, PTV_SUGGESTIONS_URL, parseSuggestions } from "@/lib/address-suggest";
 import { normalizeAddressQuery, parsePostalQuery } from "@/lib/postal-code";
+import { addressSearchLimiter, rateLimitHeaders, rateLimitMessage, withRateLimitHeaders } from "@/lib/rate-limit";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 /**
@@ -21,6 +22,12 @@ export async function GET(request: Request) {
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return Response.json({ error: "Prisijunkite iš naujo." }, { status: 401 });
 
+  const limit = addressSearchLimiter(data.claims.sub);
+  if (!limit.ok) return Response.json({ error: rateLimitMessage(limit) }, { status: 429, headers: rateLimitHeaders(limit) });
+  return withRateLimitHeaders(await suggest(query, request.signal), limit);
+}
+
+async function suggest(query: string, signal: AbortSignal): Promise<Response> {
   const key = process.env.PTV_API_KEY?.trim();
   if (!key) return Response.json({ error: "PTV paslauga nesukonfigūruota." }, { status: 503 });
 
@@ -29,7 +36,7 @@ export async function GET(request: Request) {
     const upstream = await fetch(url, {
       headers: { apiKey: key },
       cache: "no-store",
-      signal: request.signal,
+      signal,
     });
     if (!upstream.ok) {
       console.error("PTV adresų pasiūlymų klaida", upstream.status);
@@ -38,7 +45,7 @@ export async function GET(request: Request) {
     return Response.json(parseSuggestions(await upstream.json()));
   } catch (cause) {
     // Atšaukimas yra įprastas reikalas rašant, o ne gedimas.
-    if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (signal.aborted) return new Response(null, { status: 499 });
     console.error("PTV adresų pasiūlymų ryšio klaida", cause);
     return Response.json({ error: "Nepavyko gauti adresų." }, { status: 502 });
   }

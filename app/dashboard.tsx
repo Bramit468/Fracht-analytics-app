@@ -9,6 +9,8 @@ import { costStructure } from "../lib/cost-structure";
 import { getSupabaseClient } from "../lib/supabase";
 import { formatCents } from "../lib/money";
 import { summarizeCountryRoads } from "../lib/country-roads";
+import { periodValue, WEEKLY_METRICS, weeklyTotals, type WeeklyMetric, type WeekTotals } from "../lib/weekly";
+import { addDays } from "../lib/trip-progress";
 import { emptyKmByTruck, summarizeEmptyKm } from "../lib/empty-km";
 import { monthlyStats, peakProfitCents } from "../lib/monthly";
 import {
@@ -161,12 +163,69 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }] as const;
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }, { key: "weekly", label: "Savaitės" }] as const;
 type Tab = (typeof TABS)[number]["key"];
 
 function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
   return <div role="tablist" aria-label="Suvestinės skiltys" className="flex gap-1 overflow-x-auto border-b border-line">
     {TABS.map((tab) => <button key={tab.key} type="button" role="tab" aria-selected={tab.key === value} onClick={() => onChange(tab.key)} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm transition-colors ${tab.key === value ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink"}`}>{tab.label}</button>)}
+  </div>;
+}
+
+const WEEK_COUNT = 26;
+
+function formatMetric(metric: WeeklyMetric, value: number | null): string {
+  return value === null ? "—" : `${value.toLocaleString("lt-LT", { minimumFractionDigits: metric.digits, maximumFractionDigits: metric.digits })} ${metric.unit}`;
+}
+
+function WeeklyChart({ metric, weeks, lastYear }: { metric: WeeklyMetric; weeks: WeekTotals[]; lastYear: WeekTotals[] | null }) {
+  const values = weeks.map(metric.value);
+  const before = lastYear?.map(metric.value) ?? [];
+  const peak = Math.max(...[...values, ...before].map((value) => Math.abs(value ?? 0)));
+  const height = (value: number | null) => `${peak > 0 ? (Math.abs(value ?? 0) / peak) * 100 : 0}%`;
+  const average = periodValue(metric, weeks);
+  const latest = [...values].reverse().find((value) => value !== null) ?? null;
+  // 2 % – kad kelių centų skirtumas neatrodytų kaip problema.
+  const gap = latest !== null && average ? (latest - average) / Math.abs(average) : 0;
+  const worse = metric.higherIsBetter ? gap < -0.02 : gap > 0.02;
+
+  return <div className="rounded-lg border border-line bg-surface p-4">
+    <h3 className="text-sm font-medium">{metric.label}</h3>
+    <p className="mt-1 text-lg font-semibold tabular-nums">{formatMetric(metric, average)}</p>
+    <p className={`text-xs ${worse ? "text-bad" : "text-muted"}`}>Paskutinė savaitė: {formatMetric(metric, latest)}</p>
+    <div className="mt-3 flex h-24 items-end gap-px border-b border-line">
+      {weeks.map((week, index) => <div key={week.week} title={`${week.week}: ${formatMetric(metric, values[index])}${lastYear ? `, pernai ${formatMetric(metric, before[index])}` : ""} · ${week.tripCount} reis.`} className="flex h-full min-w-0 flex-1 items-end justify-center gap-px hover:bg-raised/60">
+        <div className={`w-full rounded-t-sm ${(values[index] ?? 0) < 0 ? "bg-bad/70" : "bg-brand"}`} style={{ height: height(values[index]) }} />
+        {lastYear && <div className="w-full rounded-t-sm bg-ink/15" style={{ height: height(before[index]) }} />}
+      </div>)}
+    </div>
+    <div className="mt-1 flex justify-between text-xs text-muted"><span>{weeks[0].week.slice(5)}</span><span>{weeks[weeks.length - 1].week.slice(5)}</span></div>
+  </div>;
+}
+
+/**
+ * Eiga pagal savaites. Kaip ir mėnesių grafikas, laikotarpio filtro nepaiso:
+ * tai kryptis, ne pjūvis. Pernai rodoma tik tada, kai pernai buvo reisų.
+ */
+function WeeklyTab({ trips, today }: { trips: TripSummary[]; today: string }) {
+  // Tik pilnos savaitės: einamoji ką tik prasidėjo, o keliai atsiranda vėliau.
+  const lastFull = addDays(today, -7);
+  const weeks = weeklyTotals(trips, lastFull, WEEK_COUNT);
+  // 52 savaitės atgal, ne kalendorinė data: taip sutampa savaitės dienos.
+  const before = weeklyTotals(trips, addDays(lastFull, -364), WEEK_COUNT);
+  // Tuščios pradžios savaitės (duomenys dar neprasidėjo) tik suspaustų grafiką.
+  const first = weeks.findIndex((week, index) => week.tripCount > 0 || before[index].tripCount > 0);
+  const lastYear = before.some((week) => week.tripCount > 0) ? before.slice(first) : null;
+  if (first < 0) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Per paskutines {WEEK_COUNT} savaites reisų nėra.</p>;
+
+  return <div className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {WEEKLY_METRICS.map((metric) => <WeeklyChart key={metric.key} metric={metric} weeks={weeks.slice(first)} lastYear={lastYear} />)}
+    </div>
+    <p className="text-xs text-muted">
+      Iki {WEEK_COUNT} paskutinių pilnų savaičių, nuo pirmadienio; reisas priskiriamas savaitei, kurią prasideda. Didelis skaičius – viso laikotarpio
+      reikšmė, raudonai – kai paskutinė savaitė už ją blogesnė daugiau nei 2 %. Užvedus pelę – savaitės reikšmė ir reisų skaičius.{lastYear ? " Pilki stulpeliai – tos pačios savaitės pernai." : ""} Laikotarpio filtras čia netaikomas.
+    </p>
   </div>;
 }
 
@@ -695,6 +754,9 @@ export function Dashboard() {
     </div>}
     {tab === "variance" && <div role="tabpanel" aria-label="Planas ir faktas">
       <PlanActualTab trips={trips} />
+    </div>}
+    {tab === "weekly" && <div role="tabpanel" aria-label="Savaitės">
+      <WeeklyTab trips={realistic} today={today} />
     </div>}
     <DetailsTable trips={trips} customers={usedCustomers} fleetPerDayCents={stats.profitPerDayCents} periodLabel={periodLabel} />
   </div>;

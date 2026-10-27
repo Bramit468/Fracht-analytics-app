@@ -31,7 +31,7 @@ import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
 import { isCovered, planVsActual, tripSpan, type CostPair } from "../lib/plan-actual";
-import { loadFuelReport, loadPlanActuals, type FuelReport, type PlanActualReport } from "./dashboard-fuel";
+import { loadFuelReport, loadPlanActuals, loadTollsByCountry, type FuelReport, type PlanActualReport, type TollReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(1)}%`;
@@ -506,14 +506,51 @@ function MonthlyTrend({ trips, today }: { trips: TripSummary[]; today: string })
  * „Nemokami" atkarpoje, todėl lentelė rodytų nemokamus kelius ten, kur mokėta.
  * Su PTV užpildyti reisai taip pat – tada lentelėje nėra ką rodyti.
  */
+/**
+ * Sumokėti keliai pagal šalį iš Telematikos sąskaitų. Kraunama tik atidarius
+ * skirtuką; komponentas raktuojamas laikotarpiu ir fura.
+ */
+function TollCountries({ range, plate }: { range: PeriodRange; plate: string }) {
+  const [report, setReport] = useState<TollReport | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadTollsByCountry(range.from, range.to, plate)
+      .then((result) => { if (!cancelled) setReport(result); })
+      .catch(() => { if (!cancelled) setReport({ ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." }); });
+    return () => { cancelled = true; };
+  }, [range.from, range.to, plate]);
+
+  if (!report) return <p role="status" className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Kraunami keliai iš Telematikos…</p>;
+  if (!report.ok) return <p role="alert" className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4 text-sm text-bad">{report.message}</p>;
+  if (!report.rows.length) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Šiuo laikotarpiu Telematika kelių mokesčių neturi. Ji laiko tik paskutinius ~3 mėnesius.</p>;
+
+  const total = report.rows.reduce((sum, row) => sum + row.costCents, 0);
+  return <div className="rounded-lg border border-line bg-surface">
+    <div className="border-b border-line px-5 py-3"><h3 className="font-semibold">Sumokėti keliai pagal šalį</h3><p className="text-sm text-muted">Telematikos sąskaitos · {range.from} – {range.to}{plate ? ` · ${plate}` : ""}</p></div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Šalis</th><th className="px-3 py-3 text-right font-medium">Mokėjimai</th><th className="px-3 py-3 text-right font-medium">Suma</th><th className="px-5 py-3 text-right font-medium">Dalis</th></tr></thead>
+        <tbody className="divide-y divide-line">
+          {report.rows.map((row) => <tr key={row.country ?? ""}>
+            <td className="px-5 py-3">{row.country ?? "Nenurodyta"}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-muted">{row.payments}</td>
+            <td className="px-3 py-3 text-right font-medium tabular-nums">{formatCents(row.costCents)}</td>
+            <td className="px-5 py-3 text-right tabular-nums text-muted">{formatPercent(row.sharePercent)}</td>
+          </tr>)}
+          <tr className="font-medium"><td className="px-5 py-3">Iš viso</td><td className="px-3 py-3 text-right tabular-nums text-muted">{report.rows.reduce((sum, row) => sum + row.payments, 0)}</td><td className="px-3 py-3 text-right tabular-nums">{formatCents(total)}</td><td className="px-5 py-3" /></tr>
+        </tbody>
+      </table>
+    </div>
+    <p className="border-t border-line px-5 py-3 text-xs text-muted">Pagal sąskaitos datą, ne važiavimo: dalis mokesčių nurašoma po kelių dienų. €/km nėra, nes Telematika km pagal šalį neduoda.</p>
+  </div>;
+}
+
 function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
   const planned = trips.filter((trip) => !trip.telematikaOrderId);
   const imported = trips.length - planned.length;
   const rows = summarizeCountryRoads(planned).filter((row) => row.km > 0);
-  if (rows.length === 0 && imported === 0) return null;
-  if (rows.every((row) => row.costCents === 0)) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">
-    Keliai pagal šalį nerodomi: importuotų ir su PTV užpildytų reisų keliai įrašyti viena tikra suma, be šalių.
-  </p>;
+  // Be įkainių šalių lentelė tik nuliai; sumokėtus kelius pagal šalį rodo TollCountries.
+  if (rows.every((row) => row.costCents === 0)) return null;
 
   return <div className="rounded-lg border border-line bg-surface">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3"><div><h3 className="font-semibold">Keliai pagal šalį</h3><p className="text-sm text-muted">{periodLabel}</p></div><ExportButton onExport={() => downloadCsv(reportFileName("salys", todayForFileName()), countriesToCsv(rows))} /></div>
@@ -766,6 +803,7 @@ export function Dashboard() {
         <CostStructure trips={trips} periodLabel={periodLabel} />
         <EmptyKm trips={trips} periodLabel={periodLabel} />
       </div>
+      <TollCountries key={`${span.from}/${span.to}/${filters.plate}`} range={span} plate={filters.plate} />
       <CountryRoads trips={trips} periodLabel={periodLabel} />
     </div>}
     {tab === "fuel" && <div role="tabpanel" aria-label="Kuras">

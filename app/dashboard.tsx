@@ -441,10 +441,19 @@ function MonthlyTrend({ trips, today }: { trips: TripSummary[]; today: string })
  * Atsako, per kurią šalį važiuojame daugiausia ir kiek ji kainuoja. Nuo to
  * priklauso, ar verta ieškoti aplinkkelio – PTV variantų palyginimas tokius
  * randa, bet tik žinant, kurio reikia ieškoti.
+ *
+ * Importuoti reisai neįeina: jų keliai – tikros sąskaitos be šalių, o visi km
+ * „Nemokami" atkarpoje, todėl lentelė rodytų nemokamus kelius ten, kur mokėta.
+ * Su PTV užpildyti reisai taip pat – tada lentelėje nėra ką rodyti.
  */
 function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
-  const rows = summarizeCountryRoads(trips).filter((row) => row.km > 0);
-  if (rows.length === 0) return null;
+  const planned = trips.filter((trip) => !trip.telematikaOrderId);
+  const imported = trips.length - planned.length;
+  const rows = summarizeCountryRoads(planned).filter((row) => row.km > 0);
+  if (rows.length === 0 && imported === 0) return null;
+  if (rows.every((row) => row.costCents === 0)) return <p className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">
+    Keliai pagal šalį nerodomi: importuotų ir su PTV užpildytų reisų keliai įrašyti viena tikra suma, be šalių.
+  </p>;
 
   return <div className="rounded-lg border border-line bg-surface">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3"><div><h3 className="font-semibold">Keliai pagal šalį</h3><p className="text-sm text-muted">{periodLabel}</p></div><ExportButton onExport={() => downloadCsv(reportFileName("salys", todayForFileName()), countriesToCsv(rows))} /></div>
@@ -463,7 +472,10 @@ function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabe
         </tbody>
       </table>
     </div>
-    <p className="border-t border-line px-5 py-3 text-xs text-muted">Be tiltų, keltų, tunelių ir parkingo.</p>
+    <p className="border-t border-line px-5 py-3 text-xs text-muted">
+      Be tiltų, keltų, tunelių ir parkingo.
+      {imported > 0 && ` Neįtraukta ${imported} importuot. reis.: jų keliai – tikros sąskaitos be šalių.`}
+    </p>
   </div>;
 }
 

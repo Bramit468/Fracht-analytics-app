@@ -120,9 +120,13 @@ export interface PlanActualRow {
   actual: CostPair;
   /** Faktas minus planas. Teigiamas – brangiau, nei skaičiuota. */
   diffCents: number;
+  /** Pagal reisų normas; `null`, kai reisai litrų neturi. */
+  plannedLitresPer100Km: number | null;
   /** `null`, kai kuro daviklio duomenų nėra. */
   actualLitresPer100Km: number | null;
 }
+
+type Accumulator = PlanActualRow & { fuelL: number; fuelKm: number; plannedFuelL: number; plannedFuelKm: number };
 
 const costSum = (pair: CostPair) => pair.fuelCents + pair.adblueCents + pair.roadCents;
 
@@ -133,7 +137,7 @@ const costSum = (pair: CostPair) => pair.fuelCents + pair.adblueCents + pair.roa
  */
 export function planVsActual(trips: TripSummary[], actuals: SpanActuals[]): { rows: PlanActualRow[]; total: PlanActualRow; missing: string[] } {
   const actualByKey = new Map(actuals.map((row) => [plateKey(row.plate), row]));
-  const byKey = new Map<string, PlanActualRow & { fuelL: number; fuelKm: number }>();
+  const byKey = new Map<string, Accumulator>();
   const missing = new Set<string>();
 
   for (const trip of trips) {
@@ -150,28 +154,39 @@ export function planVsActual(trips: TripSummary[], actuals: SpanActuals[]): { ro
         plate: trip.truckPlate, tripCount: 0, plannedKm: 0, actualKm: actual.km,
         planned: { fuelCents: 0, adblueCents: 0, roadCents: 0 },
         actual: { fuelCents: actual.fuelCents, adblueCents: actual.adblueCents, roadCents: actual.roadCents },
-        diffCents: 0, actualLitresPer100Km: null, fuelL: actual.fuelL, fuelKm: actual.fuelKm,
+        diffCents: 0, plannedLitresPer100Km: null, actualLitresPer100Km: null,
+        fuelL: actual.fuelL, fuelKm: actual.fuelKm, plannedFuelL: 0, plannedFuelKm: 0,
       };
       byKey.set(key, current);
     }
     current.tripCount += 1;
     current.plannedKm += trip.paidKm + trip.emptyKm;
+    if (trip.fuelLitres !== undefined) {
+      current.plannedFuelL += trip.fuelLitres;
+      current.plannedFuelKm += trip.paidKm + trip.emptyKm;
+    }
     current.planned.fuelCents += trip.costs.fuel;
     current.planned.adblueCents += trip.costs.adblue;
     current.planned.roadCents += trip.costs.roads;
   }
 
-  const finish = (row: PlanActualRow & { fuelL: number; fuelKm: number }): PlanActualRow => {
-    const { fuelL, fuelKm, ...rest } = row;
-    return { ...rest, diffCents: costSum(row.actual) - costSum(row.planned), actualLitresPer100Km: fuelKm > 0 ? (fuelL / fuelKm) * 100 : null };
+  const finish = (row: Accumulator): PlanActualRow => {
+    const { fuelL, fuelKm, plannedFuelL, plannedFuelKm, ...rest } = row;
+    return {
+      ...rest,
+      diffCents: costSum(row.actual) - costSum(row.planned),
+      plannedLitresPer100Km: plannedFuelKm > 0 ? (plannedFuelL / plannedFuelKm) * 100 : null,
+      actualLitresPer100Km: fuelKm > 0 ? (fuelL / fuelKm) * 100 : null,
+    };
   };
   const rows = [...byKey.values()];
-  const add = (pick: (row: PlanActualRow & { fuelL: number; fuelKm: number }) => number) => rows.reduce((sum, row) => sum + pick(row), 0);
+  const add = (pick: (row: Accumulator) => number) => rows.reduce((sum, row) => sum + pick(row), 0);
   const total = finish({
     plate: "Iš viso", tripCount: add((row) => row.tripCount), plannedKm: add((row) => row.plannedKm), actualKm: add((row) => row.actualKm),
     planned: { fuelCents: add((row) => row.planned.fuelCents), adblueCents: add((row) => row.planned.adblueCents), roadCents: add((row) => row.planned.roadCents) },
     actual: { fuelCents: add((row) => row.actual.fuelCents), adblueCents: add((row) => row.actual.adblueCents), roadCents: add((row) => row.actual.roadCents) },
-    diffCents: 0, actualLitresPer100Km: null, fuelL: add((row) => row.fuelL), fuelKm: add((row) => row.fuelKm),
+    diffCents: 0, plannedLitresPer100Km: null, actualLitresPer100Km: null, fuelL: add((row) => row.fuelL), fuelKm: add((row) => row.fuelKm),
+    plannedFuelL: add((row) => row.plannedFuelL), plannedFuelKm: add((row) => row.plannedFuelKm),
   });
 
   return {

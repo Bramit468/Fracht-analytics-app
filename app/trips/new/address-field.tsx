@@ -80,6 +80,12 @@ export function AddressField({
       const response = await fetch(`/api/address-search?q=${encodeURIComponent(text)}`, {
         signal: current.signal,
       });
+      if (response.status === 429) {
+        const body: { error?: string } = await response.json().catch(() => ({}));
+        setBusy(false);
+        setMessage(body.error ?? "Per daug užklausų. Palaukite minutę.");
+        return;
+      }
       if (!response.ok) throw new Error(String(response.status));
       const list = (await response.json()) as AddressSuggestion[];
 

@@ -22,6 +22,8 @@ export interface InviteState {
 
 /** Postgres klaidos kodas, kai pažeidžiamas `unique` apribojimas. */
 const UNIQUE_VIOLATION = "23505";
+/** RLS neleido įrašyti: kviesti gali tik savininkas (0020). */
+const RLS_VIOLATION = "42501";
 
 function readEmail(formData: FormData): string {
   const raw = formData.get("email");
@@ -76,6 +78,10 @@ export async function inviteMember(
 
   if (error?.code === UNIQUE_VIOLATION) {
     return describeDuplicate(supabase, parsed.email, typed);
+  }
+
+  if (error?.code === RLS_VIOLATION) {
+    return { status: "error", message: "Kviesti gali tik įmonės savininkas.", email: typed };
   }
 
   if (error) {
@@ -237,8 +243,9 @@ export async function cancelInvitation(
     return { status: "error", message: "Nepavyko atšaukti pakvietimo. Bandykite dar kartą." };
   }
 
+  // RLS neleidus ištrinti, klaidos nėra – tiesiog nepaliesta nė viena eilutė.
   if (data.length === 0) {
-    return { status: "error", message: "Pakvietimas nerastas. Galbūt jis jau priimtas." };
+    return { status: "error", message: "Pakvietimas nerastas (galbūt jau priimtas) arba atšaukti gali tik savininkas." };
   }
 
   refresh();

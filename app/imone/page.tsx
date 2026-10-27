@@ -138,7 +138,7 @@ export default async function ImonePage() {
 
         <SettingRow
           title="Pakviesti darbuotoją"
-          description="Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu el. paštu – tada jis iškart pateks į šią įmonę."
+          description="Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu el. paštu – tada jis iškart pateks į šią įmonę. Kviesti ir atšaukti kvietimus gali tik savininkas."
         >
           <InviteForm />
         </SettingRow>

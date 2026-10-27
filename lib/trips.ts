@@ -54,11 +54,19 @@ export interface TripSummary {
   costs?: CostBreakdown;
 }
 
+/** Reisas, kurio nepavyko suskaičiuoti – rodomas, kad nedingtų tyliai. */
+export interface SkippedTrip {
+  id: string;
+  tripNumber: string;
+  reason: string;
+}
+
 export function buildTripSummaries(
   trips: Trip[],
   legs: TripCountryLeg[],
   trucks: Truck[],
   tariffs: CountryTariff[],
+  skipped: SkippedTrip[] = [],
 ): TripSummary[] {
   const trucksById = new Map(trucks.map((truck) => [truck.id, truck]));
   const legsByTrip = new Map<string, TripCountryLeg[]>();
@@ -70,20 +78,27 @@ export function buildTripSummaries(
   }
 
   // Kaštai imami iš reiso kopijos, fura reikalinga tik numeriui. Reisas be
-  // furos praleidžiamas, o ne meta klaidą: viena ištrinta fura neturi
-  // nuversti viso sąrašo ir suvestinės.
+  // furos ar su ištrintu šalies įkainiu praleidžiamas ir įrašomas į `skipped`,
+  // o ne meta klaidą: vienas toks reisas neturi nuversti viso sąrašo ir suvestinės.
   return trips.flatMap((trip) => {
     const truck = trucksById.get(trip.truck_id);
     if (!truck) {
+      skipped.push({ id: trip.id, tripNumber: trip.trip_number, reason: "fura ištrinta" });
       return [];
     }
 
-    const result = calculateSavedTrip(
-      trip,
-      (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
-      trip.truck_costs,
-      tariffs,
-    );
+    let result: ReturnType<typeof calculateSavedTrip>;
+    try {
+      result = calculateSavedTrip(
+        trip,
+        (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
+        trip.truck_costs,
+        tariffs,
+      );
+    } catch (cause) {
+      skipped.push({ id: trip.id, tripNumber: trip.trip_number, reason: cause instanceof Error ? cause.message : "nepavyko suskaičiuoti" });
+      return [];
+    }
 
     return [{
       id: trip.id,
@@ -181,15 +196,15 @@ export async function fetchAllRows<T>(
 
 const PAGE_SIZE = 1000;
 
-export async function listTrips(): Promise<TripSummary[]> {
-  return fetchTripSummaries(getSupabaseClient());
+export async function listTrips(skipped?: SkippedTrip[]): Promise<TripSummary[]> {
+  return fetchTripSummaries(getSupabaseClient(), skipped);
 }
 
 /**
  * Tas pats sąrašas su bet kuriuo klientu – ir serverio, kad pokalbio
  * asistentas matytų tik prisijungusio vartotojo įmonės reisus (RLS).
  */
-export async function fetchTripSummaries(client: SupabaseClient): Promise<TripSummary[]> {
+export async function fetchTripSummaries(client: SupabaseClient, skipped?: SkippedTrip[]): Promise<TripSummary[]> {
   const [trips, legs, trucksResult, tariffsResult] = await Promise.all([
     fetchAllRows<Trip>((from, to) => client.from("trips").select("*")
       .order("trip_date", { ascending: false }).order("created_at", { ascending: false }).order("id")
@@ -213,5 +228,6 @@ export async function fetchTripSummaries(client: SupabaseClient): Promise<TripSu
     legs,
     (trucksResult.data ?? []) as Truck[],
     tariffs,
+    skipped,
   );
 }

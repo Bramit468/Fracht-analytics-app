@@ -1,4 +1,7 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+
+import type { SkippedTrip } from "../lib/trips";
 
 /**
  * Bendri puslapio elementai (#205).
@@ -59,4 +62,15 @@ export function SettingRow({ title, description, children }: {
       <div className="min-w-0">{children}</div>
     </section>
   );
+}
+
+/** Reisai, kurių nepavyko suskaičiuoti: jie neįtraukti, bet ir nedingsta tyliai. */
+export function SkippedTripsNotice({ skipped }: { skipped: SkippedTrip[] }) {
+  if (!skipped.length) return null;
+  return <details className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+    <summary className="cursor-pointer">Neįtraukta {skipped.length} reis.: jų nepavyko suskaičiuoti. Pataisykite juos.</summary>
+    <ul className="mt-2 space-y-1">{skipped.map((trip) => <li key={trip.id}>
+      <Link href={`/trips/${trip.id}/edit`} className="underline">{trip.tripNumber}</Link> – {trip.reason}
+    </li>)}</ul>
+  </details>;
 }

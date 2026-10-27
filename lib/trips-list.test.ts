@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buildTripSummaries } from "./trips";
+import { buildTripSummaries, type SkippedTrip } from "./trips";
 import { truckRowToCalc } from "./truck";
 import type { Trip, TripCountryLeg } from "../types/trip";
 import type { Truck } from "../types/truck";
@@ -91,5 +91,17 @@ it("skaičiuoja pagal reiso kaštų kopiją, o ne pagal dabartinę furą", () =>
 });
 
 it("praleidžia reisą, kurio fura ištrinta, o ne nuverčia sąrašo", () => {
-  expect(buildTripSummaries([trip], [leg], [], [])).toEqual([]);
+  const skipped: SkippedTrip[] = [];
+  expect(buildTripSummaries([trip], [leg], [], [], skipped)).toEqual([]);
+  expect(skipped).toEqual([{ id: "trip-1", tripNumber: "LT001", reason: "fura ištrinta" }]);
+});
+
+it("praleidžia reisą su ištrintu šalies įkainiu, kitus suskaičiuoja", () => {
+  const skipped: SkippedTrip[] = [];
+  const good = { ...trip, id: "trip-2", trip_number: "LT002" };
+  const result = buildTripSummaries([trip, good], [{ ...leg, country: "Atlantida" }, { ...leg, id: "leg-2", trip_id: "trip-2" }], [truck], [
+    { country: "Nemokami", rate: 0, rateType: "per_km" },
+  ], skipped);
+  expect(result.map((row) => row.id)).toEqual(["trip-2"]);
+  expect(skipped).toEqual([{ id: "trip-1", tripNumber: "LT001", reason: "Nežinoma šalis įkainių žinyne: Atlantida" }]);
 });

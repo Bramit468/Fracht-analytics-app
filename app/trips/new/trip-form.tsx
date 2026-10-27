@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
@@ -40,9 +41,12 @@ import {
   type RouteSchedule,
 } from "../../../lib/ptv-schedule";
 import { AddressField } from "./address-field";
-import { RouteMap, type MapStop } from "./route-map";
+import type { MapStop } from "./route-map";
 import { RouteClient } from "./route-client";
 import { StopsEditor } from "./stops-editor";
+
+// MapLibre (~800 kB) reikia tik turint maršrutą, todėl kraunamas tada, ne su forma.
+const RouteMap = dynamic(() => import("./route-map").then((module) => module.RouteMap), { ssr: false });
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
 import {
@@ -1136,7 +1140,7 @@ export function TripForm({
           <h3 className="mb-2 font-medium">Papildomi sustojimai</h3>
           {stopsEditor(false)}
         </div>}
-        {routeLookup && <div className="mt-3">
+        {routeLookup && marsrutoLinija.length >= 2 && <div className="mt-3">
           <RouteMap
             line={marsrutoLinija}
             stops={marsrutoSustojimai}

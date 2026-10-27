@@ -8,6 +8,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { actualsByTruck, parseCanDaily, parseSupplies, type ActualCosts } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
+import { tollsByCountry, type TollCountryRow } from "@/lib/toll-countries";
 
 export type FuelReport =
   | { ok: true; trucks: ActualCosts[]; byCountry: FuelPriceRow[]; insights: Insight[] }
@@ -39,6 +40,28 @@ export async function loadFuelReport(from: string, to: string): Promise<FuelRepo
     return { ok: true, trucks, byCountry, insights: costInsights(trucks, byCountry) };
   } catch (cause) {
     console.error("Suvestinės kuras", cause instanceof TelematicsFeedError ? cause.message : cause);
+    return { ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." };
+  }
+}
+
+export type TollReport = { ok: true; rows: TollCountryRow[] } | { ok: false; message: string };
+
+/** Kaštų skirtukas: sumokėti keliai pagal šalį iš Telematikos sąskaitų. */
+export async function loadTollsByCountry(from: string, to: string, plate: string): Promise<TollReport> {
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || from > to) return { ok: false, message: "Neteisingas laikotarpis." };
+  if (typeof plate !== "string" || plate.length > 32) return { ok: false, message: "Neteisinga fura." };
+
+  const supabase = await createServerSupabaseClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  if (!claims?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
+  if (!(await canUseTelematics(supabase))) return { ok: false, message: "Telematika šiai įmonei neprijungta." };
+
+  try {
+    const [suppliesRaw, rates] = await Promise.all([fetchTelematics("supplies"), fetchEcbRates()]);
+    const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
+    return { ok: true, rows: tollsByCountry(supplies, from, to, plate) };
+  } catch (cause) {
+    console.error("Suvestinės keliai", cause instanceof TelematicsFeedError ? cause.message : cause);
     return { ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." };
   }
 }

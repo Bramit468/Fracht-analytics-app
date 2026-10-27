@@ -243,6 +243,8 @@ function PlanActualCell({ planned, actual }: { planned: number; actual: number }
   return <td className="px-3 py-3 text-right tabular-nums"><span className="text-muted">{formatCents(planned)} → </span>{formatCents(actual)}</td>;
 }
 
+const litres = (value: number | null) => value === null ? "—" : value.toFixed(1);
+
 const costTotal = (pair: CostPair) => pair.fuelCents + pair.adblueCents + pair.roadCents;
 
 /**
@@ -280,7 +282,7 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
     </p>
     <div className="overflow-x-auto rounded-lg border border-line bg-surface">
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Km planas → faktas</th><th className="px-3 py-3 text-right font-medium">Kuras</th><th className="px-3 py-3 text-right font-medium">AdBlue</th><th className="px-3 py-3 text-right font-medium">Keliai</th><th className="px-3 py-3 text-right font-medium">l/100 faktas</th><th className="px-5 py-3 text-right font-medium">Skirtumas</th></tr></thead>
+        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Fura</th><th className="px-3 py-3 text-right font-medium">Reisai</th><th className="px-3 py-3 text-right font-medium">Km planas → faktas</th><th className="px-3 py-3 text-right font-medium">Kuras</th><th className="px-3 py-3 text-right font-medium">AdBlue</th><th className="px-3 py-3 text-right font-medium">Keliai</th><th className="px-3 py-3 text-right font-medium">l/100 planas → faktas</th><th className="px-5 py-3 text-right font-medium">Skirtumas</th></tr></thead>
         <tbody className="divide-y divide-line">{[...rows, total].map((row) => <tr key={row.plate} className={row === total ? "font-medium" : ""}>
           <td className={`px-5 py-3 ${row === total ? "" : "font-mono"}`}>{row.plate}</td>
           <td className="px-3 py-3 text-right tabular-nums text-muted">{row.tripCount}</td>
@@ -288,7 +290,7 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
           <PlanActualCell planned={row.planned.fuelCents} actual={row.actual.fuelCents} />
           <PlanActualCell planned={row.planned.adblueCents} actual={row.actual.adblueCents} />
           <PlanActualCell planned={row.planned.roadCents} actual={row.actual.roadCents} />
-          <td className="px-3 py-3 text-right tabular-nums text-muted">{row.actualLitresPer100Km === null ? "—" : row.actualLitresPer100Km.toFixed(1)}</td>
+          <td className="px-3 py-3 text-right tabular-nums"><span className="text-muted">{litres(row.plannedLitresPer100Km)} → </span>{litres(row.actualLitresPer100Km)}</td>
           <td className={`px-5 py-3 text-right font-medium tabular-nums ${row.diffCents > 0 ? "text-bad" : row.diffCents < 0 ? "text-good" : ""}`}>{row.diffCents > 0 ? "+" : ""}{formatCents(row.diffCents)}</td>
         </tr>)}</tbody>
       </table>

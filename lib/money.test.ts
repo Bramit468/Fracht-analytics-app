@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { centsToInput, formatCents, parseEuroToCents } from "./money";
+import { centsToInput, formatCents, parseEuroToCents, parseOptionalSignedEuro, parseSignedEuroToCents } from "./money";
 
 describe("parseEuroToCents", () => {
   it("sveiki eurai", () => {
@@ -46,5 +46,24 @@ describe("centsToInput", () => {
     for (const cents of [0, 1, 29, 999, 36000, 1204450, 2147483647]) {
       expect(parseEuroToCents(centsToInput(cents))).toBe(cents);
     }
+  });
+});
+
+describe("parseSignedEuroToCents", () => {
+  it("leidžia minusą, kitaip griežtas kaip parseEuroToCents", () => {
+    expect(parseSignedEuroToCents("-600,50")).toBe(-60050);
+    expect(parseSignedEuroToCents("−12")).toBe(-1200);
+    expect(parseSignedEuroToCents("0")).toBe(0);
+    expect(parseSignedEuroToCents("1,234")).toBeNull();
+    expect(parseSignedEuroToCents("--5")).toBeNull();
+  });
+});
+
+describe("parseOptionalSignedEuro", () => {
+  it("tuščia – nenustatyta, kitaip centai su ženklu", () => {
+    expect(parseOptionalSignedEuro(" ")).toEqual({ ok: true, value: null });
+    expect(parseOptionalSignedEuro("50")).toEqual({ ok: true, value: 5000 });
+    expect(parseOptionalSignedEuro("-10,5")).toEqual({ ok: true, value: -1050 });
+    expect(parseOptionalSignedEuro("abc").ok).toBe(false);
   });
 });

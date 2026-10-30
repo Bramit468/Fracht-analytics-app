@@ -35,6 +35,25 @@ export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Kaip `parseEuroToCents`, bet leidžia minusą: alternatyvos įnašas būna neigiamas. */
+export function parseSignedEuroToCents(input: string): number | null {
+  const trimmed = input.trim();
+  const negative = /^[-−]/.test(trimmed);
+  const cents = parseEuroToCents(negative ? trimmed.slice(1) : trimmed);
+  return cents === null ? null : negative ? -cents : cents;
+}
+
+export type ParsedOptionalCents = { ok: true; value: number | null } | { ok: false; error: string };
+
+/** Įmonės riba eurais: tuščia – nenustatyta, minusas leidžiamas. */
+export function parseOptionalSignedEuro(text: string): ParsedOptionalCents {
+  if (text.trim() === "") return { ok: true, value: null };
+  const cents = parseSignedEuroToCents(text);
+  return cents === null || Math.abs(cents) > 2147483647
+    ? { ok: false, error: "Įrašykite sumą eurais, ne daugiau kaip du skaitmenys po kablelio." }
+    : { ok: true, value: cents };
+}
+
 /** Centus parodo eurais lietuvišku formatu, pvz. 26900 -> „269,00 €". */
 export function formatCents(cents: number): string {
   return new Intl.NumberFormat("lt-LT", {

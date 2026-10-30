@@ -10,7 +10,7 @@ import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 import { Page, PageHeader, SettingRow } from "../ui";
-import { saveMinMargin, savePerDiemPercent } from "./actions";
+import { saveMinContribution, saveMinMargin, savePerDiemPercent } from "./actions";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 import { SettingForm } from "./setting-form";
@@ -62,6 +62,19 @@ export default async function ImonePage() {
             placeholder="pvz. 12"
             current={settings.minMarginPercent}
             action={saveMinMargin}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="Kada imti krovinį"
+          description="Skaičiuoklė sako „Imti“, kai krovinio įnašas (pajamos − kuras, AdBlue, keliai ir papildomų parų dienpinigiai) viršija alternatyvą bent šia suma. Tuščia – užtenka viršyti alternatyvą. Keisti gali tik savininkas."
+        >
+          <SettingForm
+            name="min_contribution_cents"
+            label="Riba, €"
+            placeholder="pvz. 50"
+            current={settings.minContributionCents === null ? null : settings.minContributionCents / 100}
+            action={saveMinContribution}
           />
         </SettingRow>
 

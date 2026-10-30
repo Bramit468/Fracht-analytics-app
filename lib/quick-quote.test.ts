@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultEmptyKm, pickDays, quoteNotes, type QuoteNoteInput } from "./quick-quote";
+import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, type QuoteNoteInput } from "./quick-quote";
 
 describe("pickDays", () => {
   it("pirmenybė vairavimo laiko planui", () => {
@@ -16,9 +16,9 @@ describe("pickDays", () => {
   });
 
   it("netinkamo skaičiaus nepriima", () => {
-    // Paros lauke reikia sveiko skaičiaus nuo 1; 0 ar trupmena sugadintų kaštus.
+    // 0 parų reikštų, kad fura nieko nekainavo. Trupmena tinka: 2,5 paros nėra 3.
     expect(pickDays(0, 2)).toEqual({ days: 2, source: "route" });
-    expect(pickDays(2.5, null)).toEqual({ days: null, source: "none" });
+    expect(pickDays(2.5, null)).toEqual({ days: 2.5, source: "schedule" });
     expect(pickDays(Number.NaN, 1)).toEqual({ days: 1, source: "route" });
   });
 });
@@ -112,5 +112,41 @@ describe("quoteNotes", () => {
     expect(notes[0]).toContain("laukai nepakeisti");
     expect(notes.join(" ")).toContain("siūloma");
     expect(notes.join(" ")).not.toContain("įrašyta");
+  });
+});
+
+describe("paros trupmenomis su pakrovimu ir iškrovimu", () => {
+  it("PTV laikai virsta valandomis su laiko juosta", () => {
+    expect(hoursBetween("2026-09-28T06:00:00+02:00", "2026-09-30T23:28:00+02:00")).toBeCloseTo(65.47, 2);
+    expect(hoursBetween("ne data", "2026-09-30T23:28:00+02:00")).toBeNull();
+    expect(hoursBetween("2026-09-30T00:00:00Z", "2026-09-29T00:00:00Z")).toBeNull();
+  });
+
+  it("pakrovimo ir iškrovimo valandos – tik krovimo sustojimams", () => {
+    expect(serviceHours(["loading", "customs", "extra_unloading", "unloading"], 2)).toBe(6);
+    expect(serviceHours(["loading", "unloading"], 1.5)).toBe(3);
+    expect(serviceHours(["loading", "unloading"], Number.NaN)).toBe(0);
+  });
+
+  it("paros = kelias + sustojimai / 24, neapvalinant į sveikas", () => {
+    // 65,47 val. kelio + 2 × 2 val. = 69,47 val. = 2,89 paros, ne 3.
+    expect(quoteDays(65.47 / 24, 4)).toBe(2.89);
+    expect(quoteDays(2, 0)).toBe(2);
+    expect(quoteDays(0, 4)).toBe(0.17);
+    expect(quoteDays(null, 4)).toBeNull();
+    expect(quoteDays(0, 0)).toBeNull();
+  });
+});
+
+describe("emptyKmTollCents", () => {
+  it("tuštiems km – pakrauto maršruto vidurkis €/km", () => {
+    // 300 € už 1000 km, 250 tuščių km -> 75 €.
+    expect(emptyKmTollCents(30000, 1000, 250)).toBe(7500);
+  });
+
+  it("be km ar be mokesčių – nulis, ne NaN", () => {
+    expect(emptyKmTollCents(30000, 0, 250)).toBe(0);
+    expect(emptyKmTollCents(30000, 1000, 0)).toBe(0);
+    expect(emptyKmTollCents(0, 1000, 250)).toBe(0);
   });
 });

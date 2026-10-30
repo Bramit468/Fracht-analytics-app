@@ -12,7 +12,8 @@ import {
   type FerryFareEstimate,
   type FreightLoad,
 } from "../../../lib/ferry-pricing";
-import { centsToInput, formatCents, parseEuroToCents } from "../../../lib/money";
+import { centsToInput, formatCents, parseEuroToCents, parseSignedEuroToCents } from "../../../lib/money";
+import { calcContribution } from "../../../lib/calc";
 import { calculateSavedTrip } from "../../../lib/trip-input";
 import { priceForMargin, pricePerDay, pricePerKm } from "../../../lib/pricing";
 import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
@@ -26,7 +27,7 @@ import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../..
 import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { emptyKmByTruck } from "../../../lib/empty-km";
-import { defaultEmptyKm, pickDays, quoteNotes, type DaysSource } from "../../../lib/quick-quote";
+import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchTelematicsFill } from "./telematics";
 import { rateFill } from "@/lib/telematics-costs";
 import {
@@ -148,6 +149,8 @@ function paskutinesTrisdesimtDienu(): { from: string; to: string } {
 interface RouteOutcome {
   routeDays: number;
   paidKm: number;
+  /** Kelių mokesčiai be keltų ir tunelių – iš jų €/km tuštiems km. */
+  tollCents: number;
   ferryUnknown: boolean;
   approximate: boolean;
 }
@@ -190,6 +193,11 @@ export function TripForm({
   const [paros, setParos] = useState(0);
   /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
   const [norimaMarza, setNorimaMarza] = useState("15");
+  // Sprendimas „imti ar ne“: su kuo lyginama ir kiek valandų sustojimams.
+  const [krovimoVal, setKrovimoVal] = useState(String(SERVICE_HOURS_PER_STOP));
+  const [altParos, setAltParos] = useState("0");
+  const [altInasas, setAltInasas] = useState("0");
+  const [minInasas, setMinInasas] = useState<number | null>(null);
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
   const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
@@ -298,6 +306,13 @@ export function TripForm({
         if (c.error) throw c.error;
         if (!cancelled) {
           setMinMarza(nustatymai.minMarginPercent);
+          setMinInasas(nustatymai.minContributionCents);
+          // Taisant – ta alternatyva, kuria remtasi priimant. Kopijai ji nekeliama:
+          // kitą kartą fura bus kitur.
+          if (tripId && existing) {
+            setAltParos(String(existing.alternative_days ?? 0).replace(".", ","));
+            setAltInasas(centsToInput(existing.alternative_cents ?? 0).replace(".", ","));
+          }
           setDienpinigiuProc(nustatymai.perDiemPercent);
           // Taisant ar kopijuojant – tos pačios šalys, kol maršrutas neperskaičiuotas.
           if (existing?.per_diem_days?.length) dienpinigiai.current = existing.per_diem_days;
@@ -573,7 +588,9 @@ export function TripForm({
       setTvarkarastis(result.schedule);
       applyPerDiem(result.schedule);
       planasParodytas.current = true;
-      return result.schedule.days;
+      // Trupmenomis, ne kalendorinėmis paromis: 2,4 paros neturi kainuoti kaip 3.
+      const hours = hoursBetween(result.schedule.startTime, result.schedule.endTime);
+      return hours === null ? null : hours / 24;
     } catch {
       setTvarkarascioKlaida("Nepavyko suplanuoti vairavimo laiko.");
       return null;
@@ -814,6 +831,7 @@ export function TripForm({
       return {
         routeDays: result.days,
         paidKm: Number(result.fill.paid_km),
+        tollCents: result.bridgesCents,
         ferryUnknown: needsFerryPrice && !publicFare,
         approximate: result.approximate,
       };
@@ -856,6 +874,8 @@ export function TripForm({
       const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write, stops), planDriverHours()]);
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
+      const sustojimuVal = serviceHours(stops.map((stop) => stop.type), Number(krovimoVal.replace(",", ".")));
+      const quoted = quoteDays(picked.days, sustojimuVal);
       const text = (name: string) => {
         const field = form.elements.namedItem(name);
         return field instanceof HTMLInputElement ? field.value : "";
@@ -864,15 +884,20 @@ export function TripForm({
       const plate = trucks.find((truck) => truck.id === (truckId instanceof HTMLSelectElement ? truckId.value : ""))?.plate;
       const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
       const emptyKm = route ? defaultEmptyKm(route.paidKm, emptyShare) : 0;
+      const emptyTollCents = route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
 
       if (write) {
         const days = form.elements.namedItem("days");
-        if (days instanceof HTMLInputElement && picked.days !== null) days.value = String(picked.days);
-        setDienuSaltinis(picked.days !== null ? { source: picked.source, stale: false } : null);
+        if (days instanceof HTMLInputElement && quoted !== null) days.value = String(quoted);
+        setDienuSaltinis(quoted !== null ? { source: picked.source, stale: false } : null);
 
         if (route) {
           const empty = form.elements.namedItem("empty_km");
           if (empty instanceof HTMLInputElement) empty.value = String(emptyKm);
+          // Maršrutas ką tik įrašė pakrauto kelio mokesčius; tušti km prie jų pridedami.
+          const bridges = form.elements.namedItem("bridges_cents");
+          const routeCents = bridges instanceof HTMLInputElement ? parseEuroToCents(bridges.value) : null;
+          if (bridges instanceof HTMLInputElement && routeCents !== null) bridges.value = centsToInput(routeCents + emptyTollCents);
           // Atkarpų suma privalo sutapti su apmokamais ir tuščiais km, o tuščių
           // dabar yra. `flushSync`, nes skaičiavimas skaito DOM iškart po to.
           flushSync(() => {
@@ -886,9 +911,11 @@ export function TripForm({
         routeOk: route !== null,
         scheduleOk: scheduleDays !== null,
         noDeparture: !departureIso(text("trip_date"), text("departure_time")),
-        days: picked.days,
-        daysSource: picked.source,
+        days: quoted,
+        daysSource: quoted === null ? "none" : picked.source,
         emptyKm,
+        emptyTollCents: write ? emptyTollCents : 0,
+        serviceHours: sustojimuVal,
         emptyShare,
         ferryUnknown: route?.ferryUnknown ?? false,
         approximateAddress: route?.approximate ?? false,
@@ -953,6 +980,9 @@ export function TripForm({
         rate_per_km: mode === "per_km" ? (hasRevenue ? number("revenue") : 0) : null,
         stops: toStoredStops(routedStops(stops)),
       };
+      if (!alternatyva) throw new Error("Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, įnašas – eurais.");
+      trip.alternative_days = alternatyva.days;
+      trip.alternative_cents = alternatyva.contributionCents;
       // Importuoti reisai turi paras trupmenomis (valandos / 24, 0019).
       if (!(trip.days > 0)) throw new Error("Reiso trukmė turi būti didesnė už nulį.");
       // Dienpinigiai pagal šalis pritaikomi prie įvestos trukmės (#187).
@@ -993,11 +1023,14 @@ export function TripForm({
       // Be 0016 funkcija dienpinigių neįrašo – reisas liktų su fiksuotais,
       // ir sąraše pelnas skirtųsi nuo ką tik parodyto.
       const perDiemLost = trip.per_diem_cents != null && persisted.per_diem_cents !== trip.per_diem_cents;
+      // Be 0023 alternatyva neįrašoma – atidarius reisą verdiktas būtų kitas.
+      const alternativeLost = (trip.alternative_days !== 0 || trip.alternative_cents !== 0) && persisted.alternative_cents === undefined;
       setSaved((tripId
         ? `Reiso ${persisted.trip_number} pakeitimai išsaugoti.`
         : `Reisas ${persisted.trip_number} išsaugotas.`)
         + (customerLost ? " Užsakovas neišsaugotas – Supabase iki galo paleiskite migraciją 0014." : "")
-        + (perDiemLost ? " Dienpinigiai pagal šalis neišsaugoti – Supabase paleiskite migraciją 0016." : ""));
+        + (perDiemLost ? " Dienpinigiai pagal šalis neišsaugoti – Supabase paleiskite migraciją 0016." : "")
+        + (alternativeLost ? " Alternatyva neišsaugota – Supabase paleiskite migraciją 0023." : ""));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Nepavyko išsaugoti reiso. Patikrinkite ryšį su duomenų baze ir ar pritaikyta migracija 0004.");
     } finally { busy.current = false; setSaving(false); }
@@ -1007,6 +1040,13 @@ export function TripForm({
   if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
   const prasomaKaina = result ? priceForMargin(result.totalCostCents, Number(norimaMarza)) : null;
+  const altDienos = Number(altParos.replace(",", "."));
+  const altCents = parseSignedEuroToCents(altInasas);
+  const alternatyva = Number.isFinite(altDienos) && altDienos >= 0 && altCents !== null && Math.abs(altCents) <= 2147483647
+    ? { days: altDienos, contributionCents: altCents, thresholdCents: minInasas ?? 0 }
+    : null;
+  const inasas = result && alternatyva ? calcContribution(result, paros, alternatyva) : null;
+  const skaicius = (value: number) => value.toLocaleString("lt-LT", { maximumFractionDigits: 2 });
 
   return <form
     ref={formRef}
@@ -1049,6 +1089,12 @@ export function TripForm({
           {/* Marža kainos skaičiavimui, ne formos laukas: `stopPropagation`,
               kad jos keitimas nenuvalytų jau parodyto rezultato. */}
           <label>Norima marža (%)<input type="number" step="0.5" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
+          {/* Su kuo lyginamas krovinys: išsaugoma su reisu (0023), numatyta – fura stovėtų. */}
+          <label>Alternatyva: paros<input type="text" inputMode="decimal" value={altParos} onChange={(event) => { event.stopPropagation(); setAltParos(event.target.value); }} className={inputClass} />
+            <span className="mt-1 block text-xs text-muted">Kiek parų fura užimtų, jei šio krovinio neimtume. 0 – stovėtų.</span></label>
+          <label>Alternatyva: įnašas (€)<input type="text" inputMode="decimal" value={altInasas} onChange={(event) => { event.stopPropagation(); setAltInasas(event.target.value); }} className={inputClass} />
+            <span className="mt-1 block text-xs text-muted">Grįžimas tuščiam – su minusu: kuras + keliai.</span></label>
+          {routeLookup && <label>Pakrovimas / iškrovimas, val. vienam<input type="text" inputMode="decimal" value={krovimoVal} onChange={(event) => { event.stopPropagation(); setKrovimoVal(event.target.value); }} className={inputClass} /></label>}
           {/* Du vairuotojai sutrumpina reisą parą ar dvi – o paros yra didžioji kaštų dalis. */}
           {routeLookup && <label>Vairavimas
             <select value={scenarijus} onChange={(event) => setScenarijus(event.target.value as DriverScenario)} className={inputClass}>
@@ -1069,7 +1115,7 @@ export function TripForm({
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
           {/* Laikas – išvykimo vietos laiko juosta, kaip jį grąžina PTV (ne UTC). */}
           {tvarkarastis && <p className="mt-1 text-sm text-ink tabular-nums">
-            Atvykimas {tvarkarastis.endTime.replace("T", " ").slice(0, 16)} · {tvarkarastis.days} par. · vairavimas {durationText(tvarkarastis.drivingMinutes)}, poilsis {durationText(tvarkarastis.restMinutes + tvarkarastis.breakMinutes)}
+            Atvykimas {tvarkarastis.endTime.replace("T", " ").slice(0, 16)} · {skaicius((hoursBetween(tvarkarastis.startTime, tvarkarastis.endTime) ?? 0) / 24)} par. kelio · vairavimas {durationText(tvarkarastis.drivingMinutes)}, poilsis {durationText(tvarkarastis.restMinutes + tvarkarastis.breakMinutes)}
           </p>}
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
             {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
@@ -1294,12 +1340,36 @@ export function TripForm({
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
       {result && <section aria-label="Reiso rezultatai" className="rounded-lg border border-line-strong bg-surface p-4">
+        {/* Pagrindinis klausimas – imti ar ne. Sprendžia įnašas: pastovūs furos
+            kaštai mokami vis tiek, todėl jie tik antraeilėje pilno pelno eilutėje. */}
+        {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${bePajamu ? "border-line" : inasas.take ? "border-good" : "border-bad"}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className={`text-xl font-semibold ${bePajamu ? "" : inasas.take ? "text-good" : "text-bad"}`}>
+              {bePajamu ? "Verta imti, jei kaina didesnė nei" : inasas.take ? "Imti" : "Neimti"}
+            </h2>
+            <p className="text-2xl font-semibold tabular-nums">
+              {bePajamu ? formatCents(inasas.breakEvenPriceCents) : `${formatCents(inasas.contributionCents)} įnašas`}
+            </p>
+          </div>
+          <p className="mt-2 text-sm tabular-nums text-muted">
+            {!bePajamu && <>Pajamos {formatCents(result.revenueCents)} − </>}
+            kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
+            {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
+            {bePajamu ? <> = {formatCents(inasas.variableCents)} kintamų kaštų.</> : <> = <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong>.</>}
+            {" "}Kuras, AdBlue ir keliai – su tuščiais km.
+          </p>
+          <p className="mt-1 text-sm tabular-nums text-muted">
+            Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
+            {!bePajamu && <> · skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong></>}
+            {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
+          </p>
+        </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
         {/* Be pajamų „pelnas“ būtų minusas lygus kaštams ir klaidintų: čia
             klausimas yra kiek prašyti, todėl tai ir yra antraštė. */}
         {bePajamu ? <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className="font-semibold">Kaina, kurios prašyti</h2>
-            <p className="text-2xl font-semibold tabular-nums">{prasomaKaina === null ? "—" : formatCents(prasomaKaina)}</p>
+            <h3 className="font-semibold">Kaina su pilna savikaina <span className="font-normal text-muted">(antraeilė)</span></h3>
+            <p className="text-lg font-semibold tabular-nums">{prasomaKaina === null ? "—" : formatCents(prasomaKaina)}</p>
           </div>
           <p className="mt-1 text-sm text-muted">
             {prasomaKaina === null
@@ -1308,8 +1378,8 @@ export function TripForm({
           </p>
         </> : <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className="font-semibold">Reiso rezultatai</h2>
-            <p className={`text-2xl font-semibold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
+            <h3 className="font-semibold">Pilnas pelnas <span className="font-normal text-muted">(antraeilis: su pastoviais furos kaštais)</span></h3>
+            <p className={`text-lg font-semibold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
               {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
             </p>
           </div>

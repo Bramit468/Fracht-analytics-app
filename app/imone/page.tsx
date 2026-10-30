@@ -138,7 +138,7 @@ export default async function ImonePage() {
 
         <SettingRow
           title="Pakviesti darbuotoją"
-          description="Laiško nesiunčiame. Įrašykite adresą ir pasakykite žmogui užsiregistruoti tuo pačiu el. paštu – tada jis iškart pateks į šią įmonę. Kviesti ir atšaukti kvietimus gali tik savininkas."
+          description="Laiško nesiunčiame, o pati registracija išjungta, kad niekas neužsiregistruotų svetimu adresu. Įrašykite adresą čia, tada Supabase → Authentication → Users → „Add user“ → „Create new user“ sukurkite tą patį el. paštą su pradiniu slaptažodžiu (pažymėkite „Auto Confirm User“) ir perduokite jį darbuotojui. Prisijungęs jis iškart pateks į šią įmonę. Kviesti ir atšaukti kvietimus gali tik savininkas."
         >
           <InviteForm />
         </SettingRow>

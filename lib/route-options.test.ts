@@ -17,6 +17,7 @@ function option(overrides: Partial<RouteOptionSource>): RouteOptionSource {
     ferryDetected: false,
     ferryNames: [],
     byCountry: [],
+    kmByCountry: [],
     violated: false,
     violations: [],
     ...overrides,

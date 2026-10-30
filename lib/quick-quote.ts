@@ -7,6 +7,7 @@
  * įrašytas spėjimas būtų pelnas, kuriuo niekas netiki.
  */
 
+import type { RouteFuelPrice } from "./fuel-prices";
 import type { StopType } from "./stops";
 
 export type DaysSource = "schedule" | "route" | "none";
@@ -95,6 +96,8 @@ export interface QuoteNoteInput {
   emptyTollCents?: number;
   /** Pakrovimų ir iškrovimų valandos, įskaičiuotos į paras. */
   serviceHours?: number;
+  /** Kuro kaina pagal maršruto šalis; `null` – liko furos praėjusio mėnesio. */
+  routeFuel?: RouteFuelPrice | null;
   /** Furos tuščios ridos dalis iš istorijos, `null`, jei istorijos nėra. */
   emptyShare: number | null;
   ferryUnknown: boolean;
@@ -138,6 +141,19 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
       `Tušti km: ${verb} ${input.emptyKm} – pagal šios furos istoriją (${input.emptyShare.toFixed(0)} % visos ridos).`
       + (input.emptyTollCents ? ` Keliai jiems ${(input.emptyTollCents / 100).toFixed(2).replace(".", ",")} € – pagal maršruto vidurkį €/km.` : ""),
     );
+  }
+
+  if (input.routeFuel) {
+    const price = (value: number) => value.toFixed(3).replace(".", ",");
+    notes.push(
+      `Kuro kaina: ${verb} ${price(input.routeFuel.pricePerL)} €/l – pagal maršruto šalis: `
+      + input.routeFuel.rows
+        .map((row) => `${row.countryCode} ${Math.round(row.km)} km ${price(row.pricePerL)}${row.fleetAverage ? " (įmonės vidurkis)" : ""}`)
+        .join(", ")
+      + ".",
+    );
+  } else if (input.routeFuel === null) {
+    notes.push("Kuro kaina – furos praėjusių 30 d., nes maršruto šalių kainų gauti nepavyko.");
   }
 
   if (input.ferryUnknown) {

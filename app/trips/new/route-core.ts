@@ -12,6 +12,7 @@ import {
   type GeocodedPlace,
   type RouteFill,
   type RouteViolation,
+  type CountryKm,
 } from "@/lib/ptv-route";
 import { hasWeights, routeEmissions, type RouteEmissions } from "@/lib/ptv-emissions";
 import { normalizeAddressQuery } from "@/lib/postal-code";
@@ -43,6 +44,8 @@ export type RouteLookupResult =
       trafficDelayMinutes: number;
       trafficMode: "REALISTIC" | "AVERAGE";
       tollCents: number;
+      /** Km pagal šalį – kuro kainai pagal maršrutą. */
+      kmByCountry: CountryKm[];
       bridgesCents: number;
       ferriesCents: number;
       tunnelsCents: number;
@@ -213,6 +216,7 @@ export async function runRouteLookup(
       trafficDelayMinutes: estimate.trafficDelayMinutes,
       trafficMode: timing.trafficMode,
       tollCents: estimate.tollCents,
+      kmByCountry: estimate.kmByCountry,
       bridgesCents: estimate.bridgesCents,
       ferriesCents: estimate.ferriesCents,
       tunnelsCents: estimate.tunnelsCents,

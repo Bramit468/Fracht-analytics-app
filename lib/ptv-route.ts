@@ -51,6 +51,11 @@ export interface CountryToll {
   euroCents: number;
 }
 
+export interface CountryKm {
+  countryCode: string;
+  km: number;
+}
+
 export interface RouteViolation {
   type: string;
   property?: string;
@@ -79,6 +84,8 @@ export interface RouteEstimate {
   ferryDetected: boolean;
   ferryNames: string[];
   byCountry: CountryToll[];
+  /** Km pagal šalį maršruto tvarka – kuro kainai pagal šalis. Tuščia, kai nežinoma. */
+  kmByCountry: CountryKm[];
   /** PTV neranda vilkikui tinkamo kelio arba jis pažeidžia ribojimus. */
   violated: boolean;
   violations: RouteViolation[];
@@ -310,7 +317,7 @@ export function routeRequestUrl(
   // PTV tiesiog ima savo numatytąsias reikšmes (#86).
   url.searchParams.set(
     "results",
-    `TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE,${PTV_EMISSIONS_RESULT}`,
+    `TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,BORDER_EVENTS,POLYLINE,${PTV_EMISSIONS_RESULT}`,
   );
   url.searchParams.set("options[currency]", "EUR");
   // Režimas siunčiamas ir be išvykimo laiko: nenurodžius PTV ima gyvą eismą.
@@ -489,9 +496,44 @@ export function routeEstimate(payload: unknown): RouteEstimate | null {
     ferryDetected: ferrySectionFound || ferryNames.length > 0,
     ferryNames,
     byCountry,
+    // Kelių mokesčių šalys eina maršruto tvarka (tikrinta 2026-10-30, Šiauliai–Amersfoort:
+    // LT, PL, DE, NL), todėl pirmoji yra pradžios šalis – sienų įvykiuose jos nėra.
+    kmByCountry: kmByCountry(events, byCountry[0]?.countryCode ?? null, metres / 1000),
     violated: source.violated === true,
     violations,
   };
+}
+
+/**
+ * Km pagal šalį iš sienų kirtimų (`BORDER_EVENTS`): kiekvienas įvykis sako, į
+ * kurią šalį įvažiuojama ir kiek km nuo starto. Be pradžios šalies grąžinama
+ * tuščia – geriau jokio skaidymo nei klaidingas.
+ */
+export function kmByCountry(events: unknown[], startCountry: string | null, totalKm: number): CountryKm[] {
+  if (!startCountry || !(totalKm > 0)) return [];
+  const borders: { countryCode: string; km: number }[] = [];
+  for (const row of events) {
+    if (typeof row !== "object" || row === null) continue;
+    const event = row as Record<string, unknown>;
+    const border = event.border as Record<string, unknown> | undefined;
+    const metres = decimal(event.distanceFromStart);
+    const code = text(border?.countryCode) ?? text(event.countryCode);
+    if (typeof border !== "object" || border === null || metres === null || code === null) continue;
+    borders.push({ countryCode: code, km: metres / 1000 });
+  }
+  borders.sort((a, b) => a.km - b.km);
+
+  // Ta pati šalis gali kartotis (išvažiuota ir vėl įvažiuota) – km sudedami.
+  const totals = new Map<string, number>();
+  let country = startCountry;
+  let fromKm = 0;
+  for (const border of [...borders, { countryCode: "", km: totalKm }]) {
+    const km = Math.min(border.km, totalKm) - fromKm;
+    if (km > 0) totals.set(country, (totals.get(country) ?? 0) + km);
+    country = border.countryCode;
+    fromKm = Math.max(fromKm, Math.min(border.km, totalKm));
+  }
+  return [...totals.entries()].map(([countryCode, km]) => ({ countryCode, km: Math.round(km * 100) / 100 }));
 }
 
 /** Reiso formos laukai, kuriuos užpildo maršrutas. */

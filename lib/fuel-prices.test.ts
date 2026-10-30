@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  fuelPricesByCountry,
-  fuelPricesByMonth,
-  savingsAtCheapestCents,
-} from "./fuel-prices";
+import { fuelPricesByCountry, fuelPricesByMonth, routeFuelPrice, savingsAtCheapestCents } from "./fuel-prices";
 import type { Supply } from "./telematics-costs";
 
 function supply(overrides: Partial<Supply>): Supply {
@@ -123,5 +119,39 @@ describe("savingsAtCheapestCents", () => {
 
   it("tuščio sąrašo nesugadina", () => {
     expect(savingsAtCheapestCents([])).toBe(0);
+  });
+});
+
+describe("routeFuelPrice", () => {
+  // Įmonės pylimai 2026-10 (Telematika): POL, DEU – daug litrų, NLD – vienas pylimas.
+  const prices = [
+    { key: "POL", litres: 1551, costCents: 241026, purchases: 5, pricePerL: 1.554 },
+    { key: "DEU", litres: 2582, costCents: 401951, purchases: 7, pricePerL: 1.5567 },
+    { key: "NLD", litres: 100, costCents: 18364, purchases: 1, pricePerL: 1.8364 },
+    { key: "SWE", litres: 66176, costCents: 10376980, purchases: 218, pricePerL: 1.5681 },
+  ];
+  const km = [
+    { countryCode: "LT", km: 271.93 },
+    { countryCode: "PL", km: 776.12 },
+    { countryCode: "DE", km: 557.95 },
+    { countryCode: "NL", km: 125.43 },
+  ];
+
+  it("šalies kaina sverta km; be pylimų ar su vienu pylimu – parko vidurkis", () => {
+    const result = routeFuelPrice(km, prices)!;
+    const fleet = (241026 + 401951 + 18364 + 10376980) / 100 / (1551 + 2582 + 100 + 66176);
+    expect(result.rows).toEqual([
+      { countryCode: "LT", km: 271.93, pricePerL: fleet, fleetAverage: true },
+      { countryCode: "PL", km: 776.12, pricePerL: 1.554, fleetAverage: false },
+      { countryCode: "DE", km: 557.95, pricePerL: 1.5567, fleetAverage: false },
+      { countryCode: "NL", km: 125.43, pricePerL: fleet, fleetAverage: true },
+    ]);
+    const expected = (271.93 * fleet + 776.12 * 1.554 + 557.95 * 1.5567 + 125.43 * fleet) / 1731.43;
+    expect(result.pricePerL).toBeCloseTo(expected, 4);
+  });
+
+  it("be km ar be kainų – null, kad liktų furos kaina", () => {
+    expect(routeFuelPrice([], prices)).toBeNull();
+    expect(routeFuelPrice(km, [])).toBeNull();
   });
 });

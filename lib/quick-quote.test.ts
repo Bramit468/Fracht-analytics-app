@@ -150,3 +150,26 @@ describe("emptyKmTollCents", () => {
     expect(emptyKmTollCents(0, 1000, 250)).toBe(0);
   });
 });
+
+describe("quoteNotes: kuro kaina pagal maršrutą", () => {
+  const base: QuoteNoteInput = {
+    applied: true, routeOk: true, scheduleOk: true, days: 2.18, daysSource: "schedule",
+    emptyKm: 0, emptyShare: null, ferryUnknown: false, approximateAddress: false,
+  };
+
+  it("parodo šalis ir kurios kainos – įmonės vidurkis", () => {
+    const notes = quoteNotes({ ...base, routeFuel: { pricePerL: 1.5612, rows: [
+      { countryCode: "LT", km: 271.93, pricePerL: 1.571, fleetAverage: true },
+      { countryCode: "PL", km: 776.12, pricePerL: 1.554, fleetAverage: false },
+    ] } });
+    expect(notes).toContain("Kuro kaina: įrašyta 1,561 €/l – pagal maršruto šalis: LT 272 km 1,571 (įmonės vidurkis), PL 776 km 1,554.");
+  });
+
+  it("nepavykus – sako, kad liko furos kaina", () => {
+    expect(quoteNotes({ ...base, routeFuel: null })).toContain("Kuro kaina – furos praėjusių 30 d., nes maršruto šalių kainų gauti nepavyko.");
+  });
+
+  it("be maršruto – nieko apie kurą nesako", () => {
+    expect(quoteNotes(base).some((note) => note.startsWith("Kuro kaina"))).toBe(false);
+  });
+});

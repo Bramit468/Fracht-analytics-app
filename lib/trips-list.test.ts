@@ -74,6 +74,8 @@ it("builds list values with the shared trip calculation", () => {
     marginPercent: 60,
     profitPerKm: 1.5,
     profitPerDayCents: 15000,
+    contributionCents: 25000,
+    vsAlternativeCents: 25000,
     customerId: null,
     telematikaOrderId: null,
     roadByCountry: [{ country: "Nemokami", km: 100, costCents: 0 }],
@@ -104,4 +106,14 @@ it("praleidžia reisą su ištrintu šalies įkainiu, kitus suskaičiuoja", () =
   ], skipped);
   expect(result.map((row) => row.id)).toEqual(["trip-2"]);
   expect(skipped).toEqual([{ id: "trip-1", tripNumber: "LT001", reason: "Nežinoma šalis įkainių žinyne: Atlantida" }]);
+});
+
+it("įnašas be pastovių kaštų ir palyginimas su išsaugota alternatyva", () => {
+  // 250 € pajamų, 100 €/parą vairuotojo atlyginimas – pastovus kaštas.
+  const [plain] = buildTripSummaries([trip], [leg], [truck], [{ country: "Nemokami", rate: 0, rateType: "per_km" }]);
+  expect(plain).toMatchObject({ profitCents: 15000, contributionCents: 25000, vsAlternativeCents: 25000 });
+
+  // Grįžimas tuščiam būtų kainavęs 80 €: krovinys laimi 330 €.
+  const [backload] = buildTripSummaries([{ ...trip, alternative_days: 1, alternative_cents: -8000 }], [leg], [truck], [{ country: "Nemokami", rate: 0, rateType: "per_km" }]);
+  expect(backload).toMatchObject({ contributionCents: 25000, vsAlternativeCents: 33000 });
 });

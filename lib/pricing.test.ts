@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calcTrip } from "./calc";
-import { marginForPrice, priceForMargin, priceForProfit, pricePerDay, pricePerKm } from "./pricing";
+import { baselineQuote, marginForPrice, priceForMargin, priceForProfit, pricePerDay, pricePerKm } from "./pricing";
 
 describe("priceForMargin", () => {
   it("marža skaičiuojama nuo pajamų, ne nuo kaštų", () => {
@@ -104,5 +104,34 @@ describe("pricePerDay", () => {
 
   it("be parų atsakymo nėra", () => {
     expect(pricePerDay(100000, 0)).toBeNull();
+  });
+});
+
+describe("baselineQuote (baseline + antkainis, + kuras)", () => {
+  it("Šiauliai–Amersfoort: antkainis tik kaštams be kuro", () => {
+    // Savikaina 1950,54 €, iš jos kuras 909,42 €.
+    const quote = baselineQuote(195054, 90942, 20);
+    expect(quote).toMatchObject({
+      baselineCents: 104112,
+      markupCents: 20822,
+      baselineRateCents: 124934,
+      fuelCents: 90942,
+      priceCents: 215876,
+    });
+    // 20 % antkainis ant baseline – tik 9,6 % marža nuo visos kainos.
+    expect(quote?.marginPercent).toBeCloseTo(9.645, 2);
+  });
+
+  it("be antkainio – savikaina", () => {
+    expect(baselineQuote(195054, 90942, 0)?.priceCents).toBe(195054);
+  });
+
+  it("neigiamo ar netinkamo antkainio nepriima", () => {
+    expect(baselineQuote(195054, 90942, -5)).toBeNull();
+    expect(baselineQuote(195054, 90942, Number.NaN)).toBeNull();
+  });
+
+  it("be kaštų be kuro kainos nesiūlo", () => {
+    expect(baselineQuote(90942, 90942, 20)).toBeNull();
   });
 });

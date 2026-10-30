@@ -51,3 +51,39 @@ export function pricePerDay(priceCents: number, days: number): number | null {
   if (!(days > 0)) return null;
   return Math.round(priceCents / days);
 }
+
+export interface BaselineQuote {
+  /** Visi reiso kaštai be kuro: fura, keliai, AdBlue. */
+  baselineCents: number;
+  markupCents: number;
+  /** Baseline rate: kaštai be kuro + antkainis. */
+  baselineRateCents: number;
+  fuelCents: number;
+  /** Tinkama krovinio kaina: baseline rate + kuras. */
+  priceCents: number;
+  /** Kokia marža nuo visos kainos išeina. `null`, kai kainos nėra. */
+  marginPercent: number | null;
+}
+
+/**
+ * Įmonės kainos būdas: antkainis tik kaštams be kuro, kuras pridedamas be
+ * antkainio. Kuras – praėjimo kaštas: jo kainos įmonė nevaldo, o užsakovas jį
+ * mato atskirai. Antkainis skaičiuojamas nuo kaštų (×1,2), ne nuo kainos, todėl
+ * marža nuo visos kainos išeina mažesnė – ji grąžinama, kad būtų matyti.
+ */
+export function baselineQuote(totalCostCents: number, fuelCents: number, markupPercent: number): BaselineQuote | null {
+  if (!Number.isFinite(markupPercent) || markupPercent < 0) return null;
+  const baselineCents = totalCostCents - fuelCents;
+  if (baselineCents <= 0) return null;
+  const markupCents = Math.round((baselineCents * markupPercent) / 100);
+  const baselineRateCents = baselineCents + markupCents;
+  const priceCents = baselineRateCents + fuelCents;
+  return {
+    baselineCents,
+    markupCents,
+    baselineRateCents,
+    fuelCents,
+    priceCents,
+    marginPercent: marginForPrice(totalCostCents, priceCents),
+  };
+}

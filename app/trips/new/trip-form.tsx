@@ -15,8 +15,8 @@ import {
 import { centsToInput, formatCents, parseEuroToCents, parseSignedEuroToCents } from "../../../lib/money";
 import { calcContribution } from "../../../lib/calc";
 import { calculateSavedTrip } from "../../../lib/trip-input";
-import { priceForMargin, pricePerDay, pricePerKm } from "../../../lib/pricing";
-import { checkMargin, formatMinMargin, targetBelowMin } from "../../../lib/margin-guard";
+import { baselineQuote, pricePerDay, pricePerKm } from "../../../lib/pricing";
+import { checkMargin, formatMinMargin } from "../../../lib/margin-guard";
 import { groupViolations, VIOLATION_ADVICE, VIOLATION_HEADINGS } from "../../../lib/route-violations";
 import { fetchCompanySettings } from "../../../lib/company-settings";
 import { countriesByDay, fitPerDiemDays, perDiemCentsFor, perDiemDays, type PerDiemDay } from "../../../lib/per-diem";
@@ -192,7 +192,8 @@ export function TripForm({
   const [apmokamiKm, setApmokamiKm] = useState(0);
   const [paros, setParos] = useState(0);
   /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
-  const [norimaMarza, setNorimaMarza] = useState("15");
+  // Įmonės būdas: antkainis kaštams be kuro, kuras – be antkainio.
+  const [norimaMarza, setNorimaMarza] = useState("20");
   // Sprendimas „imti ar ne“: su kuo lyginama ir kiek valandų sustojimams.
   const [krovimoVal, setKrovimoVal] = useState(String(SERVICE_HOURS_PER_STOP));
   const [altParos, setAltParos] = useState("0");
@@ -1039,7 +1040,9 @@ export function TripForm({
   if (loading) return <p role="status">{tripId ? "Kraunamas reisas…" : "Kraunamos furos ir kelių įkainiai…"}</p>;
   if (!trucks.length || !tariffs.length) return <div><p role="alert">{error || "Pirma įveskite furas ir šalių įkainius."}</p><button type="button" className="mt-3 underline" onClick={() => { setLoading(true); setError(""); setAttempt(a => a + 1); }}>Bandyti dar kartą</button></div>;
 
-  const prasomaKaina = result ? priceForMargin(result.totalCostCents, Number(norimaMarza)) : null;
+  const kaina = result ? baselineQuote(result.totalCostCents, result.fuelCents, Number(norimaMarza.replace(",", "."))) : null;
+  const prasomaKaina = kaina?.priceCents ?? null;
+  const kainaZemiauRibos = kaina !== null && kaina.marginPercent !== null && minMarza !== null && kaina.marginPercent < minMarza;
   const altDienos = Number(altParos.replace(",", "."));
   const altCents = parseSignedEuroToCents(altInasas);
   const alternatyva = Number.isFinite(altDienos) && altDienos >= 0 && altCents !== null && Math.abs(altCents) <= 2147483647
@@ -1088,7 +1091,7 @@ export function TripForm({
           {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => setKrovinioSvoris(event.target.value)} placeholder="20" className={inputClass} /></label>}
           {/* Marža kainos skaičiavimui, ne formos laukas: `stopPropagation`,
               kad jos keitimas nenuvalytų jau parodyto rezultato. */}
-          <label>Norima marža (%)<input type="number" step="0.5" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
+          <label>Antkainis be kuro (%)<input type="number" step="0.5" min="0" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
           {/* Su kuo lyginamas krovinys: išsaugoma su reisu (0023), numatyta – fura stovėtų. */}
           <label>Alternatyva: paros<input type="text" inputMode="decimal" value={altParos} onChange={(event) => { event.stopPropagation(); setAltParos(event.target.value); }} className={inputClass} />
             <span className="mt-1 block text-xs text-muted">Kiek parų fura užimtų, jei šio krovinio neimtume. 0 – stovėtų.</span></label>
@@ -1345,14 +1348,23 @@ export function TripForm({
         {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${bePajamu ? "border-line" : inasas.verdict === "take" ? "border-good" : inasas.verdict === "approval" ? "border-warn" : "border-bad"}`}>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className={`text-xl font-semibold ${bePajamu ? "" : inasas.verdict === "take" ? "text-good" : inasas.verdict === "approval" ? "text-warn" : "text-bad"}`}>
-              {bePajamu ? "Mažiausia kaina – savikaina" : inasas.verdict === "take" ? "Imti" : inasas.verdict === "approval" ? "Tik su vadovo pritarimu" : "Neimti"}
+              {bePajamu ? "Tinkama krovinio kaina" : inasas.verdict === "take" ? "Imti" : inasas.verdict === "approval" ? "Tik su vadovo pritarimu" : "Neimti"}
             </h2>
             <p className="text-2xl font-semibold tabular-nums">
-              {bePajamu ? formatCents(result.totalCostCents) : `${formatCents(result.profitCents)} ${result.profitCents >= 0 ? "pelnas" : "nuostolis"}`}
+              {bePajamu ? (prasomaKaina === null ? "—" : formatCents(prasomaKaina)) : `${formatCents(result.profitCents)} ${result.profitCents >= 0 ? "pelnas" : "nuostolis"}`}
             </p>
           </div>
           {bePajamu
-            ? <p className="mt-1 text-sm">Su vadovo pritarimu – ne mažiau nei <strong className="tabular-nums">{formatCents(inasas.breakEvenPriceCents)}</strong>: tiek, kad padengtų kintamus kaštus{alternatyva!.contributionCents !== 0 && " ir būtų geriau už alternatyvą"}.</p>
+            ? <>
+              {/* Kaina išdėstoma taip, kaip ją pateikia įmonė: baseline rate ir kuras atskirai. */}
+              <p className="mt-1 text-xs tabular-nums text-muted">
+                {kaina === null
+                  ? "Antkainis turi būti neneigiamas skaičius."
+                  : <>Baseline rate {formatCents(kaina.baselineRateCents)} (kaštai be kuro {formatCents(kaina.baselineCents)} + {norimaMarza} %) + kuras {formatCents(kaina.fuelCents)}
+                    {kaina.marginPercent !== null && ` · marža nuo kainos ${kaina.marginPercent.toFixed(1).replace(".", ",")} %`}</>}
+              </p>
+              <p className="mt-2 text-sm">Mažiausiai – savikaina <strong className="tabular-nums">{formatCents(result.totalCostCents)}</strong>; su vadovo pritarimu – ne mažiau nei <strong className="tabular-nums">{formatCents(inasas.breakEvenPriceCents)}</strong>: tiek, kad padengtų kintamus kaštus{alternatyva!.contributionCents !== 0 && " ir būtų geriau už alternatyvą"}.</p>
+            </>
             : inasas.verdict === "approval"
               ? <p className="mt-1 text-sm text-warn">Kaina {formatCents(-result.profitCents)} žemiau savikainos {formatCents(result.totalCostCents)}. Krovinys padengia kintamus kaštus ir {formatCents(inasas.contributionCents)} pastovių – važiuoti galima tik vadovui pritarus.</p>
               : inasas.verdict === "reject"
@@ -1373,17 +1385,7 @@ export function TripForm({
         </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
         {/* Be pajamų „pelnas“ būtų minusas lygus kaštams ir klaidintų: čia
             klausimas yra kiek prašyti, todėl tai ir yra antraštė. */}
-        {bePajamu ? <>
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h3 className="font-semibold">Prašoma kaina</h3>
-            <p className="text-lg font-semibold tabular-nums">{prasomaKaina === null ? "—" : formatCents(prasomaKaina)}</p>
-          </div>
-          <p className="mt-1 text-sm text-muted">
-            {prasomaKaina === null
-              ? "Tokia marža nepasiekiama – 100 % reikštų pajamas be kaštų."
-              : `Su ${norimaMarza} % marža`}
-          </p>
-        </> : <>
+        {bePajamu ? null : <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h3 className="font-semibold">Pelnas <span className="font-normal text-muted">(su pastoviais furos kaštais)</span></h3>
             <p className={`text-lg font-semibold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
@@ -1424,8 +1426,8 @@ export function TripForm({
             </>}
           </p>;
         })()}
-        {bePajamu && targetBelowMin(Number(norimaMarza), minMarza) && minMarza !== null && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
-          Norima marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
+        {bePajamu && kainaZemiauRibos && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
+          Šios kainos marža {kaina!.marginPercent!.toFixed(1).replace(".", ",")} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
         </p>}
 
         {/* Kaina trimis matais: viso, per parą ir už apmokamą km. Užsakovas
@@ -1442,7 +1444,7 @@ export function TripForm({
           <tbody>
             {([
               ["Savikaina", result.totalCostCents, false],
-              [`Prašoma kaina (${norimaMarza} % marža)`, prasomaKaina, true],
+              [`Tinkama kaina (baseline + ${norimaMarza} %, + kuras)`, prasomaKaina, true],
               ...(bePajamu ? [] : [["Pajamos", result.revenueCents, false]]),
             ] as [string, number | null, boolean][]).map(([label, cents, target]) => {
               const perDay = cents === null ? null : pricePerDay(cents, paros);
@@ -1450,7 +1452,7 @@ export function TripForm({
               return <tr key={label} className="border-t border-line">
                 <th scope="row" className="py-1 pr-3 text-left font-normal">
                   {label}
-                  {target && !bePajamu && minMarza !== null && targetBelowMin(Number(norimaMarza), minMarza) && <span className="block text-xs text-bad">žemiau įmonės ribos {formatMinMargin(minMarza)}</span>}
+                  {target && !bePajamu && kainaZemiauRibos && <span className="block text-xs text-bad">žemiau įmonės ribos {formatMinMargin(minMarza)}</span>}
                 </th>
                 <td className="py-1 text-right font-semibold">{cents === null ? "—" : formatCents(cents)}</td>
                 <td className="py-1 text-right">{perDay === null ? "—" : formatCents(perDay)}</td>

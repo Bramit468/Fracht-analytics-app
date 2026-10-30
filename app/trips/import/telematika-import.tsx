@@ -8,6 +8,7 @@ import { formatCents } from "../../../lib/money";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { buttonPrimary } from "../../ui";
+import { importSnapshot } from "../../../lib/telematics-orders";
 import { loadTelematikaOrders, ptvRouteKm, type OrderPreview } from "./telematika-orders";
 
 const km = (value: number) => Math.round(value).toLocaleString("lt-LT");
@@ -18,6 +19,8 @@ const SHOWN = 100;
 interface ImportSummary {
   created: number;
   updated: { orderId: string; number: string; changes: string[] }[];
+  /** Pataisyti ranka – Telematikos pakeitimai neįrašyti. */
+  keptManual: { orderId: string; number: string; fields: string[] }[];
   unchanged: number;
   skipped: { orderId: string; label: string; reason: string }[];
   ptvMisses: string[];
@@ -94,7 +97,8 @@ export function TelematikaImport() {
             if (route.quota) ptvStopped = true;
           }
         }
-        await saveTrip({ ...trip, id: item.existingId ?? undefined, ...(available ? { customer_id: customerId } : {}) }, legs);
+        // Kopija – kad kitas atnaujinimas atskirtų rankinį pataisymą nuo Telematikos pakeitimo.
+        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: importSnapshot(trip), ...(available ? { customer_id: customerId } : {}) }, legs);
         saved.add(item.orderId);
       } catch {
         failures.push(`${item.trip.trip_number} (${item.trip.trip_date})`);
@@ -114,13 +118,15 @@ export function TelematikaImport() {
         setError(result.message);
         return;
       }
-      const toSave = result.trips.filter((item) => item.changes === null || item.changes.length > 0);
+      const toSave = result.trips.filter((item) => item.changes === null || (item.changes.length > 0 && item.handEdited.length === 0));
+      const keptManual = result.trips.filter((item) => item.changes !== null && item.changes.length > 0 && item.handEdited.length > 0);
       const { ptvMisses, failures, saved } = await save(toSave);
       const done = toSave.filter((item) => saved.has(item.orderId));
       setSummary({
         created: done.filter((item) => item.changes === null).length,
         updated: done.filter((item) => item.changes !== null).map((item) => ({ orderId: item.orderId, number: item.trip.trip_number, changes: item.changes ?? [] })),
-        unchanged: result.trips.length - toSave.length,
+        keptManual: keptManual.map((item) => ({ orderId: item.orderId, number: item.trip.trip_number, fields: item.handEdited })),
+        unchanged: result.trips.length - toSave.length - keptManual.length,
         skipped: result.skipped.map((item) => ({ orderId: item.orderId, label: item.orderNo || `TLM ${item.orderId}`, reason: item.reason })),
         ptvMisses,
         failures,
@@ -158,6 +164,11 @@ export function TelematikaImport() {
       {summary.ptvMisses.length > 0 && <details className="text-warn">
         <summary className="cursor-pointer">PTV km neapskaičiuoti: {summary.ptvMisses.length} – jiems liko paros ridos įvertis</summary>
         <ul className="mt-1 space-y-0.5">{summary.ptvMisses.map((line) => <li key={line}>{line}</li>)}</ul>
+      </details>}
+      {summary.keptManual.length > 0 && <details>
+        <summary className="cursor-pointer text-muted">Pakeisti ranka, neatnaujinta ({summary.keptManual.length})</summary>
+        <p className="mt-1 text-xs text-muted">Telematikoje šie užsakymai pasikeitė, bet reisai pataisyti ranka, todėl paliekami kaip yra.</p>
+        <ul className="mt-1 space-y-0.5">{summary.keptManual.map((item) => <li key={item.orderId}>{item.number}: taisyta {item.fields.join(", ")}</li>)}</ul>
       </details>}
       {summary.updated.length > 0 && <details>
         <summary className="cursor-pointer text-muted">Kas atnaujinta ({summary.updated.length})</summary>

@@ -431,6 +431,22 @@ export function buildOrderTrips(input: {
 /** Importuoto reiso laukai, pagal kuriuos sprendžiama, ar užsakymas pasikeitė. */
 export type StoredOrderTrip = Pick<TripInsert, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents" | "per_diem_cents">;
 
+/** Laukai, kuriais skiriasi du tos pačios reiso įrašo variantai. `paidKm: false` – km nelyginami. */
+function fieldChanges(a: StoredOrderTrip, b: StoredOrderTrip, paidKm: boolean): string[] {
+  const differs = (x: number | null | undefined, y: number | null | undefined, step: number) =>
+    Math.abs(Number(x ?? 0) - Number(y ?? 0)) >= step;
+  const changes: string[] = [];
+  if (differs(a.freight_price_cents, b.freight_price_cents, 1)) changes.push("kaina");
+  if (a.trip_date !== b.trip_date || differs(a.days, b.days, 0.001)) changes.push("datos");
+  if (a.truck_id !== b.truck_id) changes.push("fura");
+  if (differs(a.empty_km, b.empty_km, 0.01)) changes.push("tušti km");
+  if (paidKm && differs(a.paid_km, b.paid_km, 0.01)) changes.push("km");
+  if (differs(a.bridges_cents, b.bridges_cents, 1)) changes.push("keliai");
+  // Ir anksčiau importuoti reisai be dienpinigių pagal šalis gauna juos per kitą atnaujinimą.
+  if ((a.per_diem_cents ?? null) !== (b.per_diem_cents ?? null)) changes.push("dienpinigiai");
+  return changes;
+}
+
 /**
  * Kas užsakyme pasikeitė nuo paskutinio importo. Tuščias sąrašas – įrašyti
  * nereikia: perrašymas be reikalo atnaujintų ir furos kaštų kopiją.
@@ -440,16 +456,20 @@ export type StoredOrderTrip = Pick<TripInsert, "trip_date" | "truck_id" | "days"
  * PTV km, o čia – tik paros ridos įvertis.
  */
 export function importChanges(stored: StoredOrderTrip, built: ImportedTrip): string[] {
-  const differs = (a: number | null | undefined, b: number | null | undefined, step: number) =>
-    Math.abs(Number(a ?? 0) - Number(b ?? 0)) >= step;
-  const changes: string[] = [];
-  if (differs(stored.freight_price_cents, built.trip.freight_price_cents, 1)) changes.push("kaina");
-  if (stored.trip_date !== built.trip.trip_date || differs(stored.days, built.trip.days, 0.001)) changes.push("datos");
-  if (stored.truck_id !== built.trip.truck_id) changes.push("fura");
-  if (differs(stored.empty_km, built.trip.empty_km, 0.01)) changes.push("tušti km");
-  if (!built.kmAddresses && differs(stored.paid_km, built.trip.paid_km, 0.01)) changes.push("km");
-  if (differs(stored.bridges_cents, built.trip.bridges_cents, 1)) changes.push("keliai");
-  // Ir anksčiau importuoti reisai be dienpinigių pagal šalis gauna juos per kitą atnaujinimą.
-  if ((stored.per_diem_cents ?? null) !== (built.trip.per_diem_cents ?? null)) changes.push("dienpinigiai");
-  return changes;
+  return fieldChanges(stored, built.trip, !built.kmAddresses);
+}
+
+/** Ką importas įrašė – saugoma `trips.import_snapshot` (0021). */
+export function importSnapshot(trip: StoredOrderTrip): StoredOrderTrip {
+  const { trip_date, truck_id, days, paid_km, empty_km, freight_price_cents, bridges_cents, per_diem_cents } = trip;
+  return { trip_date, truck_id, days, paid_km, empty_km, freight_price_cents, bridges_cents, per_diem_cents: per_diem_cents ?? null };
+}
+
+/**
+ * Ar importuotas reisas pataisytas ranka: įrašas skiriasi nuo to, ką importas
+ * įrašė paskutinį kartą. Be kopijos (sena eilutė) – nežinoma, laikoma, kad ne.
+ * Km lyginami visada: kopijoje jau tie km, kurie buvo įrašyti (ir PTV).
+ */
+export function editedByHand(stored: StoredOrderTrip, snapshot: StoredOrderTrip | null | undefined): string[] {
+  return snapshot ? fieldChanges(stored, snapshot, true) : [];
 }

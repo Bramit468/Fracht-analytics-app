@@ -90,6 +90,8 @@ export interface Trip {
 
   /** Telematikos OrderId, jei reisas importuotas (migracija 0019). */
   telematika_order_id?: string | null;
+  /** Ką paskutinis importas įrašė (0021): skiriasi nuo įrašo – pataisyta ranka. */
+  import_snapshot?: Pick<Trip, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents" | "per_diem_cents"> | null;
 
   created_at: string;
 }

@@ -299,6 +299,18 @@ export interface Alternative {
   thresholdCents: number;
 }
 
+/**
+ * Ar imti krovinį. Žemiausia kaina – savikaina: žemiau jos važiuojama tik su
+ * vadovo pritarimu ir tik tada, kai krovinys padengia kintamus kaštus ir yra
+ * geresnis už alternatyvą (pvz. grįžimą tuščiam).
+ */
+export type LoadVerdict = "take" | "approval" | "reject";
+
+export function loadVerdict(profitCents: number, vsAlternativeCents: number, thresholdCents: number): LoadVerdict {
+  if (profitCents >= 0) return "take";
+  return vsAlternativeCents > thresholdCents ? "approval" : "reject";
+}
+
 export interface ContributionResult {
   /** Paros, kurių fura neužimtų alternatyva. */
   extraDays: number;
@@ -310,8 +322,10 @@ export interface ContributionResult {
   contributionCents: number;
   /** Įnašas − alternatyvos įnašas. */
   vsAlternativeCents: number;
+  /** Įnašas viršija alternatyvą bent riba – be savikainos patikros. */
   take: boolean;
-  /** Imti verta, kai kaina didesnė už šią. */
+  verdict: LoadVerdict;
+  /** Žemiau savikainos, su vadovo pritarimu, kaina turi būti didesnė už šią. */
   breakEvenPriceCents: number;
 }
 
@@ -334,6 +348,7 @@ export function calcContribution(result: TripResult, days: number, alternative: 
     contributionCents,
     vsAlternativeCents,
     take: vsAlternativeCents > alternative.thresholdCents,
+    verdict: loadVerdict(result.profitCents, vsAlternativeCents, alternative.thresholdCents),
     breakEvenPriceCents: variableCents + alternative.contributionCents + alternative.thresholdCents,
   };
 }

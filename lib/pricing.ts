@@ -51,3 +51,31 @@ export function pricePerDay(priceCents: number, days: number): number | null {
   if (!(days > 0)) return null;
   return Math.round(priceCents / days);
 }
+
+export interface BaselineQuote {
+  /** Tinkama krovinio kaina: savikaina su tiksline marža nuo kainos. */
+  priceCents: number;
+  /** Kuras – užsakovui rodomas atskirai. */
+  fuelCents: number;
+  /** Baseline rate: kaina be kuro. */
+  baselineRateCents: number;
+  profitCents: number;
+}
+
+/**
+ * Kaina, kaip ją pateikia įmonė: tikslinė marža skaičiuojama nuo visos kainos
+ * (savikaina / (1 − marža)), o užsakovui kaina išdėstoma kaip baseline rate +
+ * kuras. Kuras rodomas atskirai, nes jo kaina kinta ir ją užsakovas mato pats.
+ * `null`, kai marža nepasiekiama arba kaštų nėra.
+ */
+export function baselineQuote(totalCostCents: number, fuelCents: number, marginPercent: number): BaselineQuote | null {
+  if (!(marginPercent >= 0)) return null;
+  const priceCents = priceForMargin(totalCostCents, marginPercent);
+  if (priceCents === null) return null;
+  return {
+    priceCents,
+    fuelCents,
+    baselineRateCents: priceCents - fuelCents,
+    profitCents: priceCents - totalCostCents,
+  };
+}

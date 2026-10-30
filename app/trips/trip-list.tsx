@@ -18,7 +18,8 @@ import { PERIODS, type PeriodKey } from "../../lib/trip-period";
 import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
 import { deleteTrip, listTrips, updateTripPayment, type SkippedTrip, type TripSummary } from "../../lib/trips";
-import { fetchMinMarginPercent } from "../../lib/company-settings";
+import { fetchCompanySettings } from "../../lib/company-settings";
+import { loadVerdict } from "../../lib/calc";
 import { checkMargin, formatMinMargin } from "../../lib/margin-guard";
 import { getSupabaseClient } from "../../lib/supabase";
 import { listCustomers, type Customer } from "../../lib/customers";
@@ -108,6 +109,7 @@ export function TripList() {
   const [sort, setSort] = useState<SortKey>("date");
   /** Įmonės minimali marža (#181). `null` – riba nenustatyta. */
   const [minMargin, setMinMargin] = useState<number | null>(null);
+  const [minContribution, setMinContribution] = useState(0);
   /** Užsakovai – pavadinimui ir apmokėjimo terminui (#183, #185). */
   const [customers, setCustomers] = useState<Customer[]>([]);
   /** Kurio reiso apmokėjimo datos atskleistos. */
@@ -141,16 +143,17 @@ export function TripList() {
     async function loadTrips() {
       try {
         const skippedTrips: SkippedTrip[] = [];
-        const [loadedTrips, riba, uzsakovai] = await Promise.all([
+        const [loadedTrips, nustatymai, uzsakovai] = await Promise.all([
           listTrips(skippedTrips),
-          fetchMinMarginPercent(getSupabaseClient()),
+          fetchCompanySettings(getSupabaseClient()),
           // Užsakovų klaida neturi paslėpti reisų sąrašo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [], available: false })),
         ]);
         if (!cancelled) {
           setTrips(loadedTrips);
           setSkipped(skippedTrips);
-          setMinMargin(riba);
+          setMinMargin(nustatymai.minMarginPercent);
+          setMinContribution(nustatymai.minContributionCents ?? 0);
           setCustomers(uzsakovai.customers);
         }
       } catch {
@@ -205,6 +208,7 @@ export function TripList() {
             <th className="px-3 py-2.5 font-medium">Fura</th>
             <th className="px-3 py-2.5 text-right font-medium">Pajamos</th>
             <th className="px-3 py-2.5 text-right font-medium">Kaštai</th>
+            <th className="px-3 py-2.5 text-right font-medium" title="Pajamos − kuras, AdBlue, keliai, papildomų parų dienpinigiai">Įnašas</th>
             <th className="px-3 py-2.5 text-right font-medium">Pelnas</th>
             <th className="px-3 py-2.5 text-right font-medium">Marža</th>
             <th className="px-3 py-2.5 text-right font-medium">Per parą</th>
@@ -234,7 +238,9 @@ export function TripList() {
                 <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[13px]">{trip.truckPlate}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.revenueCents)}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.totalCostCents)}</td>
-                <td className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${trip.profitCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(trip.profitCents)}</td>
+                {/* Įnašo spalva – verdiktas: žalia nuo savikainos, geltona – žemiau jos, bet padengė kintamus kaštus. */}
+                <td className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${{ take: "text-good", approval: "text-warn", reject: "text-bad" }[loadVerdict(trip.profitCents, trip.vsAlternativeCents ?? 0, minContribution)]}`} title={trip.vsAlternativeCents !== undefined && trip.vsAlternativeCents !== trip.contributionCents ? `Palyginus su alternatyva ${formatCents(trip.vsAlternativeCents)}` : undefined}>{formatCents(trip.contributionCents ?? 0)}</td>
+                <td className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${trip.profitCents >= 0 ? "text-muted" : "text-bad"}`}>{formatCents(trip.profitCents)}</td>
                 <td className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${below ? "font-medium text-bad" : "text-muted"}`} title={below ? `Žemiau ribos ${formatMinMargin(minMargin)}` : undefined}>
                   {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`}
                 </td>

@@ -21,6 +21,8 @@ function trip(overrides: Partial<TripSummary> = {}): TripSummary {
     marginPercent: 23.9375,
     profitPerKm: 0.2789,
     profitPerDayCents: null,
+    contributionCents: 120050,
+    vsAlternativeCents: 170050,
     roadByCountry: [],
     ...overrides,
   };
@@ -77,8 +79,13 @@ describe("tripsToCsv", () => {
 
     expect(rows).toHaveLength(2);
     expect(rows[1]).toBe(
-      "2026-09-10;R-001;LOV 141;Panevėžys;Oslas;2060;0;2400,00;1825,50;574,50;23,9;0,28",
+      "2026-09-10;R-001;LOV 141;Panevėžys;Oslas;2060;0;2400,00;1825,50;1200,50;1700,50;574,50;23,9;0,28",
     );
+  });
+
+  it("nesuskaičiuotą įnašą palieka tuščią, o ne nulį", () => {
+    const rows = tripsToCsv([trip({ contributionCents: undefined, vsAlternativeCents: undefined })]).split("\r\n");
+    expect(rows[1]).toContain(";1825,50;;;574,50;");
   });
 
   it("nesant maržos palieka tuščią langelį", () => {

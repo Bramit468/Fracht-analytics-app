@@ -24,6 +24,8 @@ export const CSV_COLUMNS = [
   "Tušti km",
   "Pajamos, EUR",
   "Kaštai, EUR",
+  "Įnašas, EUR",
+  "Įnašas vs alternatyva, EUR",
   "Pelnas, EUR",
   "Marža, %",
   "Pelnas, EUR/km",
@@ -40,6 +42,9 @@ function row(trip: TripSummary): string[] {
     String(trip.emptyKm),
     centsToCsv(trip.revenueCents),
     centsToCsv(trip.totalCostCents),
+    // Tuščia, kai įnašas nesuskaičiuotas – nulis reikštų „nieko neuždirbo“.
+    trip.contributionCents === undefined ? "" : centsToCsv(trip.contributionCents),
+    trip.vsAlternativeCents === undefined ? "" : centsToCsv(trip.vsAlternativeCents),
     centsToCsv(trip.profitCents),
     decimalToCsv(trip.marginPercent, 1),
     decimalToCsv(trip.profitPerKm, 2),

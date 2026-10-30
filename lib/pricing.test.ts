@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calcTrip } from "./calc";
-import { marginForPrice, priceForMargin, priceForProfit, pricePerDay, pricePerKm } from "./pricing";
+import { baselineQuote, marginForPrice, priceForMargin, priceForProfit, pricePerDay, pricePerKm } from "./pricing";
 
 describe("priceForMargin", () => {
   it("marža skaičiuojama nuo pajamų, ne nuo kaštų", () => {
@@ -104,5 +104,32 @@ describe("pricePerDay", () => {
 
   it("be parų atsakymo nėra", () => {
     expect(pricePerDay(100000, 0)).toBeNull();
+  });
+});
+
+describe("baselineQuote (tikslinė marža, išdėstyta kaip baseline rate + kuras)", () => {
+  it("Šiauliai–Amersfoort: 15 % marža ≈ įmonės tikslas 2300 €", () => {
+    // Savikaina 1950,54 €, iš jos kuras 909,42 €.
+    expect(baselineQuote(195054, 90942, 15)).toEqual({
+      priceCents: 229475,
+      fuelCents: 90942,
+      baselineRateCents: 138533,
+      profitCents: 34421,
+    });
+  });
+
+  it("baseline rate + kuras visada lygu kainai", () => {
+    const quote = baselineQuote(195054, 90942, 12.5)!;
+    expect(quote.baselineRateCents + quote.fuelCents).toBe(quote.priceCents);
+  });
+
+  it("nulinė marža – savikaina", () => {
+    expect(baselineQuote(195054, 90942, 0)?.priceCents).toBe(195054);
+  });
+
+  it("neigiamos, netinkamos ar 100 % maržos nepriima", () => {
+    expect(baselineQuote(195054, 90942, -5)).toBeNull();
+    expect(baselineQuote(195054, 90942, Number.NaN)).toBeNull();
+    expect(baselineQuote(195054, 90942, 100)).toBeNull();
   });
 });

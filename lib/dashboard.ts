@@ -6,6 +6,8 @@ export interface DashboardStats {
   revenueCents: number;
   totalCostCents: number;
   profitCents: number;
+  /** Visų reisų įnašas: pajamos − kintami kaštai. Skirtumas iki pelno – pastovūs furos kaštai. */
+  contributionCents: number;
   /** Visų reisų marža: visas pelnas / visos pajamos. null, kai pajamų nėra. */
   marginPercent: number | null;
   /** Visų reisų pelnas už km: visas pelnas / visi apmokami km. null, kai km nėra. */
@@ -69,6 +71,7 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
 
   const revenueCents = sum((trip) => trip.revenueCents);
   const profitCents = sum((trip) => trip.profitCents);
+  const contributionCents = sum((trip) => trip.contributionCents ?? 0);
   const totalCostCents = sum((trip) => trip.totalCostCents);
   const paidKm = sum((trip) => trip.paidKm);
   const emptyKm = sum((trip) => trip.emptyKm);
@@ -79,6 +82,7 @@ export function calculateDashboardStats(trips: TripSummary[]): DashboardStats {
     revenueCents,
     totalCostCents,
     profitCents,
+    contributionCents,
     marginPercent: revenueCents > 0 ? (profitCents / revenueCents) * 100 : null,
     profitPerKm: paidKm > 0 ? profitCents / 100 / paidKm : null,
     costPerKm: paidKm > 0 ? totalCostCents / 100 / paidKm : null,

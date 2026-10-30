@@ -1363,25 +1363,29 @@ export function TripForm({
                   : <>Baseline rate {formatCents(kaina.baselineRateCents)} (kaštai be kuro {formatCents(kaina.baselineCents)} + {norimaMarza} %) + kuras {formatCents(kaina.fuelCents)}
                     {kaina.marginPercent !== null && ` · marža nuo kainos ${kaina.marginPercent.toFixed(1).replace(".", ",")} %`}</>}
               </p>
-              <p className="mt-2 text-sm">Mažiausiai – savikaina <strong className="tabular-nums">{formatCents(result.totalCostCents)}</strong>; su vadovo pritarimu – ne mažiau nei <strong className="tabular-nums">{formatCents(inasas.breakEvenPriceCents)}</strong>: tiek, kad padengtų kintamus kaštus{alternatyva!.contributionCents !== 0 && " ir būtų geriau už alternatyvą"}.</p>
+              {/* Žemiausia kaina – savikaina be antkainio; žemiau jos skaičiaus nesiūlome:
+                  tai sprendžiama pagal aplinkybes, vadovui pritarus. */}
+              <p className="mt-2 text-sm">Mažiausiai – savikaina <strong className="tabular-nums">{formatCents(result.totalCostCents)}</strong> (be antkainio). Žemiau – tik įvertinus aplinkybes, vadovui pritarus.</p>
             </>
             : inasas.verdict === "approval"
               ? <p className="mt-1 text-sm text-warn">Kaina {formatCents(-result.profitCents)} žemiau savikainos {formatCents(result.totalCostCents)}. Krovinys padengia kintamus kaštus ir {formatCents(inasas.contributionCents)} pastovių – važiuoti galima tik vadovui pritarus.</p>
               : inasas.verdict === "reject"
                 ? <p className="mt-1 text-sm text-bad">Kaina nepadengia net kintamų kaštų{alternatyva!.contributionCents !== 0 && " ir alternatyvos"} – mažiausiai {formatCents(inasas.breakEvenPriceCents)}.</p>
                 : null}
-          <p className="mt-2 text-sm tabular-nums text-muted">
-            {!bePajamu && <>Pajamos {formatCents(result.revenueCents)} − </>}
-            kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
-            {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
-            {bePajamu ? <> = {formatCents(inasas.variableCents)} kintamų kaštų.</> : <> = <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.</>}
-            {" "}Kuras, AdBlue ir keliai – su tuščiais km.
-          </p>
-          <p className="mt-1 text-sm tabular-nums text-muted">
-            Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
-            {!bePajamu && <> · skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong></>}
-            {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
-          </p>
+          {/* Įnašo išklotinė – tik vertinant konkrečią kainą, kai ji žemiau savikainos svarbi vadovui. */}
+          {!bePajamu && <>
+            <p className="mt-2 text-sm tabular-nums text-muted">
+              Pajamos {formatCents(result.revenueCents)} − kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
+              {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
+              {" "}= <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.
+              {" "}Kuras, AdBlue ir keliai – su tuščiais km.
+            </p>
+            <p className="mt-1 text-sm tabular-nums text-muted">
+              Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
+              {" "}· skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong>
+              {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
+            </p>
+          </>}
         </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
         {/* Be pajamų „pelnas“ būtų minusas lygus kaštams ir klaidintų: čia
             klausimas yra kiek prašyti, todėl tai ir yra antraštė. */}

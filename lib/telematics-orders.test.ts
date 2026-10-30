@@ -138,6 +138,20 @@ describe("buildOrderTrips", () => {
     expect(unassignedTollCents).toBe(500);
   });
 
+  it("keliai dienomis be užsakymo – kitam tos furos užsakymui per 3 dienas, toliau – nepriskirti", () => {
+    const toll = (date: string, costCents: number): Supply => ({ plate: "MHE 763", date, kind: "toll", quantity: null, costCents, country: "SWE" });
+    const { trips, unassignedTollCents } = build(
+      [leg("1", "2026-10-15 08:00:00", "2026-10-15 18:00:00", 100), leg("2", "2026-10-21 08:00:00", "2026-10-21 18:00:00", 100)],
+      { supplies: [toll("2026-10-16", 900), toll("2026-10-19", 300), toll("2026-10-20", 200)] },
+    );
+    const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
+    // 10-16 → kitas užsakymas tik 10-21 (5 d.) – nepriskirta; 10-19 ir 10-20 – užsakymui 2.
+    expect(byOrder[2].trip.bridges_cents).toBe(500);
+    expect(byOrder[1].trip.bridges_cents).toBe(0);
+    expect(unassignedTollCents).toBe(900);
+    expect(byOrder[2].notes).toContain("Keliai 5,00 € – pervažiavimas prieš užsakymą (dienos be užsakymo).");
+  });
+
   it("be atkarpų km – PTV adresai ir įvertis iš paros ridos, ne daugiau nei užsakymo valandų dalis", () => {
     const { trips } = build([leg("2", "2026-10-20 06:00:00", "2026-10-20 18:00:00", 0)], {
       daily: [{ plate: "MHE 763", date: "2026-10-20", km: 800, fuelL: 240 }],

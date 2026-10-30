@@ -8,7 +8,6 @@ import { getSupabaseClient } from "../../../lib/supabase";
 import {
   estimateScandlinesFreightFare,
   SCANDLINES_SURCHARGE_URL,
-  SCANDLINES_TARIFF_PERIOD,
   SCANDLINES_TARIFF_URL,
   type FerryFareEstimate,
   type FreightLoad,
@@ -602,9 +601,15 @@ export function TripForm({
     setSaved("");
   }
 
+  /** Kelto priemoka – pagal reiso mėnesį; be datos – šios dienos. */
+  function ferryDate(): string {
+    const field = formRef.current?.elements.namedItem("trip_date");
+    return (field instanceof HTMLInputElement && field.value) || todayInVilnius();
+  }
+
   /** Įrašo viešo tarifo įvertį į tą patį lauką, kurį galima pataisyti ranka. */
   function applyFerryEstimate(names: readonly string[], length: string, load: FreightLoad) {
-    const estimate = estimateScandlinesFreightFare(names, Number(length), load);
+    const estimate = estimateScandlinesFreightFare(names, Number(length), load, ferryDate());
     setKeltoIvertis(estimate);
 
     const field = formRef.current?.elements.namedItem("ferries_cents");
@@ -763,7 +768,7 @@ export function TripForm({
         ? null
         : write
           ? applyFerryEstimate(result.ferryNames, keltoIlgis, keltoKrovinys)
-          : estimateScandlinesFreightFare(result.ferryNames, Number(keltoIlgis), keltoKrovinys);
+          : estimateScandlinesFreightFare(result.ferryNames, Number(keltoIlgis), keltoKrovinys, ferryDate());
       if (!needsFerryPrice) setKeltoIvertis(null);
 
       if (write) {
@@ -1109,14 +1114,17 @@ export function TripForm({
               </select>
             </label>
           </div>
+          {keltoIvertis?.surcharge.stale && <p role="alert" className="mt-3 rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-sm text-warn">
+            Priemoka {keltoIvertis.surcharge.month} – gali būti pasikeitusi. Patikrinkite Scandlines priemokas ir, jei reikia, pataisykite kelto sumą.
+          </p>}
           {keltoIvertis ? <p className="mt-3 text-sm text-ink">
             Į lauką „Keltai (€)“ įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong>:
-            bazė {formatCents(keltoIvertis.baseCents)} + BAF/GIR/ETS {formatCents(keltoIvertis.surchargeCents)}.
+            bazė {formatCents(keltoIvertis.baseCents)} + BAF/GIR/ETS {formatCents(keltoIvertis.surchargeCents)} ({keltoIvertis.surcharge.month}).
           </p> : <p role="alert" className="mt-3 text-sm text-bad">
             Šiam maršrutui arba ilgiui automatinio tarifo nėra. Kelto kainą įrašykite ranka.
           </p>}
           <p className="mt-2 text-xs text-muted">
-            Scandlines viešas tarifas ({SCANDLINES_TARIFF_PERIOD}), be PVM; sutartinė kaina gali skirtis.{" "}
+            Scandlines viešas tarifas, be PVM; sutartinė kaina gali skirtis.{" "}
             <a href={SCANDLINES_TARIFF_URL} target="_blank" rel="noreferrer" className="underline">Tarifas</a>{" · "}
             <a href={SCANDLINES_SURCHARGE_URL} target="_blank" rel="noreferrer" className="underline">Priemokos</a>
           </p>

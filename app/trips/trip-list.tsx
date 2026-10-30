@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Copy, Download, Pencil, Search, Trash2 } from "lucide-react";
 import { buttonSecondary, input, SkippedTripsNotice } from "../ui";
@@ -94,6 +94,9 @@ function downloadTrips(trips: TripSummary[], today: string) {
   downloadCsv(csvFileName(today), tripsToCsv(trips));
 }
 
+/** Tiek eilučių piešiama iš karto: reisų šimtai, o žiūrima dažniausiai į naujausius. */
+const PAGE_SIZE = 50;
+
 export function TripList() {
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [skipped, setSkipped] = useState<SkippedTrip[]>([]);
@@ -109,6 +112,14 @@ export function TripList() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   /** Kurio reiso apmokėjimo datos atskleistos. */
   const [openPayment, setOpenPayment] = useState("");
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  // Lietuvos data, ne UTC: po vidurnakčio filtras „šis mėnuo“ nemanytų, kad dar vakar.
+  const today = todayInVilnius();
+  // Perskaičiuojama tik pasikeitus reisams, paieškai ar rikiavimui, ne po kiekvieno perpiešimo.
+  const shown = useMemo(() => sortTrips(filterTrips(trips, filter, today), sort), [trips, filter, sort, today]);
+  // Nauja paieška ar rikiavimas – vėl nuo pirmų eilučių.
+  const changeFilter = (next: TripFilter) => { setFilter(next); setLimit(PAGE_SIZE); };
+  const changeSort = (next: SortKey) => { setSort(next); setLimit(PAGE_SIZE); };
 
   async function remove(trip: TripSummary) {
     if (!confirm(`Ištrinti reisą ${trip.tripNumber}? Atstatyti nebus galima.`)) return;
@@ -175,18 +186,13 @@ export function TripList() {
     </div>;
   }
 
-  const shown = sortTrips(
-    filterTrips(trips, filter, new Date().toISOString().slice(0, 10)),
-    sort,
-  );
   const customersById = new Map(customers.map((customer) => [customer.id, customer]));
-  const today = todayInVilnius();
   // Kol migracija 0015 nepaleista, datų stulpelių nėra – nerodomas ir stulpelis.
   const payments = trips.some((trip) => trip.invoicedOn !== undefined);
 
   return <div className="space-y-4">
     <SkippedTripsNotice skipped={skipped} />
-    <Controls filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
+    <Controls filter={filter} onFilter={changeFilter} sort={sort} onSort={changeSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
 
     {shown.length === 0 ? <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
       Pagal šią paiešką reisų nėra.
@@ -207,7 +213,7 @@ export function TripList() {
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {shown.map((trip) => {
+          {shown.slice(0, limit).map((trip) => {
             const below = minMargin !== null && checkMargin({
               marginPercent: trip.marginPercent,
               minMarginPercent: minMargin,
@@ -262,6 +268,11 @@ export function TripList() {
           })}
         </tbody>
       </table>
+      {shown.length > limit && <div className="border-t border-line px-4 py-3 text-center">
+        <button type="button" className={buttonSecondary} onClick={() => setLimit((value) => value + PAGE_SIZE)}>
+          Rodyti dar {Math.min(PAGE_SIZE, shown.length - limit)} (liko {shown.length - limit})
+        </button>
+      </div>}
     </div>}
   </div>;
 }

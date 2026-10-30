@@ -3,6 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { calcDailyRate } from "@/lib/calc";
+import { todayInVilnius } from "@/lib/local-date";
 import { formatCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { liveTrucks, parseSnapshots, type LiveTruck } from "@/lib/telematics";
@@ -30,9 +31,6 @@ export const metadata: Metadata = {
 /** Kiek dienų atgal ieškoti reisų, kurie dar gali vykti. */
 const SENIAUSIA_PRADZIA = 60;
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 /** Dabartis tiekėjo formatu ir zona: „2026-10-13 17:26:58“ Lietuvos laiku. */
 function vilniusNow(date: Date): string {
@@ -85,7 +83,8 @@ export default async function VykstaPage() {
   // Priklauso nuo šiandienos, todėl puslapis generuojamas kiekvienai užklausai.
   await connection();
 
-  const today = isoDate(new Date());
+  // Lietuvos data: Vercel serveriai dirba UTC.
+  const today = todayInVilnius();
   const supabase = await createServerSupabaseClient();
 
   const [tripResult, truckResult, allowed] = await Promise.all([

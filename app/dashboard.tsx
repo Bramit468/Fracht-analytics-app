@@ -26,6 +26,7 @@ import type { ProfitGroup } from "../lib/group-profit";
 import { comparePeriod, compareWithRange } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
 import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, type PeriodRange } from "../lib/trip-period";
+import { todayInVilnius } from "../lib/local-date";
 import { listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
 import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
@@ -667,9 +668,9 @@ function DetailsTable({ trips, customers, fleetPerDayCents, periodLabel }: {
   </div>;
 }
 
-/** Šiandiena už komponento ribų: render metu laiko imti negalima (React compiler). */
+/** Šiandiena už komponento ribų: render metu laiko imti negalima (React compiler). Lietuvos, ne UTC. */
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayInVilnius();
 }
 
 export function Dashboard() {

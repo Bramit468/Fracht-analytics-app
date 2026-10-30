@@ -22,6 +22,7 @@
 
 import { countriesByDayFromStops, fitPerDiemDays, perDiemCentsFor, perDiemDays } from "./per-diem";
 import { iso2FromIso3 } from "./per-diem-norms";
+import { addDays } from "./trip-progress";
 import { plateKey, summarizeActuals, tripFillFromActuals, type DailyDistance, type Supply } from "./telematics-costs";
 import type { StoredStop, StopType } from "./stops";
 import type { TripCountryLegInsert, TripInsert } from "../types/trip";
@@ -129,6 +130,8 @@ export function placeCity(place: string): string {
 }
 
 const HOUR = 3_600_000;
+/** Kiek dienų į priekį ieškoti užsakymo, kuriam priskirti kelius iš dienos be užsakymo. */
+const NEXT_ORDER_DAYS = 3;
 
 /** Tiekėjo laikas be zonos – visur skaitomas vienodai, kaip UTC. */
 function time(value: string): number {
@@ -312,17 +315,43 @@ export function buildOrderTrips(input: {
     return sharing.map((item) => ({ id: item.id, share: item.hours / total }));
   };
 
+  /**
+   * Kitas tos furos užsakymas, prasidedantis per `NEXT_ORDER_DAYS` po `date`.
+   * Diena be užsakymo dažniausiai yra pervažiavimas į pakrovimą – jį apmoka
+   * kitas užsakymas, ne niekas.
+   */
+  const nextOrder = (plate: string, date: string): string | null => {
+    const truck = trucks.get(plateKey(plate));
+    const limit = addDays(date, NEXT_ORDER_DAYS);
+    let best: (typeof ready)[number] | null = null;
+    for (const item of ready) {
+      const day = item.legs[0].start.slice(0, 10);
+      if (item.truck.id !== truck?.id || day <= date || day > limit) continue;
+      if (!best || item.legs[0].start < best.legs[0].start) best = item;
+    }
+    return best?.orderId ?? null;
+  };
+
   // Kelių mokesčiai: kiekvienas pirkimas tenka tą dieną tos furos važiavusiems
-  // užsakymams pagal jų valandas tą dieną. Nepriskirtais laikomi tik kelionių
-  // laikotarpio pirkimai – pirkimų srautas siekia 3 mėn., kelionių – vieną.
+  // užsakymams pagal jų valandas tą dieną; dienos be užsakymų – kitam tos furos
+  // užsakymui. Nepriskirtais laikomi tik kelionių laikotarpio pirkimai –
+  // pirkimų srautas siekia 3 mėn., kelionių – vieną.
   const firstDay = ready.reduce((min, item) => (item.legs[0].start < min ? item.legs[0].start : min), "9999").slice(0, 10);
   const lastDay = ready.reduce((max, item) => (item.legs[item.legs.length - 1].end > max ? item.legs[item.legs.length - 1].end : max), "").slice(0, 10);
   const tollCents = new Map<string, number>();
+  /** Kiek kelių atkelta iš dienų be užsakymo – reiso pastabai. */
+  const carriedTollCents = new Map<string, number>();
   let unassignedTollCents = 0;
   for (const supply of input.supplies) {
     if (supply.kind !== "toll" || supply.date < firstDay || supply.date > lastDay) continue;
     const shares = dayShares(supply.plate, supply.date);
-    if (shares.length === 0) { unassignedTollCents += supply.costCents; continue; }
+    if (shares.length === 0) {
+      const next = nextOrder(supply.plate, supply.date);
+      if (!next) { unassignedTollCents += supply.costCents; continue; }
+      tollCents.set(next, (tollCents.get(next) ?? 0) + supply.costCents);
+      carriedTollCents.set(next, (carriedTollCents.get(next) ?? 0) + supply.costCents);
+      continue;
+    }
     for (const { id, share } of shares) tollCents.set(id, (tollCents.get(id) ?? 0) + supply.costCents * share);
   }
 
@@ -338,6 +367,8 @@ export function buildOrderTrips(input: {
 
   const trips = ready.map(({ orderId, order, legs, truck }): ImportedTrip => {
     const notes: string[] = [];
+    const carried = carriedTollCents.get(orderId);
+    if (carried) notes.push(`Keliai ${(carried / 100).toFixed(2).replace(".", ",")} € – pervažiavimas prieš užsakymą (dienos be užsakymo).`);
     const start = legs[0].start;
     const end = legs[legs.length - 1].end;
     let paidKm = round(legs.filter((leg) => !leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);

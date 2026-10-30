@@ -63,6 +63,7 @@ it("be reisų grąžina nulius, o santykinius rodiklius – null", () => {
     revenueCents: 0,
     totalCostCents: 0,
     profitCents: 0,
+    contributionCents: 0,
     marginPercent: null,
     profitPerKm: null,
     costPerKm: null,

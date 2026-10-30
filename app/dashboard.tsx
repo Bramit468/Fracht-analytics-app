@@ -164,7 +164,7 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   const losses = trips.filter((trip) => trip.profitCents < 0).sort((a, b) => a.profitCents - b.profitCents);
   return <div className="rounded-lg border border-line bg-surface">
     <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3"><h3 className="font-semibold">Nuostolingi reisai</h3><span className={`text-sm tabular-nums ${losses.length ? "font-medium text-bad" : "text-muted"}`}>{losses.length}</span></div>
-    {losses.length ? <ul className="divide-y divide-line">{losses.slice(0, 6).map((trip) => <li key={trip.id}><Link href={`/trips/${trip.id}/edit`} className="flex items-start justify-between gap-3 px-5 py-3 hover:bg-page"><div className="min-w-0"><p className="truncate text-sm font-medium">{trip.origin} → {trip.destination}</p><p className="truncate text-xs text-muted">{trip.tripNumber} · {formatDate(trip.tripDate)}</p></div><span className="whitespace-nowrap text-sm font-medium tabular-nums text-bad">{formatCents(trip.profitCents)}</span></Link></li>)}</ul> : <p className="px-5 py-4 text-sm text-muted">Šiuo laikotarpiu nuostolingų reisų nėra.</p>}
+    {losses.length ? <ul className="divide-y divide-line">{losses.slice(0, 6).map((trip) => <li key={trip.id}><Link href={`/trips/${trip.id}/edit`} className="flex items-start justify-between gap-3 px-5 py-3 hover:bg-page"><div className="min-w-0"><p className="truncate text-sm font-medium">{trip.origin} → {trip.destination}</p><p className="truncate text-xs text-muted">{trip.tripNumber} · {formatDate(trip.tripDate)}</p></div><span className="whitespace-nowrap text-right text-sm font-medium tabular-nums text-bad">{formatCents(trip.profitCents)}{trip.contributionCents !== undefined && <span className={`block text-xs font-normal ${trip.contributionCents >= 0 ? "text-good" : "text-muted"}`}>įnašas {formatCents(trip.contributionCents)}</span>}</span></Link></li>)}</ul> : <p className="px-5 py-4 text-sm text-muted">Šiuo laikotarpiu nuostolingų reisų nėra.</p>}
   </div>;
 }
 
@@ -840,10 +840,12 @@ export function Dashboard() {
 
     <section aria-label="Iš viso ir per km">
       <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Iš viso ir per km</h2>
-      <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 sm:[&>:last-child]:col-span-2 xl:grid-cols-5 xl:[&>:last-child]:col-span-1">
         <StatCard label="Pajamos" value={formatCents(stats.revenueCents)} detail={`${stats.tripCount} reisai · ${formatPerKm(stats.revenuePerKm)}`} change={comparison && changeText(comparison.revenue.percent, comparison.revenue.difference >= 0)} />
         {/* Savikaina už km yra tas skaičius, kuriuo deramasi (#127). */}
         <StatCard label="Kaštai" value={formatCents(stats.totalCostCents)} detail={`Savikaina ${formatPerKm(stats.costPerKm)}`} />
+        {/* Įnašas – ką reisai uždirbo virš kintamų kaštų; iki pelno lieka pastovūs furos kaštai. */}
+        <StatCard label="Įnašas" value={formatCents(stats.contributionCents)} detail={`Pastovūs furos kaštai ${formatCents(stats.contributionCents - stats.profitCents)}`} tone={stats.contributionCents >= 0 ? "positive" : "negative"} />
         <StatCard label="Pelnas" value={formatCents(stats.profitCents)} detail={`Marža ${formatPercent(stats.marginPercent)}`} tone={profitTone} change={comparison && changeText(comparison.profit.percent, comparison.profit.difference >= 0)} />
         <StatCard label="Tuščia rida" value={formatPercent(stats.emptySharePercent)} detail={`${Math.round(stats.emptyKm).toLocaleString("lt-LT")} km iš ${Math.round(stats.paidKm + stats.emptyKm).toLocaleString("lt-LT")}`} tone={stats.emptySharePercent !== null && stats.emptySharePercent > 20 ? "negative" : "neutral"} />
       </dl>

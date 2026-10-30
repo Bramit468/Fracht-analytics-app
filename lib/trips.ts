@@ -4,7 +4,7 @@ import { emptyFuelCents } from "./empty-km";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient } from "./supabase";
 import { calculateSavedTrip } from "./trip-input";
-import type { CountryTariff } from "./calc";
+import { calcContribution, type CountryTariff } from "./calc";
 import type { TripCountryLegInsert, TripInsert, TripWithLegs } from "../types/trip";
 import type { Trip, TripCountryLeg } from "../types/trip";
 import type { Truck } from "../types/truck";
@@ -45,6 +45,13 @@ export interface TripSummary {
   profitPerKm: number | null;
   /** Centai per parą. `null`, kai parų nėra. */
   profitPerDayCents: number | null;
+  /**
+   * Įnašas: pajamos − kuras, AdBlue, keliai ir papildomų parų dienpinigiai
+   * (pastovūs furos kaštai neįeina). Visada užpildo `buildTripSummaries`.
+   */
+  contributionCents?: number;
+  /** Įnašas − išsaugotos alternatyvos įnašas (0023): ar krovinys buvo vertas. */
+  vsAlternativeCents?: number;
   /** Kelių kaštai pagal šalį — atskirų mokesčių čia nėra (#125). */
   roadByCountry: CountryRoad[];
   /**
@@ -99,6 +106,12 @@ export function buildTripSummaries(
       skipped.push({ id: trip.id, tripNumber: trip.trip_number, reason: cause instanceof Error ? cause.message : "nepavyko suskaičiuoti" });
       return [];
     }
+    // Riba čia nesvarbi: sąrašas spalvina pagal įmonės ribą pats.
+    const contribution = calcContribution(result, trip.days, {
+      days: Number(trip.alternative_days ?? 0),
+      contributionCents: trip.alternative_cents ?? 0,
+      thresholdCents: 0,
+    });
 
     return [{
       id: trip.id,
@@ -121,6 +134,8 @@ export function buildTripSummaries(
       marginPercent: result.marginPercent,
       profitPerKm: result.profitPerKm,
       profitPerDayCents: result.profitPerDayCents,
+      contributionCents: contribution.contributionCents,
+      vsAlternativeCents: contribution.vsAlternativeCents,
       roadByCountry: tripRoadsByCountry(
         (legsByTrip.get(trip.id) ?? []).map(({ country, km }) => ({ country, km })),
         tariffs,

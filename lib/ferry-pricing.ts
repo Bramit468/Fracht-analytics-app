@@ -1,16 +1,17 @@
 /**
  * Viešas Scandlines Freight tarifas Rostock–Gedser reisui.
  *
- * Bazinis tarifas galioja nuo 2026-01-01 iki atšaukimo. BAF/GIR/ETS
- * priemoka yra 2026 m. rugsėjo ir turi būti atnaujinta pasikeitus mėnesiui.
+ * Bazinis tarifas galioja nuo 2026-01-01 iki atšaukimo. BAF/GIR/ETS priemoka
+ * keičiasi kas mėnesį (Scandlines ją paskelbia ~savaitę prieš): naują mėnesį
+ * reikia pridėti į `SURCHARGE_BY_MONTH`. Kol nepridėtas, imamas paskutinis
+ * žinomas, o forma įspėja, kad jis gali būti pasikeitęs.
  * Visos sumos laikomos centais, kad skaičiavime nebūtų float paklaidų.
  */
 
-export const SCANDLINES_TARIFF_PERIOD = "2026 m. rugsėjis";
 export const SCANDLINES_TARIFF_URL =
   "https://freight.scandlines.com/assets/Scandlines_Freight_Tariff_2026_Germany_Denmark_10m_2026_01_01_until_recall_6a109ca4de.pdf";
-export const SCANDLINES_SURCHARGE_URL =
-  "https://freight.scandlines.com/assets/09_Scandlines_surcharges_September_2026_ENG_0113afc41b.pdf";
+/** Visų mėnesių priemokų puslapis – adresas nesikeičia, kitaip nei mėnesio PDF. */
+export const SCANDLINES_SURCHARGE_URL = "https://freight.scandlines.com/freight-conditions/fuel-surcharges/";
 
 export type FreightLoad = "loaded" | "empty";
 
@@ -40,8 +41,31 @@ const ROSTOCK_GEDSER_BASE_CENTS: Record<number, BaseFare> = {
   26: { loaded: 36110, empty: 20710 },
 };
 
-/** 2026-09 BAF 3,79 + GIR 1,66 + ETS 0,67 už kiekvieną pradėtą metrą. */
-const SEPTEMBER_2026_SURCHARGE_PER_METRE_CENTS = 612;
+/**
+ * Rostock–Gedser BAF + ETS + GIR už kiekvieną pradėtą metrą, pagal mėnesį.
+ * Kitų linijų (Puttgarden–Rødby) priemoka kita – čia jų ir nėra.
+ */
+const SURCHARGE_BY_MONTH: Record<string, number> = {
+  "2026-09": 612, // BAF 3,79 + ETS 0,67 + GIR 1,66
+  "2026-10": 671, // BAF 4,30 + ETS 0,75 + GIR 1,66
+  "2026-11": 700, // BAF 4,59 + ETS 0,75 + GIR 1,66
+};
+
+export interface Surcharge {
+  /** Kurio mėnesio priemoka imta, „2026-11“. */
+  month: string;
+  perMetreCents: number;
+  /** Reikia vėlesnio mėnesio, nei žinoma: priemoka gali būti pasikeitusi. */
+  stale: boolean;
+}
+
+/** Priemoka reiso datos mėnesiui; nežinomam – artimiausias žinomas. */
+export function surchargeFor(date: string): Surcharge {
+  const months = Object.keys(SURCHARGE_BY_MONTH).sort();
+  const wanted = date.slice(0, 7);
+  const month = months.includes(wanted) ? wanted : wanted > months[months.length - 1] ? months[months.length - 1] : months[0];
+  return { month, perMetreCents: SURCHARGE_BY_MONTH[month], stale: wanted > month };
+}
 
 export interface FerryFareEstimate {
   route: "Rostock–Gedser";
@@ -50,6 +74,7 @@ export interface FerryFareEstimate {
   baseCents: number;
   surchargeCents: number;
   totalCents: number;
+  surcharge: Surcharge;
 }
 
 /** PTV pavadinimai būna abiem kryptimis ir su skirtingais brūkšniais. */
@@ -69,6 +94,8 @@ export function estimateScandlinesFreightFare(
   ferryNames: readonly string[],
   unitLengthMetres: number,
   load: FreightLoad,
+  /** Reiso data: priemoka taikoma pagal plaukimo mėnesį. */
+  date: string,
 ): FerryFareEstimate | null {
   if (!isRostockGedser(ferryNames) || !Number.isFinite(unitLengthMetres)) return null;
 
@@ -77,7 +104,8 @@ export function estimateScandlinesFreightFare(
   if (!base) return null;
 
   const baseCents = base[load];
-  const surchargeCents = billedMetres * SEPTEMBER_2026_SURCHARGE_PER_METRE_CENTS;
+  const surcharge = surchargeFor(date);
+  const surchargeCents = billedMetres * surcharge.perMetreCents;
   return {
     route: "Rostock–Gedser",
     billedMetres,
@@ -85,5 +113,6 @@ export function estimateScandlinesFreightFare(
     baseCents,
     surchargeCents,
     totalCents: baseCents + surchargeCents,
+    surcharge,
   };
 }

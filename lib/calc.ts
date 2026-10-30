@@ -193,9 +193,9 @@ export function calcRoadCost(
   return legsCents + sum(Object.values(extras));
 }
 
-/** Furos kaštai reisui centais: paros kaina × dienos. */
+/** Furos kaštai reisui centais: paros kaina × dienos. Paros būna trupmenomis, todėl apvalinama. */
 export function calcTruckCost(truck: Truck, days: number): number {
-  return calcDailyRate(truck) * days;
+  return Math.round(calcDailyRate(truck) * days);
 }
 
 /** Bendri reiso kaštai centais. */
@@ -260,7 +260,7 @@ export function calcTrip(input: TripInput): TripResult {
   const roadCents = calcRoadCost(input.legs, input.tariffs, input.extras);
   // Dienpinigiai pagal šalis pakeičia fiksuotą furos paros sumą, o ne
   // prisideda prie jos – kitaip jie būtų suskaičiuoti du kartus.
-  const fixedPerDiemCents = input.truck.dailyCents.perDiem * input.days;
+  const fixedPerDiemCents = Math.round(input.truck.dailyCents.perDiem * input.days);
   const perDiemCents = input.perDiemCents ?? fixedPerDiemCents;
   const truckCents = calcTruckCost(input.truck, input.days) - fixedPerDiemCents + perDiemCents;
 
@@ -282,5 +282,58 @@ export function calcTrip(input: TripInput): TripResult {
     costPerKm: calcCostPerKm(totalCostCents, input.paidKm),
     profitPerKm: calcProfitPerKm(profitCents, input.paidKm),
     profitPerDayCents: calcProfitPerDay(profitCents, input.days),
+  };
+}
+
+/**
+ * Su kuo lyginamas krovinys: ką fura darytų, jei jo neimtume. Įvedama ranka,
+ * nes programa to nežino – stovėtų (0 parų, 0 €) ar grįžtų tuščia (paros ir
+ * minusas kuras su keliais).
+ */
+export interface Alternative {
+  /** Kiek parų fura užimtų alternatyva. */
+  days: number;
+  /** Alternatyvos įnašas centais; grįžimas tuščiam yra neigiamas. */
+  contributionCents: number;
+  /** Kiek įnašas turi viršyti alternatyvą, kad verta imti, centais. */
+  thresholdCents: number;
+}
+
+export interface ContributionResult {
+  /** Paros, kurių fura neužimtų alternatyva. */
+  extraDays: number;
+  /** Dienpinigiai tik papildomoms paroms. */
+  perDiemExtraCents: number;
+  /** Kuras + AdBlue + keliai + papildomų parų dienpinigiai. */
+  variableCents: number;
+  /** Pajamos − kintami kaštai. Pastovūs furos kaštai čia neįeina. */
+  contributionCents: number;
+  /** Įnašas − alternatyvos įnašas. */
+  vsAlternativeCents: number;
+  take: boolean;
+  /** Imti verta, kai kaina didesnė už šią. */
+  breakEvenPriceCents: number;
+}
+
+/**
+ * Ar imti krovinį (įnašas). Nusidėvėjimas, draudimai, atlyginimas, remontas,
+ * vadyba ir priekaba mokami vis tiek, imsim ar ne, todėl sprendimui jie
+ * nesvarbūs – jie lieka pilname pelne. Dienpinigiai mokami tik už paras, kurių
+ * nebūtų be šio krovinio.
+ */
+export function calcContribution(result: TripResult, days: number, alternative: Alternative): ContributionResult {
+  const extraDays = Math.max(0, days - Math.max(0, alternative.days));
+  const perDiemExtraCents = days > 0 ? Math.round((result.perDiemCents * extraDays) / days) : 0;
+  const variableCents = result.fuelCents + result.adblueCents + result.roadCents + perDiemExtraCents;
+  const contributionCents = result.revenueCents - variableCents;
+  const vsAlternativeCents = contributionCents - alternative.contributionCents;
+  return {
+    extraDays,
+    perDiemExtraCents,
+    variableCents,
+    contributionCents,
+    vsAlternativeCents,
+    take: vsAlternativeCents > alternative.thresholdCents,
+    breakEvenPriceCents: variableCents + alternative.contributionCents + alternative.thresholdCents,
   };
 }

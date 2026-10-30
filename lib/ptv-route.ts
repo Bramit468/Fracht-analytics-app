@@ -526,8 +526,9 @@ export function routeFill(estimate: RouteEstimate): RouteFill {
   };
 }
 
-/** Kiek parų siūlyti: kelio laikas plius poilsis, apvalinant į viršų. */
+/** Kiek parų siūlyti: kelio laikas plius poilsis, trupmenomis (2,4 paros, ne 3). */
 export function suggestedDays(travelHours: number): number {
   // Vairuotojui leidžiama vairuoti ~9 val. per parą, tad para kelio yra ~9 val.
-  return Math.max(1, Math.ceil(travelHours / 9));
+  if (!(travelHours > 0)) return 0;
+  return Math.round((travelHours / 9) * 100) / 100;
 }

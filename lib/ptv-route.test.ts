@@ -381,16 +381,16 @@ describe("routeTiming", () => {
 });
 
 describe("suggestedDays", () => {
-  it("paromis, apvalinant į viršų", () => {
-    expect(suggestedDays(29.9)).toBe(4);
+  it("paromis trupmenomis, neapvalinant į viršų", () => {
+    // 2,4 paros neturi kainuoti kaip 3.
+    expect(suggestedDays(29.9)).toBe(3.32);
     expect(suggestedDays(9)).toBe(1);
-    expect(suggestedDays(9.1)).toBe(2);
+    expect(suggestedDays(9.1)).toBe(1.01);
   });
 
-  it("trumpas reisas vis tiek yra viena para", () => {
-    // Nulis parų reikštų, kad fura tą dieną nieko nekainavo.
-    expect(suggestedDays(0.5)).toBe(1);
-    expect(suggestedDays(0)).toBe(1);
+  it("be kelio laiko – nulis; paras papildo pakrovimas ir iškrovimas", () => {
+    expect(suggestedDays(0)).toBe(0);
+    expect(suggestedDays(-1)).toBe(0);
   });
 });
 

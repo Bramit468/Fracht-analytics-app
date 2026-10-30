@@ -7,10 +7,48 @@
  * įrašytas spėjimas būtų pelnas, kuriuo niekas netiki.
  */
 
+import type { StopType } from "./stops";
+
 export type DaysSource = "schedule" | "route" | "none";
 
 function validDays(days: number | null): days is number {
-  return days !== null && Number.isInteger(days) && days >= 1;
+  return days !== null && Number.isFinite(days) && days > 0;
+}
+
+/** Numatytasis vieno pakrovimo ar iškrovimo laikas, valandomis. Formoje keičiamas. */
+export const SERVICE_HOURS_PER_STOP = 2;
+
+const SERVICE_STOPS: readonly StopType[] = ["loading", "unloading", "extra_loading", "extra_unloading"];
+
+/** Pakrovimų ir iškrovimų laikas valandomis. Muitinė, CMR ir kiti – 0. */
+export function serviceHours(stopTypes: StopType[], hoursPerStop: number): number {
+  if (!(hoursPerStop > 0)) return 0;
+  return stopTypes.filter((type) => SERVICE_STOPS.includes(type)).length * hoursPerStop;
+}
+
+/** Valandos tarp dviejų PTV laikų (su laiko juosta). `null`, kai neperskaitomi. */
+export function hoursBetween(start: string, end: string): number | null {
+  const hours = (Date.parse(end) - Date.parse(start)) / 3_600_000;
+  return Number.isFinite(hours) && hours >= 0 ? hours : null;
+}
+
+/**
+ * Paros trupmenomis: kelio trukmė paromis + pakrovimas ir iškrovimas.
+ * Apvalinant iki sveikų parų 2,1 paros reisas kainuotų kaip 3.
+ */
+export function quoteDays(baseDays: number | null, serviceHoursTotal: number): number | null {
+  if (baseDays === null || !Number.isFinite(baseDays) || baseDays < 0) return null;
+  const days = Math.round((baseDays + Math.max(0, serviceHoursTotal) / 24) * 100) / 100;
+  return days > 0 ? days : null;
+}
+
+/**
+ * Keliai tuštiems km pagal pakrauto maršruto vidurkį €/km. Tikro privažiavimo
+ * maršruto nėra, o nulis reikštų, kad tuščia fura važiuoja nemokamais keliais.
+ */
+export function emptyKmTollCents(routeTollCents: number, paidKm: number, emptyKm: number): number {
+  if (!(paidKm > 0) || !(emptyKm > 0) || !(routeTollCents > 0)) return 0;
+  return Math.round((routeTollCents * emptyKm) / paidKm);
 }
 
 /**
@@ -53,6 +91,10 @@ export interface QuoteNoteInput {
   days: number | null;
   daysSource: DaysSource;
   emptyKm: number;
+  /** Keliai tuštiems km, centais. */
+  emptyTollCents?: number;
+  /** Pakrovimų ir iškrovimų valandos, įskaičiuotos į paras. */
+  serviceHours?: number;
   /** Furos tuščios ridos dalis iš istorijos, `null`, jei istorijos nėra. */
   emptyShare: number | null;
   ferryUnknown: boolean;
@@ -71,11 +113,12 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
     notes.push("Maršruto suskaičiuoti nepavyko – kaina remiasi laukuose esančiais km ir keliais.");
   }
 
+  const days = String(input.days).replace(".", ",");
   if (input.daysSource === "schedule") {
-    notes.push(`Paros: ${verb} ${input.days} – pagal PTV vairavimo laiko planą.`);
+    notes.push(`Paros: ${verb} ${days} – pagal PTV vairavimo laiko planą.`);
   } else if (input.daysSource === "route") {
     notes.push(
-      `Paros: ${verb} ${input.days} – apytikslis spėjimas pagal kelio valandas`
+      `Paros: ${verb} ${days} – apytikslis spėjimas pagal kelio valandas`
       + `${input.scheduleOk ? "" : input.noDeparture
         ? ", nes neįvesta reiso data ar išvykimo laikas – su jais paros būtų pagal vairavimo laiko planą"
         : ", nes vairavimo laiko plano gauti nepavyko"}. `
@@ -84,12 +127,16 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
   } else {
     notes.push("Parų nustatyti nepavyko – įrašykite jas ranka skiltyje „Pakeisti ranka“.");
   }
+  if (input.days !== null && input.serviceHours) {
+    notes.push(`Į paras įskaičiuota ${String(input.serviceHours).replace(".", ",")} val. pakrovimui ir iškrovimui.`);
+  }
 
   if (input.emptyShare === null) {
     notes.push("Šios furos tuščios ridos istorijos nėra, todėl tušti km – 0. Jei grįšite tuščias, įrašykite ranka.");
   } else {
     notes.push(
-      `Tušti km: ${verb} ${input.emptyKm} – pagal šios furos istoriją (${input.emptyShare.toFixed(0)} % visos ridos).`,
+      `Tušti km: ${verb} ${input.emptyKm} – pagal šios furos istoriją (${input.emptyShare.toFixed(0)} % visos ridos).`
+      + (input.emptyTollCents ? ` Keliai jiems ${(input.emptyTollCents / 100).toFixed(2).replace(".", ",")} € – pagal maršruto vidurkį €/km.` : ""),
     );
   }
 

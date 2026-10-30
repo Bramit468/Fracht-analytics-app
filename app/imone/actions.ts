@@ -10,6 +10,7 @@ import {
 } from "@/lib/invitations";
 import { formatMinMargin, parseMinMargin } from "@/lib/margin-guard";
 import { parsePerDiemPercent } from "@/lib/per-diem";
+import { formatCents, parseOptionalSignedEuro } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { isMissingColumnError } from "@/lib/truck";
 
@@ -144,7 +145,7 @@ type Parsed = { ok: true; value: number | null } | { ok: false; error: string };
 async function saveCompanySetting(
   formData: FormData,
   setting: {
-    column: "min_margin_percent" | "per_diem_percent";
+    column: "min_margin_percent" | "per_diem_percent" | "min_contribution_cents";
     parse: (text: string) => Parsed;
     migration: string;
     saved: (value: number | null) => string;
@@ -212,6 +213,16 @@ export async function savePerDiemPercent(_previous: SettingState, formData: Form
       value === null
         ? "Dienpinigiai pagal šalis išjungti – naudojama furos paros suma."
         : `Išsaugota: ${formatMinMargin(value)} normos.`,
+  });
+}
+
+/** Kiek įnašas turi viršyti alternatyvą, kad krovinį verta imti. Tuščias – 0. */
+export async function saveMinContribution(_previous: SettingState, formData: FormData): Promise<SettingState> {
+  return saveCompanySetting(formData, {
+    column: "min_contribution_cents",
+    parse: parseOptionalSignedEuro,
+    migration: "0023",
+    saved: (value) => (value === null ? "Riba panaikinta – imti, kai įnašas viršija alternatyvą." : `Riba išsaugota: ${formatCents(value)}.`),
   });
 }
 

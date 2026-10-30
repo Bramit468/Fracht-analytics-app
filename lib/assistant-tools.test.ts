@@ -94,7 +94,7 @@ const data: AssistantData = {
   rawTrips: [rawTrip],
   legs: [{ id: "leg-1", trip_id: rawTrip.id, country: "Nemokami", km: 1000 }],
   tariffs: [{ country: "Nemokami", rate: 0, rateType: "per_km" }],
-  settings: { minMarginPercent: 12, perDiemPercent: null },
+  settings: { minMarginPercent: 12, perDiemPercent: null, minContributionCents: null },
   trips: [
     trip({ id: "a", tripNumber: "A", tripDate: "2026-09-10", customerId: "c1", truckPlate: "AAA111" }),
     trip({ id: "b", tripNumber: "B", tripDate: "2026-10-01", customerId: "c2", revenueCents: 100000, totalCostCents: 110000, profitCents: -10000, marginPercent: -10, profitPerDayCents: -5000 }),

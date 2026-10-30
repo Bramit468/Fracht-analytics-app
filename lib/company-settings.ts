@@ -5,6 +5,8 @@ export interface CompanySettings {
   minMarginPercent: number | null;
   /** Kiek dienpinigių normos moka įmonė (#187). `null` – pagal šalis neskaičiuojama. */
   perDiemPercent: number | null;
+  /** Kiek įnašas turi viršyti alternatyvą, kad krovinį verta imti (0023). `null` – 0. */
+  minContributionCents: number | null;
 }
 
 /** PostgREST `numeric` gali grąžinti ir tekstu. */
@@ -25,12 +27,13 @@ export async function fetchCompanySettings(client: SupabaseClient): Promise<Comp
   const { data, error } = await client.from("companies").select("*").maybeSingle();
   if (error) {
     console.error("Nepavyko nuskaityti įmonės nustatymų", error);
-    return { minMarginPercent: null, perDiemPercent: null };
+    return { minMarginPercent: null, perDiemPercent: null, minContributionCents: null };
   }
   const row = (data ?? {}) as Record<string, unknown>;
   return {
     minMarginPercent: numberOrNull(row.min_margin_percent),
     perDiemPercent: numberOrNull(row.per_diem_percent),
+    minContributionCents: numberOrNull(row.min_contribution_cents),
   };
 }
 

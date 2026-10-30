@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calcAdblueCost,
+  calcContribution,
   calcCostPerKm,
   calcDailyRate,
   calcFuelCost,
@@ -19,6 +20,7 @@ import {
   type TripInput,
   type Truck,
 } from "./calc";
+import { defaultEmptyKm, emptyKmTollCents } from "./quick-quote";
 
 /**
  * Kontroliniai skaičiai paimti iš realaus įmonės Excel'io
@@ -284,5 +286,129 @@ describe("calcTrip (visas Omniva reisas)", () => {
     expect(loss.profitCents).toBe(900000 - 1011155);
     expect(loss.profitCents).toBeLessThan(0);
     expect(loss.marginPercent).toBeLessThan(0);
+  });
+});
+
+describe("calcContribution (imti ar neimti)", () => {
+  const STAND: { days: number; contributionCents: number; thresholdCents: number } = { days: 0, contributionCents: 0, thresholdCents: 0 };
+  const trip = { ...OMNIVA_TRIP, days: 4, perDiemCents: 40000 };
+
+  it("įnašas = pajamos − kuras − AdBlue − keliai − dienpinigiai", () => {
+    const result = calcTrip(trip);
+    const c = calcContribution(result, 4, STAND);
+    expect(c.contributionCents).toBe(result.revenueCents - result.fuelCents - result.adblueCents - result.roadCents - 40000);
+    expect(c.variableCents + c.contributionCents).toBe(result.revenueCents);
+  });
+
+  it("tušti km įeina į kurą, AdBlue ir įnašą", () => {
+    const full = calcTrip({ ...trip, emptyKm: 500, legs: [{ country: "Vokietija", km: 500 }] });
+    const noEmpty = calcTrip({ ...trip, emptyKm: 0 });
+    const lost = calcContribution(noEmpty, 4, STAND).contributionCents - calcContribution(full, 4, STAND).contributionCents;
+    // 500 km: kuras 161,20 €, AdBlue 9,18 €, keliai 0,348 × 500 = 174 €.
+    expect(lost).toBe(16120 + 918 + 17400);
+  });
+
+  it("pastovūs furos kaštai įeina tik į pilną pelną", () => {
+    const result = calcTrip(trip);
+    const c = calcContribution(result, 4, STAND);
+    expect(c.contributionCents - result.profitCents).toBe(result.truckCents - result.perDiemCents);
+  });
+
+  it("dienpinigiai – tik už paras, kurių alternatyva neužimtų", () => {
+    const result = calcTrip(trip);
+    expect(calcContribution(result, 4, { ...STAND, days: 3 })).toMatchObject({ extraDays: 1, perDiemExtraCents: 10000 });
+    expect(calcContribution(result, 4, { ...STAND, days: 6 })).toMatchObject({ extraDays: 0, perDiemExtraCents: 0 });
+    // Trupmeninės paros: 2,4 paros prieš 2 – 0,4 papildomos.
+    const fractional = calcTrip({ ...trip, days: 2.4, perDiemCents: 24000 });
+    expect(calcContribution(fractional, 2.4, { ...STAND, days: 2 }).perDiemExtraCents).toBe(4000);
+  });
+
+  it("verdiktas lygina su alternatyva ir riba", () => {
+    const result = calcTrip(trip);
+    const c = calcContribution(result, 4, STAND);
+    expect(c.take).toBe(c.contributionCents > 0);
+    // Grįžimas tuščiam kainuotų 600 €: net nuostolingas krovinys už jį geresnis.
+    const back = calcContribution({ ...result, revenueCents: c.variableCents - 50000 }, 4, { ...STAND, contributionCents: -60000 });
+    expect(back).toMatchObject({ contributionCents: -50000, vsAlternativeCents: 10000, take: true });
+    expect(calcContribution(result, 4, { ...STAND, thresholdCents: c.contributionCents }).take).toBe(false);
+  });
+
+  it("mažiausia verta kaina – kintami kaštai + alternatyva + riba", () => {
+    const result = calcTrip(trip);
+    const c = calcContribution(result, 4, { days: 0, contributionCents: -60000, thresholdCents: 5000 });
+    expect(c.breakEvenPriceCents).toBe(c.variableCents - 60000 + 5000);
+  });
+
+  it("be parų dienpinigių nedalina iš nulio", () => {
+    expect(calcContribution(calcTrip(trip), 0, STAND).perDiemExtraCents).toBe(0);
+  });
+
+  it("LTG 675 Lörenskog → Nässjö → Lörenskog: pigus krovinys pelno beveik neneša, bet įnašas teigiamas", () => {
+    // Tikri reisai 2026-10-28/29 (Telematika 142701 ir 142703). Furos kaštų
+    // kopija tokia pati kaip Omniva furos, tik priekaba dalinama iš kalendorinio mėnesio.
+    const truck = { ...OMNIVA_TRUCK, workingDaysPerMonth: DAYS_PER_MONTH };
+    const leg = (km: number, litresPer100Km: number, days: number, freightPriceCents: number): TripInput => ({
+      truck, days, paidKm: km, emptyKm: 0,
+      fuel: { litresPer100Km, pricePerLitre: 1.4734 },
+      adblue: { litresPer100Km: 0, pricePerLitre: 0.732 },
+      legs: [{ country: "Nemokami", km }],
+      extras: { bridgesCents: 0, ferriesCents: 0, tunnelsCents: 0, parkingCents: 0 },
+      revenue: { mode: "freight", freightPriceCents },
+      tariffs: [{ country: "Nemokami", rate: 0, rateType: "per_km" }],
+    });
+    const there = calcTrip(leg(458.91, 29.7444, 1.083, 50000));
+    const back = calcTrip(leg(546.66, 28.9943, 0.917, 120000));
+
+    // Pilnas pelnas: 500 € vos padengia furos paras ir kurą – 15,05 €, 3 %.
+    expect(there).toMatchObject({ fuelCents: 20112, truckCents: 28383, profitCents: 1505 });
+    // Pastovūs kaštai mokami vis tiek: krovinys neša 298,88 €, imti verta nuo 201,12 €.
+    expect(calcContribution(there, 1.083, STAND)).toMatchObject({ contributionCents: 29888, take: true, breakEvenPriceCents: 20112 });
+    // Be jo fura vis tiek važiuotų į Nässjö tuščia, tad laimima visa frachto kaina.
+    expect(calcContribution(there, 1.083, { days: 1.083, contributionCents: -20112, thresholdCents: 0 }).vsAlternativeCents).toBe(50000);
+    expect(there.profitCents + back.profitCents).toBe(74119);
+  });
+
+  it("kontrolinis atgalinis krovinys Dortmundas–Kaunas nebėra nuostolingas", () => {
+    // Iliustracinis pavyzdys iš verslo audito (ne rinkos duomenys): 1350 km,
+    // pasiūlymas 1500 €, 269 €/parą, 31 l/100 km po 1,40 €, 12 % tuščios ridos,
+    // ~280 € kelių, 3 paros, dienpinigiai 100 % normos – DE 62 + PL 48 + LT 28 €.
+    const emptyKm = defaultEmptyKm(1350, 12);
+    const tolls = 28000 + emptyKmTollCents(28000, 1350, emptyKm);
+    const result = calcTrip({
+      ...OMNIVA_TRIP,
+      days: 3,
+      paidKm: 1350,
+      emptyKm,
+      fuel: { litresPer100Km: 31, pricePerLitre: 1.4 },
+      adblue: { litresPer100Km: 0, pricePerLitre: 0 },
+      legs: [],
+      extras: { bridgesCents: tolls, ferriesCents: 0, tunnelsCents: 0, parkingCents: 0 },
+      revenue: { mode: "freight", freightPriceCents: 150000 },
+      perDiemCents: 13800,
+    });
+
+    // Prieš: pilnas pelnas – nuostolis. Jis lieka, bet tik antraeilėje eilutėje.
+    expect(result).toMatchObject({ fuelCents: 66580, roadCents: 31818, truckCents: 94500, profitCents: -42898 });
+
+    // Po: net lyginant su stovinčia fura įnašas teigiamas.
+    expect(calcContribution(result, 3, STAND)).toMatchObject({ contributionCents: 37802, take: true });
+
+    // Lyginant su grįžimu tuščiam (tie patys 1350 km ir keliai, be 4 val. krovimo):
+    // dienpinigiai tik už krovimo laiką, o krovinys duoda +1374,25 €.
+    const emptyReturnCents = -(58590 + 28000);
+    expect(calcContribution(result, 3, { days: 3 - 4 / 24, contributionCents: emptyReturnCents, thresholdCents: 0 })).toMatchObject({
+      perDiemExtraCents: 767,
+      contributionCents: 50835,
+      vsAlternativeCents: 137425,
+      take: true,
+    });
+  });
+});
+
+describe("calcTruckCost su trupmeninėmis paromis", () => {
+  it("grąžina sveikus centus", () => {
+    const cents = calcTruckCost(OMNIVA_TRUCK, 2.4);
+    expect(Number.isInteger(cents)).toBe(true);
+    expect(cents).toBe(Math.round(calcDailyRate(OMNIVA_TRUCK) * 2.4));
   });
 });

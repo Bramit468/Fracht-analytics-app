@@ -10,7 +10,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
-import { buildOrderTrips, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
+import { buildOrderTrips, editedByHand, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { fetchAllRows } from "@/lib/trips";
 import { truckRowToCalc } from "@/lib/truck";
@@ -23,6 +23,8 @@ export interface OrderPreview extends ImportedTrip {
   existingId: string | null;
   /** Kas pasikeitė nuo paskutinio importo; tuščias – nieko. `null` – naujas. */
   changes: string[] | null;
+  /** Ką ranka pataisė vartotojas; netuščias – reisas neperrašomas. */
+  handEdited: string[];
   profitCents: number;
   marginPercent: number | null;
 }
@@ -57,13 +59,13 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     supabase.from("country_tariffs").select("country,rate,rate_type"),
     // Daugiau nei 1000 importuotų reisų be puslapiavimo virstų dublikatais.
     fetchAllRows((from, to) => supabase.from("trips")
-      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents,per_diem_cents")
+      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents,per_diem_cents,import_snapshot")
       .not("telematika_order_id", "is", null).order("id").range(from, to))
       .then((data) => ({ data, error: null }), (error: { code?: string }) => ({ data: null, error })),
     fetchCompanySettings(supabase),
   ]);
   if (existingResult.error?.code === "42703" || existingResult.error?.code === "PGRST204") {
-    return { ok: false, message: "Importui reikia migracijos 0019 – paleiskite ją Supabase SQL redaktoriuje." };
+    return { ok: false, message: "Importui reikia migracijos 0021 – paleiskite ją Supabase SQL redaktoriuje." };
   }
   if (trucksResult.error || tariffsResult.error || existingResult.error) {
     return { ok: false, message: "Nepavyko nuskaityti furų ar reisų. Bandykite dar kartą." };
@@ -111,7 +113,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     rate: Number(row.rate),
     rateType: row.rate_type as RateType,
   }));
-  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string }]));
+  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string; import_snapshot: StoredOrderTrip | null }]));
 
   const trips = built.trips.map((item): OrderPreview => {
     // Peržiūrai – dabartiniai furos kaštai; įrašant kopiją padarys duomenų bazė.
@@ -121,6 +123,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
       ...item,
       existingId: stored?.id ?? null,
       changes: stored ? importChanges(stored, item) : null,
+      handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,
     };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { perDiemNormCents } from "./per-diem-norms";
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, importChanges, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, editedByHand, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -174,6 +174,27 @@ describe("importChanges", () => {
     const withPtv = { ...built, kmAddresses: ["A", "B"] } as typeof built;
     expect(importChanges({ ...stored, paid_km: 1500 }, withPtv)).toEqual([]);
     expect(importChanges({ ...stored, paid_km: 1500 }, built)).toEqual(["km"]);
+  });
+});
+
+describe("editedByHand", () => {
+  const imported = { trip_date: "2026-10-01", truck_id: "t1", days: 2.375, paid_km: 1200.5, empty_km: 80, freight_price_cents: 250_000, bridges_cents: 4_200, per_diem_cents: 9_000 };
+
+  it("nepataisytas – tuščia, ir kai skaičiai grąžinami tekstu", () => {
+    expect(editedByHand(imported, importSnapshot(imported))).toEqual([]);
+    expect(editedByHand({ ...imported, paid_km: "1200.50" as unknown as number }, importSnapshot(imported))).toEqual([]);
+  });
+
+  it("pataisytas ranka – išvardija laukus, km lyginami visada", () => {
+    expect(editedByHand({ ...imported, freight_price_cents: 260_000, paid_km: 1300 }, importSnapshot(imported))).toEqual(["kaina", "km"]);
+  });
+
+  it("be kopijos (sena eilutė) – laikoma nepataisyta", () => {
+    expect(editedByHand({ ...imported, freight_price_cents: 1 }, null)).toEqual([]);
+  });
+
+  it("kopija be dienpinigių lygi null, ne undefined", () => {
+    expect(importSnapshot({ ...imported, per_diem_cents: undefined }).per_diem_cents).toBeNull();
   });
 });
 

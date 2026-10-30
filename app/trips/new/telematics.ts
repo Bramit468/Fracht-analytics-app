@@ -10,6 +10,7 @@ import {
   type TripFill,
 } from "@/lib/telematics-costs";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
+import { fuelPricesByCountry, type FuelPriceRow } from "@/lib/fuel-prices";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { fetchTelematics } from "@/lib/telematics-feed";
@@ -100,4 +101,25 @@ export async function fetchTelematicsFill(
     skippedCurrencies: [...new Set(skipped.map((row) => row.currency).filter(Boolean))].sort(),
     skippedRows: skipped.length,
   };
+}
+
+/**
+ * Įmonės kuro kainos pagal šalį iš Telematikos pylimų per laikotarpį – kuro
+ * kainai pagal maršrutą. `null`, kai Telematika neprijungta ar nepasiekiama: tada forma
+ * palieka furos kainą.
+ */
+export async function fetchFuelPrices(from: string, to: string): Promise<FuelPriceRow[] | null> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return null;
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims || !(await canUseTelematics(supabase))) return null;
+  try {
+    const [suppliesRaw, rates] = await Promise.all([fetchTelematics("supplies"), fetchEcbRates()]);
+    const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
+    // Tik naujausi pylimai: srautas siekia ~3 mėn., o kuro kaina per tiek pasikeičia.
+    return fuelPricesByCountry(supplies.filter((supply) => supply.date >= from && supply.date <= to));
+  } catch (cause) {
+    console.error("Kuro kainos pagal šalį", cause);
+    return null;
+  }
 }

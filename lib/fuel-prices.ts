@@ -11,6 +11,7 @@
  * tiek pat, kiek pilnas bakas pigioje.
  */
 
+import { iso2FromIso3 } from "./per-diem-norms";
 import type { Supply } from "./telematics-costs";
 
 export interface FuelPriceRow {
@@ -88,4 +89,56 @@ export function savingsAtCheapestCents(rows: FuelPriceRow[]): number {
   const totalLitres = priced.reduce((total, row) => total + row.litres, 0);
 
   return Math.max(0, Math.round(totalCents - totalLitres * (cheapest.pricePerL ?? 0) * 100));
+}
+
+/**
+ * Mažiau litrų šalyje – kaina nepatikima (vienas pylimas gali būti brangi
+ * stotelė), todėl tokiai šaliai imamas viso parko vidurkis.
+ */
+export const MIN_COUNTRY_LITRES = 500;
+
+export interface RouteFuelRow {
+  countryCode: string;
+  km: number;
+  pricePerL: number;
+  /** Šaliai pylimų per mažai – imtas viso parko vidurkis. */
+  fleetAverage: boolean;
+}
+
+export interface RouteFuelPrice {
+  /** Kaina pagal km kiekvienoje šalyje, 4 skaitmenys po kablelio. */
+  pricePerL: number;
+  rows: RouteFuelRow[];
+}
+
+/**
+ * Kuro kaina reisui pagal šalis, per kurias jis eina: kiekvienos šalies įmonės
+ * pylimų kaina, sverta km toje šalyje. Furos praėjusio mėnesio kaina čia
+ * netinka – ji rodo, kur fura pylėsi anksčiau, o ne kur pilsis šį kartą.
+ *
+ * `prices` – `fuelPricesByCountry` (Telematikos šalys ISO3), `kmByCountry` – PTV
+ * (ISO2). `null`, kai nėra nei km, nei jokios kainos.
+ */
+export function routeFuelPrice(
+  kmByCountry: { countryCode: string; km: number }[],
+  prices: FuelPriceRow[],
+): RouteFuelPrice | null {
+  const priced = prices.filter((row) => row.pricePerL !== null && row.litres > 0);
+  const litres = priced.reduce((total, row) => total + row.litres, 0);
+  const totalKm = kmByCountry.reduce((total, row) => total + row.km, 0);
+  if (!(litres > 0) || !(totalKm > 0)) return null;
+  const fleet = priced.reduce((total, row) => total + row.costCents, 0) / 100 / litres;
+
+  const byCountry = new Map<string, number>();
+  for (const row of priced) {
+    if (row.key === "" || row.litres < MIN_COUNTRY_LITRES) continue;
+    byCountry.set(iso2FromIso3(row.key) ?? row.key.toUpperCase(), row.pricePerL as number);
+  }
+
+  const rows = kmByCountry.map(({ countryCode, km }) => {
+    const price = byCountry.get(countryCode.toUpperCase());
+    return { countryCode, km, pricePerL: price ?? fleet, fleetAverage: price === undefined };
+  });
+  const weighted = rows.reduce((total, row) => total + row.km * row.pricePerL, 0) / totalKm;
+  return { pricePerL: Math.round(weighted * 10000) / 10000, rows };
 }

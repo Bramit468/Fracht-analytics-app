@@ -28,7 +28,9 @@ import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { emptyKmByTruck } from "../../../lib/empty-km";
 import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
-import { fetchTelematicsFill } from "./telematics";
+import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
+import { routeFuelPrice, type RouteFuelPrice } from "../../../lib/fuel-prices";
+import type { CountryKm } from "../../../lib/ptv-route";
 import { rateFill } from "@/lib/telematics-costs";
 import {
   lookupRouteOptions,
@@ -151,6 +153,7 @@ interface RouteOutcome {
   paidKm: number;
   /** Kelių mokesčiai be keltų ir tunelių – iš jų €/km tuštiems km. */
   tollCents: number;
+  kmByCountry: CountryKm[];
   ferryUnknown: boolean;
   approximate: boolean;
 }
@@ -833,6 +836,7 @@ export function TripForm({
         routeDays: result.days,
         paidKm: Number(result.fill.paid_km),
         tollCents: result.bridgesCents,
+        kmByCountry: result.kmByCountry,
         ferryUnknown: needsFerryPrice && !publicFare,
         approximate: result.approximate,
       };
@@ -872,7 +876,14 @@ export function TripForm({
 
       // Išsaugoto reiso laukai nekeičiami (#151 taisyklė): ten yra tai, kas buvo tada.
       const write = !tripId;
-      const [route, scheduleDays] = await Promise.all([fillFromRoute(tarpiniai, write, stops), planDriverHours()]);
+      const kuroLaikotarpis = paskutinesTrisdesimtDienu();
+      const [route, scheduleDays, kuroKainos] = await Promise.all([
+        fillFromRoute(tarpiniai, write, stops),
+        planDriverHours(),
+        // Kuro kaina – pagal šalis, per kurias eina maršrutas, ne pagal tai, kur fura pylėsi praėjusį mėnesį.
+        fetchFuelPrices(kuroLaikotarpis.from, kuroLaikotarpis.to).catch(() => null),
+      ]);
+      const routeFuel: RouteFuelPrice | null = route && kuroKainos ? routeFuelPrice(route.kmByCountry, kuroKainos) : null;
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
       const sustojimuVal = serviceHours(stops.map((stop) => stop.type), Number(krovimoVal.replace(",", ".")));
@@ -895,6 +906,8 @@ export function TripForm({
         if (route) {
           const empty = form.elements.namedItem("empty_km");
           if (empty instanceof HTMLInputElement) empty.value = String(emptyKm);
+          const fuelPrice = form.elements.namedItem("fuel_price");
+          if (fuelPrice instanceof HTMLInputElement && routeFuel) fuelPrice.value = String(routeFuel.pricePerL);
           // Maršrutas ką tik įrašė pakrauto kelio mokesčius; tušti km prie jų pridedami.
           const bridges = form.elements.namedItem("bridges_cents");
           const routeCents = bridges instanceof HTMLInputElement ? parseEuroToCents(bridges.value) : null;
@@ -917,6 +930,7 @@ export function TripForm({
         emptyKm,
         emptyTollCents: write ? emptyTollCents : 0,
         serviceHours: sustojimuVal,
+        routeFuel: route ? routeFuel : undefined,
         emptyShare,
         ferryUnknown: route?.ferryUnknown ?? false,
         approximateAddress: route?.approximate ?? false,

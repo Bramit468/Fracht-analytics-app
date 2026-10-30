@@ -10,6 +10,7 @@ import {
   routeRequestUrl,
   routeTiming,
   suggestedDays,
+  kmByCountry,
 } from "./ptv-route";
 
 /** Sutrumpinta tikro atsakymo kopija: Klaipėdos g. 45, Panevėžys. */
@@ -310,7 +311,7 @@ describe("routeRequestUrl", () => {
     const url = new URL(routeRequestUrl(from, to, false));
 
     expect(url.searchParams.get("results")).toBe(
-      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,POLYLINE,EMISSIONS_EN16258_2012_HBEFA",
+      "TOLL_COSTS,TOLL_SECTIONS,COMBINED_TRANSPORT_EVENTS,VIOLATION_EVENTS,BORDER_EVENTS,POLYLINE,EMISSIONS_EN16258_2012_HBEFA",
     );
     expect(url.searchParams.get("options[currency]")).toBe("EUR");
     expect(url.searchParams.has("options[avoid]")).toBe(false);
@@ -412,5 +413,41 @@ describe("ptvQuotaExceeded", () => {
 
   it("paprastas 403 lieka rakto klaida", () => {
     expect(ptvQuotaExceeded(403, '{"errorCode":"GENERAL_UNAUTHENTICATED"}')).toBe(false);
+  });
+});
+
+describe("kmByCountry", () => {
+  // Tikras PTV atsakymas 2026-10-30: Šiauliai–Amersfoort, 1731,43 km.
+  const events = [
+    { distanceFromStart: 271930, countryCode: "PL", border: { countryCode: "PL" } },
+    { distanceFromStart: 1048046, countryCode: "DE", border: { countryCode: "DE" } },
+    { distanceFromStart: 1605992, countryCode: "NL", border: { countryCode: "NL" } },
+    // Ne sienos įvykis – praleidžiamas.
+    { distanceFromStart: 500000, countryCode: "PL", violation: { type: "X" } },
+  ];
+
+  it("dalija km tarp sienų kirtimų, pradžia – iš mokesčių sąrašo", () => {
+    expect(kmByCountry(events, "LT", 1731.426)).toEqual([
+      { countryCode: "LT", km: 271.93 },
+      { countryCode: "PL", km: 776.12 },
+      { countryCode: "DE", km: 557.95 },
+      { countryCode: "NL", km: 125.43 },
+    ]);
+  });
+
+  it("vėl įvažiavus į tą pačią šalį km sudedami", () => {
+    expect(kmByCountry([
+      { distanceFromStart: 100000, border: { countryCode: "PL" } },
+      { distanceFromStart: 150000, border: { countryCode: "LT" } },
+    ], "LT", 200)).toEqual([{ countryCode: "LT", km: 150 }, { countryCode: "PL", km: 50 }]);
+  });
+
+  it("be pradžios šalies ar km – tuščia, ne spėjimas", () => {
+    expect(kmByCountry(events, null, 1731.426)).toEqual([]);
+    expect(kmByCountry(events, "LT", 0)).toEqual([]);
+  });
+
+  it("be sienų – visas kelias pradžios šalyje", () => {
+    expect(kmByCountry([], "SE", 350)).toEqual([{ countryCode: "SE", km: 350 }]);
   });
 });

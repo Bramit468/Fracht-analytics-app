@@ -192,8 +192,8 @@ export function TripForm({
   const [apmokamiKm, setApmokamiKm] = useState(0);
   const [paros, setParos] = useState(0);
   /** Norima marža pasiūlymui. Pradinė – tik atspirties taškas, ne norma. */
-  // Įmonės būdas: antkainis kaštams be kuro, kuras – be antkainio.
-  const [norimaMarza, setNorimaMarza] = useState("20");
+  // Tikslinė marža nuo kainos; kaina pateikiama kaip baseline rate + kuras.
+  const [norimaMarza, setNorimaMarza] = useState("15");
   // Sprendimas „imti ar ne“: su kuo lyginama ir kiek valandų sustojimams.
   const [krovimoVal, setKrovimoVal] = useState(String(SERVICE_HOURS_PER_STOP));
   const [altParos, setAltParos] = useState("0");
@@ -1042,7 +1042,7 @@ export function TripForm({
 
   const kaina = result ? baselineQuote(result.totalCostCents, result.fuelCents, Number(norimaMarza.replace(",", "."))) : null;
   const prasomaKaina = kaina?.priceCents ?? null;
-  const kainaZemiauRibos = kaina !== null && kaina.marginPercent !== null && minMarza !== null && kaina.marginPercent < minMarza;
+  const kainaZemiauRibos = kaina !== null && minMarza !== null && Number(norimaMarza.replace(",", ".")) < minMarza;
   const altDienos = Number(altParos.replace(",", "."));
   const altCents = parseSignedEuroToCents(altInasas);
   const alternatyva = Number.isFinite(altDienos) && altDienos >= 0 && altCents !== null && Math.abs(altCents) <= 2147483647
@@ -1091,7 +1091,7 @@ export function TripForm({
           {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => setKrovinioSvoris(event.target.value)} placeholder="20" className={inputClass} /></label>}
           {/* Marža kainos skaičiavimui, ne formos laukas: `stopPropagation`,
               kad jos keitimas nenuvalytų jau parodyto rezultato. */}
-          <label>Antkainis be kuro (%)<input type="number" step="0.5" min="0" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
+          <label>Tikslinė marža (%)<input type="number" step="0.5" min="0" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
           {/* Su kuo lyginamas krovinys: išsaugoma su reisu (0023), numatyta – fura stovėtų. */}
           <label>Alternatyva: paros<input type="text" inputMode="decimal" value={altParos} onChange={(event) => { event.stopPropagation(); setAltParos(event.target.value); }} className={inputClass} />
             <span className="mt-1 block text-xs text-muted">Kiek parų fura užimtų, jei šio krovinio neimtume. 0 – stovėtų.</span></label>
@@ -1359,9 +1359,8 @@ export function TripForm({
               {/* Kaina išdėstoma taip, kaip ją pateikia įmonė: baseline rate ir kuras atskirai. */}
               <p className="mt-1 text-xs tabular-nums text-muted">
                 {kaina === null
-                  ? "Antkainis turi būti neneigiamas skaičius."
-                  : <>Baseline rate {formatCents(kaina.baselineRateCents)} (kaštai be kuro {formatCents(kaina.baselineCents)} + {norimaMarza} %) + kuras {formatCents(kaina.fuelCents)}
-                    {kaina.marginPercent !== null && ` · marža nuo kainos ${kaina.marginPercent.toFixed(1).replace(".", ",")} %`}</>}
+                  ? "Tikslinė marža – nuo 0 iki 99,9 %."
+                  : <>Baseline rate {formatCents(kaina.baselineRateCents)} + kuras {formatCents(kaina.fuelCents)} · {norimaMarza} % marža, pelnas {formatCents(kaina.profitCents)}</>}
               </p>
               {/* Žemiausia kaina – savikaina be antkainio; žemiau jos skaičiaus nesiūlome:
                   tai sprendžiama pagal aplinkybes, vadovui pritarus. */}
@@ -1431,7 +1430,7 @@ export function TripForm({
           </p>;
         })()}
         {bePajamu && kainaZemiauRibos && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
-          Šios kainos marža {kaina!.marginPercent!.toFixed(1).replace(".", ",")} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
+          Tikslinė marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
         </p>}
 
         {/* Kaina trimis matais: viso, per parą ir už apmokamą km. Užsakovas
@@ -1448,7 +1447,7 @@ export function TripForm({
           <tbody>
             {([
               ["Savikaina", result.totalCostCents, false],
-              [`Tinkama kaina (baseline + ${norimaMarza} %, + kuras)`, prasomaKaina, true],
+              [`Tinkama kaina (${norimaMarza} % marža)`, prasomaKaina, true],
               ...(bePajamu ? [] : [["Pajamos", result.revenueCents, false]]),
             ] as [string, number | null, boolean][]).map(([label, cents, target]) => {
               const perDay = cents === null ? null : pricePerDay(cents, paros);

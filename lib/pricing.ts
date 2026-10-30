@@ -53,37 +53,29 @@ export function pricePerDay(priceCents: number, days: number): number | null {
 }
 
 export interface BaselineQuote {
-  /** Visi reiso kaštai be kuro: fura, keliai, AdBlue. */
-  baselineCents: number;
-  markupCents: number;
-  /** Baseline rate: kaštai be kuro + antkainis. */
-  baselineRateCents: number;
-  fuelCents: number;
-  /** Tinkama krovinio kaina: baseline rate + kuras. */
+  /** Tinkama krovinio kaina: savikaina su tiksline marža nuo kainos. */
   priceCents: number;
-  /** Kokia marža nuo visos kainos išeina. `null`, kai kainos nėra. */
-  marginPercent: number | null;
+  /** Kuras – užsakovui rodomas atskirai. */
+  fuelCents: number;
+  /** Baseline rate: kaina be kuro. */
+  baselineRateCents: number;
+  profitCents: number;
 }
 
 /**
- * Įmonės kainos būdas: antkainis tik kaštams be kuro, kuras pridedamas be
- * antkainio. Kuras – praėjimo kaštas: jo kainos įmonė nevaldo, o užsakovas jį
- * mato atskirai. Antkainis skaičiuojamas nuo kaštų (×1,2), ne nuo kainos, todėl
- * marža nuo visos kainos išeina mažesnė – ji grąžinama, kad būtų matyti.
+ * Kaina, kaip ją pateikia įmonė: tikslinė marža skaičiuojama nuo visos kainos
+ * (savikaina / (1 − marža)), o užsakovui kaina išdėstoma kaip baseline rate +
+ * kuras. Kuras rodomas atskirai, nes jo kaina kinta ir ją užsakovas mato pats.
+ * `null`, kai marža nepasiekiama arba kaštų nėra.
  */
-export function baselineQuote(totalCostCents: number, fuelCents: number, markupPercent: number): BaselineQuote | null {
-  if (!Number.isFinite(markupPercent) || markupPercent < 0) return null;
-  const baselineCents = totalCostCents - fuelCents;
-  if (baselineCents <= 0) return null;
-  const markupCents = Math.round((baselineCents * markupPercent) / 100);
-  const baselineRateCents = baselineCents + markupCents;
-  const priceCents = baselineRateCents + fuelCents;
+export function baselineQuote(totalCostCents: number, fuelCents: number, marginPercent: number): BaselineQuote | null {
+  if (!(marginPercent >= 0)) return null;
+  const priceCents = priceForMargin(totalCostCents, marginPercent);
+  if (priceCents === null) return null;
   return {
-    baselineCents,
-    markupCents,
-    baselineRateCents,
-    fuelCents,
     priceCents,
-    marginPercent: marginForPrice(totalCostCents, priceCents),
+    fuelCents,
+    baselineRateCents: priceCents - fuelCents,
+    profitCents: priceCents - totalCostCents,
   };
 }

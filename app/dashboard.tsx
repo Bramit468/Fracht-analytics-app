@@ -31,7 +31,10 @@ import { listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
 import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
-import { isCovered, planVsActual, tripSpan, type CostPair } from "../lib/plan-actual";
+import { isCovered, planVsActual, spanDayKeys, tripSpan, type CostPair } from "../lib/plan-actual";
+import { idleCosts, idleDailyCents } from "../lib/idle-costs";
+import { truckRowToCalc } from "../lib/truck";
+import type { Truck } from "../types/truck";
 import { loadFuelReport, loadPlanActuals, loadTollsByCountry, type FuelReport, type PlanActualReport, type TollReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
@@ -553,6 +556,69 @@ function TollCountries({ range, plate, trips }: { range: PeriodRange; plate: str
   </div>;
 }
 
+/**
+ * Prastovos: kiek kainavo furų dienos be jokio reiso. Skaičiuojama nuo pirmo
+ * reiso duomenyse – anksčiau duomenų nėra, ir tos dienos atrodytų kaip prastovos.
+ * Furos be nė vieno reiso neįtraukiamos (nauja, parduota ar bandomoji).
+ */
+function IdleCosts({ trucks, allTrips, range, plate, profitCents, customerFiltered, today }: {
+  trucks: Truck[];
+  allTrips: TripSummary[];
+  range: PeriodRange;
+  plate: string;
+  profitCents: number;
+  customerFiltered: boolean;
+  today: string;
+}) {
+  if (!trucks.length || !allTrips.length) return null;
+  const spans = allTrips.map(tripSpan);
+  const dataStart = spans.reduce((min, span) => (span.from < min ? span.from : min), today);
+  // Iki paskutinės dienos su reisu: vėliau vykstantys užsakymai dar neimportuoti.
+  const dataEnd = spans.reduce((max, span) => (span.to > max ? span.to : max), dataStart);
+  const from = range.from > dataStart ? range.from : dataStart;
+  const end = range.to < today ? range.to : today;
+  const to = end < dataEnd ? end : dataEnd;
+  if (from > to) return null;
+
+  const withTrips = new Set(allTrips.map((trip) => plateKey(trip.truckPlate)));
+  const counted = trucks.filter((truck) => withTrips.has(plateKey(truck.plate)) && (!plate || plateKey(truck.plate) === plateKey(plate)));
+  const leftOut = plate ? [] : trucks.filter((truck) => !withTrips.has(plateKey(truck.plate))).map((truck) => truck.plate);
+  const rows = idleCosts(
+    counted.map((truck) => ({ plate: truck.plate, dailyCents: idleDailyCents(truckRowToCalc(truck)) })),
+    spanDayKeys(spans),
+    from,
+    to,
+  );
+  const totalCents = rows.reduce((sum, row) => sum + row.costCents, 0);
+  const totalDays = rows.reduce((sum, row) => sum + row.idleDays, 0);
+
+  return <div className="rounded-lg border border-line bg-surface">
+    <div className="border-b border-line px-5 py-3"><h3 className="font-semibold">Prastovos</h3><p className="text-sm text-muted">Furų dienos be reiso · {from} – {to}{plate ? ` · ${plate}` : ""}</p></div>
+    <dl className="grid gap-px border-b border-line bg-line sm:grid-cols-3">
+      <div className="bg-surface px-5 py-3"><dt className="text-xs text-muted">Prastovų kaštai</dt><dd className="text-lg font-semibold tabular-nums text-bad">{formatCents(totalCents)}</dd></div>
+      <div className="bg-surface px-5 py-3"><dt className="text-xs text-muted">Furų paros be reiso</dt><dd className="text-lg font-semibold tabular-nums">{totalDays.toLocaleString("lt-LT")}</dd></div>
+      {!customerFiltered && <div className="bg-surface px-5 py-3"><dt className="text-xs text-muted">Pelnas po prastovų</dt><dd className={`text-lg font-semibold tabular-nums ${profitCents - totalCents >= 0 ? "text-good" : "text-bad"}`}>{formatCents(profitCents - totalCents)}</dd></div>}
+    </dl>
+    {rows.length > 0 && <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-line text-left text-xs font-medium text-muted"><th className="px-5 py-3 font-medium">Fura</th><th className="px-3 py-3 text-right font-medium">Dienos be reiso</th><th className="px-3 py-3 text-right font-medium">Paros kaštai</th><th className="px-5 py-3 text-right font-medium">Suma</th></tr></thead>
+        <tbody className="divide-y divide-line">{rows.map((row) => <tr key={row.plate}>
+          <td className="px-5 py-3 font-mono">{row.plate}</td>
+          <td className="px-3 py-3 text-right tabular-nums">{row.idleDays}</td>
+          <td className="px-3 py-3 text-right tabular-nums text-muted">{formatCents(row.dailyCents)}</td>
+          <td className="px-5 py-3 text-right font-medium tabular-nums">{formatCents(row.costCents)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    <div className="space-y-1 border-t border-line px-5 py-3 text-xs text-muted">
+      <p>Paros kaštai – dabartiniai furos: vairuotojai, nusidėvėjimas, palūkanos, draudimas, valdymas, priekaba. Be remonto, dienpinigių ir kuro. Diena su bet kuriuo reisu (net daline para) – ne prastova.</p>
+      <p>Prastova čia – ir diena, kai fura vežė dar neimportuotą užsakymą (kaina 0 €, kelios furos, dar vyksta). Tokių dienų pamatysite importo ataskaitoje „Praleisti užsakymai“; jas suimportavus, prastovos sumažės.</p>
+      {customerFiltered && <p>„Pelnas po prastovų“ nerodomas: prastovos nepriklauso užsakovui.</p>}
+      {leftOut.length > 0 && <p>Neįtraukta (nė vieno reiso): {leftOut.join(", ")}.</p>}
+    </div>
+  </div>;
+}
+
 function CountryRoads({ trips, periodLabel }: { trips: TripSummary[]; periodLabel: string }) {
   const planned = trips.filter((trip) => !trip.telematikaOrderId);
   const imported = trips.length - planned.length;
@@ -676,6 +742,7 @@ function todayIso(): string {
 export function Dashboard() {
   const [allTrips, setAllTrips] = useState<TripSummary[]>([]);
   const [skipped, setSkipped] = useState<SkippedTrip[]>([]);
+  const [trucks, setTrucks] = useState<Truck[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filters, setFilters] = useState<Filters>({ period: "all", from: "", to: "", customerId: "", plate: "" });
   const [loading, setLoading] = useState(true);
@@ -688,14 +755,17 @@ export function Dashboard() {
     async function loadDashboard() {
       try {
         const skippedTrips: SkippedTrip[] = [];
-        const [loadedTrips, loadedCustomers] = await Promise.all([
+        const [loadedTrips, loadedCustomers, loadedTrucks] = await Promise.all([
           listTrips(skippedTrips),
           // Užsakovų filtras – patogumas: be lentelės (0014) suvestinė veikia ir be jo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [] as Customer[], available: false })),
+          // Furų kaštai – tik prastovoms: be jų suvestinė veikia, kortelė tiesiog nerodoma.
+          Promise.resolve(getSupabaseClient().from("trucks").select("*")).then(({ data }) => (data ?? []) as Truck[], () => [] as Truck[]),
         ]);
         if (cancelled) return;
         setAllTrips(loadedTrips);
         setSkipped(skippedTrips);
+        setTrucks(loadedTrucks);
         setCustomers(loadedCustomers.customers);
       } catch { if (!cancelled) setError("Nepavyko užkrauti suvestinės. Patikrinkite ryšį ir bandykite dar kartą."); }
       finally { if (!cancelled) setLoading(false); }
@@ -807,6 +877,7 @@ export function Dashboard() {
       <MonthlyTrend trips={realistic} today={today} />
     </div>}
     {tab === "costs" && <div role="tabpanel" aria-label="Kaštai" className="space-y-5">
+      <IdleCosts trucks={trucks} allTrips={allTrips} range={span} plate={filters.plate} profitCents={stats.profitCents} customerFiltered={Boolean(filters.customerId)} today={today} />
       <div className="grid items-start gap-5 xl:grid-cols-2">
         <CostStructure trips={trips} periodLabel={periodLabel} />
         <EmptyKm trips={trips} periodLabel={periodLabel} />

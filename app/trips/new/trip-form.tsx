@@ -40,6 +40,7 @@ import {
   type DriverScenario,
   type RouteSchedule,
 } from "../../../lib/ptv-schedule";
+import { todayInVilnius } from "../../../lib/local-date";
 import { AddressField } from "./address-field";
 import type { MapStop } from "./route-map";
 import { RouteClient } from "./route-client";
@@ -310,7 +311,7 @@ export function TripForm({
             // naujas, o sena data priskirtų reisą ne tam mėnesiui (#129).
             const copy = tripId
               ? { defaults: tripDefaults(existing), legs: existing.legs.map((leg) => ({ country: leg.country, km: String(leg.km) })), revenueMode: existing.revenue_mode }
-              : copyForNewTrip(existing, new Date().toISOString().slice(0, 10));
+              : copyForNewTrip(existing, todayInVilnius());
 
             setDefaults(copy.defaults);
             const loadedStops = stopsFromStored(existing.stops, copy.defaults.origin ?? "", copy.defaults.destination ?? "");

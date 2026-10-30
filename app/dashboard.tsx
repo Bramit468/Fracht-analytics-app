@@ -510,15 +510,18 @@ function MonthlyTrend({ trips, today }: { trips: TripSummary[]; today: string })
  * Sumokėti keliai pagal šalį iš Telematikos sąskaitų. Kraunama tik atidarius
  * skirtuką; komponentas raktuojamas laikotarpiu ir fura.
  */
-function TollCountries({ range, plate }: { range: PeriodRange; plate: string }) {
+function TollCountries({ range, plate, trips }: { range: PeriodRange; plate: string; trips: TripSummary[] }) {
   const [report, setReport] = useState<TollReport | null>(null);
+  // Visi reisai, ne tik pagal užsakovo filtrą: kito užsakovo reiso diena – ne „be reiso“.
+  // Eilutė, o ne masyvas: masyvas kiekvieną kartą naujas ir krautų be galo.
+  const spansJson = JSON.stringify(trips.map(tripSpan).filter((span) => span.to >= range.from && span.from <= range.to));
   useEffect(() => {
     let cancelled = false;
-    loadTollsByCountry(range.from, range.to, plate)
+    loadTollsByCountry(range.from, range.to, plate, JSON.parse(spansJson))
       .then((result) => { if (!cancelled) setReport(result); })
       .catch(() => { if (!cancelled) setReport({ ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." }); });
     return () => { cancelled = true; };
-  }, [range.from, range.to, plate]);
+  }, [range.from, range.to, plate, spansJson]);
 
   if (!report) return <p role="status" className="rounded-lg border border-line bg-surface px-5 py-4 text-sm text-muted">Kraunami keliai iš Telematikos…</p>;
   if (!report.ok) return <p role="alert" className="rounded-lg border border-bad/40 bg-bad-soft px-5 py-4 text-sm text-bad">{report.message}</p>;
@@ -541,7 +544,11 @@ function TollCountries({ range, plate }: { range: PeriodRange; plate: string }) 
         </tbody>
       </table>
     </div>
-    <p className="border-t border-line px-5 py-3 text-xs text-muted">Pagal sąskaitos datą, ne važiavimo: dalis mokesčių nurašoma po kelių dienų. €/km nėra, nes Telematika km pagal šalį neduoda.</p>
+    {report.outside.costCents > 0 && <p className="border-t border-line px-5 py-3 text-sm">
+      Iš jų furos dienomis be reiso: <span className="font-medium tabular-nums">{formatCents(report.outside.costCents)}</span>
+      {total > 0 && ` (${formatPercent((report.outside.costCents / total) * 100)})`}, {report.outside.payments} mokėj. Šių kelių joks reisas neapmoka: tuščia rida tarp užsakymų, grįžimas, servisas.
+    </p>}
+    <p className="border-t border-line px-5 py-3 text-xs text-muted">Pagal sąskaitos datą, ne važiavimo: dalis mokesčių nurašoma po kelių dienų, todėl dalis „be reiso“ gali būti vėliau nurašyti reiso keliai. €/km nėra, nes Telematika km pagal šalį neduoda.</p>
   </div>;
 }
 
@@ -803,7 +810,7 @@ export function Dashboard() {
         <CostStructure trips={trips} periodLabel={periodLabel} />
         <EmptyKm trips={trips} periodLabel={periodLabel} />
       </div>
-      <TollCountries key={`${span.from}/${span.to}/${filters.plate}`} range={span} plate={filters.plate} />
+      <TollCountries key={`${span.from}/${span.to}/${filters.plate}`} range={span} plate={filters.plate} trips={allTrips} />
       <CountryRoads trips={trips} periodLabel={periodLabel} />
     </div>}
     {tab === "fuel" && <div role="tabpanel" aria-label="Kuras">

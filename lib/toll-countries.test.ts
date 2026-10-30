@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Supply } from "./telematics-costs";
-import { tollsByCountry } from "./toll-countries";
+import { tollsByCountry, tollsOutsideTrips } from "./toll-countries";
+import { spanDayKeys } from "./plan-actual";
 
 const supply = (date: string, kind: Supply["kind"], costCents: number, country: string | null, plate = "LOV 141"): Supply =>
   ({ plate, date, kind, costCents, quantity: null, country });
@@ -26,5 +27,20 @@ describe("tollsByCountry", () => {
   it("filters by plate ignoring spaces", () => {
     expect(tollsByCountry(supplies, "2026-10-01", "2026-10-31", "LOV141").map((row) => row.country)).toEqual(["SWE", "DEU"]);
     expect(tollsByCountry([], "2026-10-01", "2026-10-31")).toEqual([]);
+  });
+});
+
+describe("tollsOutsideTrips", () => {
+  it("counts only tolls on truck days without a trip", () => {
+    const supplies = [
+      supply("2026-10-01", "toll", 10_000, "DEU"),
+      supply("2026-10-02", "toll", 5_000, "DEU", "LOV141"),
+      supply("2026-10-03", "toll", 7_000, "SWE", "LOV 141"),
+      supply("2026-10-03", "toll", 2_000, "SWE", "NHT 384"),
+      supply("2026-10-03", "diesel", 99_000, "SWE", "NHT 384"),
+    ];
+    const days = spanDayKeys([{ plate: "LOV 141", from: "2026-10-01", to: "2026-10-02" }]);
+    expect(tollsOutsideTrips(supplies, "2026-10-01", "2026-10-31", "", days)).toEqual({ costCents: 9_000, payments: 2 });
+    expect(tollsOutsideTrips(supplies, "2026-10-01", "2026-10-31", "LOV141", days)).toEqual({ costCents: 7_000, payments: 1 });
   });
 });

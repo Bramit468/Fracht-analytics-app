@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   calcAdblueCost,
   calcContribution,
+  loadVerdict,
   calcCostPerKm,
   calcDailyRate,
   calcFuelCost,
@@ -410,5 +411,30 @@ describe("calcTruckCost su trupmeninėmis paromis", () => {
     const cents = calcTruckCost(OMNIVA_TRUCK, 2.4);
     expect(Number.isInteger(cents)).toBe(true);
     expect(cents).toBe(Math.round(calcDailyRate(OMNIVA_TRUCK) * 2.4));
+  });
+});
+
+describe("loadVerdict (savikaina – žemiausia kaina)", () => {
+  it("nuo savikainos – imti", () => {
+    expect(loadVerdict(0, -100, 0)).toBe("take");
+    expect(loadVerdict(5000, 5000, 0)).toBe("take");
+  });
+
+  it("žemiau savikainos, bet geriau už alternatyvą – tik su vadovo pritarimu", () => {
+    expect(loadVerdict(-42898, 37802, 0)).toBe("approval");
+  });
+
+  it("nepadengia net kintamų kaštų ar alternatyvos – neimti", () => {
+    expect(loadVerdict(-42898, -1000, 0)).toBe("reject");
+    expect(loadVerdict(-42898, 3000, 5000)).toBe("reject");
+  });
+
+  it("Šiauliai–Amersfoort: 1500 € – tik su pritarimu, 2250 € – imti", () => {
+    // Iš greitos kainos: savikaina 1950,54 €, kintami kaštai 1379,21 €.
+    const at = (revenue: number) => loadVerdict(revenue - 195054, revenue - 137921, 0);
+    expect(at(137921)).toBe("reject");
+    expect(at(150000)).toBe("approval");
+    expect(at(195054)).toBe("take");
+    expect(at(225000)).toBe("take");
   });
 });

@@ -19,6 +19,7 @@ import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
 import { deleteTrip, listTrips, updateTripPayment, type SkippedTrip, type TripSummary } from "../../lib/trips";
 import { fetchCompanySettings } from "../../lib/company-settings";
+import { loadVerdict } from "../../lib/calc";
 import { checkMargin, formatMinMargin } from "../../lib/margin-guard";
 import { getSupabaseClient } from "../../lib/supabase";
 import { listCustomers, type Customer } from "../../lib/customers";
@@ -237,8 +238,8 @@ export function TripList() {
                 <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[13px]">{trip.truckPlate}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.revenueCents)}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-muted">{formatCents(trip.totalCostCents)}</td>
-                {/* Įnašas – ar krovinys buvo vertas, palyginus su išsaugota alternatyva; pelnas – su pastoviais kaštais. */}
-                <td className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${(trip.vsAlternativeCents ?? 0) > minContribution ? "text-good" : "text-bad"}`} title={trip.vsAlternativeCents !== undefined && trip.vsAlternativeCents !== trip.contributionCents ? `Palyginus su alternatyva ${formatCents(trip.vsAlternativeCents)}` : undefined}>{formatCents(trip.contributionCents ?? 0)}</td>
+                {/* Įnašo spalva – verdiktas: žalia nuo savikainos, geltona – žemiau jos, bet padengė kintamus kaštus. */}
+                <td className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${{ take: "text-good", approval: "text-warn", reject: "text-bad" }[loadVerdict(trip.profitCents, trip.vsAlternativeCents ?? 0, minContribution)]}`} title={trip.vsAlternativeCents !== undefined && trip.vsAlternativeCents !== trip.contributionCents ? `Palyginus su alternatyva ${formatCents(trip.vsAlternativeCents)}` : undefined}>{formatCents(trip.contributionCents ?? 0)}</td>
                 <td className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${trip.profitCents >= 0 ? "text-muted" : "text-bad"}`}>{formatCents(trip.profitCents)}</td>
                 <td className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${below ? "font-medium text-bad" : "text-muted"}`} title={below ? `Žemiau ribos ${formatMinMargin(minMargin)}` : undefined}>
                   {trip.marginPercent === null ? "—" : `${trip.marginPercent.toFixed(1)}%`}

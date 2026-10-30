@@ -1340,22 +1340,29 @@ export function TripForm({
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
       {result && <section aria-label="Reiso rezultatai" className="rounded-lg border border-line-strong bg-surface p-4">
-        {/* Pagrindinis klausimas – imti ar ne. Sprendžia įnašas: pastovūs furos
-            kaštai mokami vis tiek, todėl jie tik antraeilėje pilno pelno eilutėje. */}
-        {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${bePajamu ? "border-line" : inasas.take ? "border-good" : "border-bad"}`}>
+        {/* Pagrindinis klausimas – imti ar ne. Žemiausia kaina – savikaina; žemiau
+            jos tik su vadovo pritarimu, jei krovinys padengia kintamus kaštus. */}
+        {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${bePajamu ? "border-line" : inasas.verdict === "take" ? "border-good" : inasas.verdict === "approval" ? "border-warn" : "border-bad"}`}>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className={`text-xl font-semibold ${bePajamu ? "" : inasas.take ? "text-good" : "text-bad"}`}>
-              {bePajamu ? "Verta imti, jei kaina didesnė nei" : inasas.take ? "Imti" : "Neimti"}
+            <h2 className={`text-xl font-semibold ${bePajamu ? "" : inasas.verdict === "take" ? "text-good" : inasas.verdict === "approval" ? "text-warn" : "text-bad"}`}>
+              {bePajamu ? "Mažiausia kaina – savikaina" : inasas.verdict === "take" ? "Imti" : inasas.verdict === "approval" ? "Tik su vadovo pritarimu" : "Neimti"}
             </h2>
             <p className="text-2xl font-semibold tabular-nums">
-              {bePajamu ? formatCents(inasas.breakEvenPriceCents) : `${formatCents(inasas.contributionCents)} įnašas`}
+              {bePajamu ? formatCents(result.totalCostCents) : `${formatCents(result.profitCents)} ${result.profitCents >= 0 ? "pelnas" : "nuostolis"}`}
             </p>
           </div>
+          {bePajamu
+            ? <p className="mt-1 text-sm">Su vadovo pritarimu – ne mažiau nei <strong className="tabular-nums">{formatCents(inasas.breakEvenPriceCents)}</strong>: tiek, kad padengtų kintamus kaštus{alternatyva!.contributionCents !== 0 && " ir būtų geriau už alternatyvą"}.</p>
+            : inasas.verdict === "approval"
+              ? <p className="mt-1 text-sm text-warn">Kaina {formatCents(-result.profitCents)} žemiau savikainos {formatCents(result.totalCostCents)}. Krovinys padengia kintamus kaštus ir {formatCents(inasas.contributionCents)} pastovių – važiuoti galima tik vadovui pritarus.</p>
+              : inasas.verdict === "reject"
+                ? <p className="mt-1 text-sm text-bad">Kaina nepadengia net kintamų kaštų{alternatyva!.contributionCents !== 0 && " ir alternatyvos"} – mažiausiai {formatCents(inasas.breakEvenPriceCents)}.</p>
+                : null}
           <p className="mt-2 text-sm tabular-nums text-muted">
             {!bePajamu && <>Pajamos {formatCents(result.revenueCents)} − </>}
             kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
             {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
-            {bePajamu ? <> = {formatCents(inasas.variableCents)} kintamų kaštų.</> : <> = <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong>.</>}
+            {bePajamu ? <> = {formatCents(inasas.variableCents)} kintamų kaštų.</> : <> = <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.</>}
             {" "}Kuras, AdBlue ir keliai – su tuščiais km.
           </p>
           <p className="mt-1 text-sm tabular-nums text-muted">
@@ -1368,7 +1375,7 @@ export function TripForm({
             klausimas yra kiek prašyti, todėl tai ir yra antraštė. */}
         {bePajamu ? <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h3 className="font-semibold">Kaina su pilna savikaina <span className="font-normal text-muted">(antraeilė)</span></h3>
+            <h3 className="font-semibold">Prašoma kaina</h3>
             <p className="text-lg font-semibold tabular-nums">{prasomaKaina === null ? "—" : formatCents(prasomaKaina)}</p>
           </div>
           <p className="mt-1 text-sm text-muted">
@@ -1378,7 +1385,7 @@ export function TripForm({
           </p>
         </> : <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h3 className="font-semibold">Pilnas pelnas <span className="font-normal text-muted">(antraeilis: su pastoviais furos kaštais)</span></h3>
+            <h3 className="font-semibold">Pelnas <span className="font-normal text-muted">(su pastoviais furos kaštais)</span></h3>
             <p className={`text-lg font-semibold ${result.profitCents >= 0 ? "text-good" : "text-bad"}`}>
               {formatCents(result.profitCents)} {result.profitCents >= 0 ? "pelnas" : "nuostolis"}
             </p>

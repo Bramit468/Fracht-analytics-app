@@ -97,7 +97,7 @@ export async function inviteMember(
 
   return {
     status: "success",
-    message: `${parsed.email} pakviestas. Prieigą gaus užsiregistravęs tuo adresu.`,
+    message: `${parsed.email} pakviestas. Dabar sukurkite jį Supabase → Users → „Add user“ – prisijungęs jis pateks į įmonę.`,
   };
 }
 

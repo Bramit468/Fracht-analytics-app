@@ -64,8 +64,8 @@ export interface SpanActuals {
   roadCents: number;
 }
 
-/** Faktas pagal furą tik reisų dienomis. Persidengiančių reisų diena skaičiuojama kartą. */
-export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spans: TripSpan[]): SpanActuals[] {
+/** Furos dienos su reisu, raktas `plateKey|data`. Persidengiantys reisai – viena diena. */
+export function spanDayKeys(spans: TripSpan[]): Set<string> {
   const days = new Set<string>();
   for (const span of spans) {
     for (let date = span.from; date <= span.to;) {
@@ -75,6 +75,12 @@ export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spa
       date = next;
     }
   }
+  return days;
+}
+
+/** Faktas pagal furą tik reisų dienomis. Persidengiančių reisų diena skaičiuojama kartą. */
+export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spans: TripSpan[]): SpanActuals[] {
+  const days = spanDayKeys(spans);
 
   const totals = new Map<string, SpanActuals>();
   const row = (plate: string) => {

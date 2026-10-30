@@ -3,12 +3,12 @@
 import { costInsights, type Insight } from "@/lib/cost-insights";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { fuelPricesByCountry, type FuelPriceRow } from "@/lib/fuel-prices";
-import { actualsOverSpans, isCovered, telematicsCoverage, type Coverage, type SpanActuals, type TripSpan } from "@/lib/plan-actual";
+import { actualsOverSpans, isCovered, spanDayKeys, telematicsCoverage, type Coverage, type SpanActuals, type TripSpan } from "@/lib/plan-actual";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { actualsByTruck, parseCanDaily, parseSupplies, type ActualCosts } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
-import { tollsByCountry, type TollCountryRow } from "@/lib/toll-countries";
+import { tollsByCountry, tollsOutsideTrips, type TollCountryRow } from "@/lib/toll-countries";
 
 export type FuelReport =
   | { ok: true; trucks: ActualCosts[]; byCountry: FuelPriceRow[]; insights: Insight[] }
@@ -44,32 +44,6 @@ export async function loadFuelReport(from: string, to: string): Promise<FuelRepo
   }
 }
 
-export type TollReport = { ok: true; rows: TollCountryRow[] } | { ok: false; message: string };
-
-/** Kaštų skirtukas: sumokėti keliai pagal šalį iš Telematikos sąskaitų. */
-export async function loadTollsByCountry(from: string, to: string, plate: string): Promise<TollReport> {
-  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || from > to) return { ok: false, message: "Neteisingas laikotarpis." };
-  if (typeof plate !== "string" || plate.length > 32) return { ok: false, message: "Neteisinga fura." };
-
-  const supabase = await createServerSupabaseClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  if (!claims?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
-  if (!(await canUseTelematics(supabase))) return { ok: false, message: "Telematika šiai įmonei neprijungta." };
-
-  try {
-    const [suppliesRaw, rates] = await Promise.all([fetchTelematics("supplies"), fetchEcbRates()]);
-    const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
-    return { ok: true, rows: tollsByCountry(supplies, from, to, plate) };
-  } catch (cause) {
-    console.error("Suvestinės keliai", cause instanceof TelematicsFeedError ? cause.message : cause);
-    return { ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." };
-  }
-}
-
-export type PlanActualReport =
-  | { ok: true; coverage: Coverage | null; actuals: SpanActuals[] }
-  | { ok: false; message: string };
-
 const MAX_SPANS = 20_000;
 
 function validSpan(span: unknown): span is TripSpan {
@@ -80,6 +54,40 @@ function validSpan(span: unknown): span is TripSpan {
     && typeof to === "string" && ISO_DATE.test(to)
     && from <= to;
 }
+
+export type TollReport =
+  | { ok: true; rows: TollCountryRow[]; outside: { costCents: number; payments: number } }
+  | { ok: false; message: string };
+
+/**
+ * Kaštų skirtukas: sumokėti keliai pagal šalį iš Telematikos sąskaitų ir kiek
+ * jų sumokėta dienomis be reiso. Reisų dienas siunčia naršyklė, kaip ir
+ * „Planas ir faktas“.
+ */
+export async function loadTollsByCountry(from: string, to: string, plate: string, spans: unknown): Promise<TollReport> {
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || from > to) return { ok: false, message: "Neteisingas laikotarpis." };
+  if (typeof plate !== "string" || plate.length > 32) return { ok: false, message: "Neteisinga fura." };
+  if (!Array.isArray(spans) || spans.length > MAX_SPANS) return { ok: false, message: "Per daug reisų – susiaurinkite laikotarpį." };
+  const tripDays = spanDayKeys(spans.filter(validSpan));
+
+  const supabase = await createServerSupabaseClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  if (!claims?.claims) return { ok: false, message: "Prisijunkite iš naujo." };
+  if (!(await canUseTelematics(supabase))) return { ok: false, message: "Telematika šiai įmonei neprijungta." };
+
+  try {
+    const [suppliesRaw, rates] = await Promise.all([fetchTelematics("supplies"), fetchEcbRates()]);
+    const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
+    return { ok: true, rows: tollsByCountry(supplies, from, to, plate), outside: tollsOutsideTrips(supplies, from, to, plate, tripDays) };
+  } catch (cause) {
+    console.error("Suvestinės keliai", cause instanceof TelematicsFeedError ? cause.message : cause);
+    return { ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." };
+  }
+}
+
+export type PlanActualReport =
+  | { ok: true; coverage: Coverage | null; actuals: SpanActuals[] }
+  | { ok: false; message: string };
 
 /**
  * Skirtukas „Planas ir faktas“: faktiniai furų kaštai reisų dienomis.

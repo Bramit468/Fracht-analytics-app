@@ -17,6 +17,24 @@ export interface TollCountryRow {
   sharePercent: number | null;
 }
 
+/**
+ * Keliai, sumokėti furos dienomis be jokio reiso (`tripDays` – `spanDayKeys`).
+ * Jų joks reisas neapmoka: tuščia rida tarp užsakymų, grįžimas, servisas.
+ */
+export function tollsOutsideTrips(supplies: Supply[], from: string, to: string, plate: string, tripDays: Set<string>): { costCents: number; payments: number } {
+  const wantedPlate = plate ? plateKey(plate) : "";
+  let costCents = 0;
+  let payments = 0;
+  for (const supply of supplies) {
+    if (supply.kind !== "toll" || supply.date < from || supply.date > to) continue;
+    const key = plateKey(supply.plate);
+    if ((wantedPlate && key !== wantedPlate) || tripDays.has(`${key}|${supply.date}`)) continue;
+    costCents += supply.costCents;
+    payments += 1;
+  }
+  return { costCents, payments };
+}
+
 /** Brangiausia šalis viršuje; tuščias `plate` – visos furos. */
 export function tollsByCountry(supplies: Supply[], from: string, to: string, plate = ""): TollCountryRow[] {
   const wantedPlate = plate ? plateKey(plate) : "";

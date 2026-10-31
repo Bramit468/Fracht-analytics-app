@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { perDiemNormCents } from "./per-diem-norms";
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, editedByHand, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, carriedEmptyKm, editedByHand, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -34,6 +34,42 @@ describe("allocateTime", () => {
   it("nulinės trukmės užsakymas gauna 0 valandų", () => {
     const result = allocateTime([{ id: "a", truck: "t", start: 5 * H, end: 5 * H }]);
     expect(result.get("a")!.hours).toBe(0);
+  });
+});
+
+describe("carriedEmptyKm", () => {
+  const order = (orderId: string, start: string, legKm: number | null, byDay: Record<string, number>) =>
+    ({ orderId, plate: "MHE 763", start, legKm, byDay: new Map(Object.entries(byDay)) });
+  const day = (date: string, km: number): DailyDistance => ({ plate: "MHE763", date, km, fuelL: null });
+  const run = (orders: ReturnType<typeof order>[], daily: DailyDistance[], next: Record<string, string> = {}) =>
+    carriedEmptyKm({ orders, daily, firstDay: "2026-10-01", lastDay: "2026-10-31", nextOrder: (_plate, date) => next[date] ?? null });
+
+  it("tą pačią dieną: paros ridos ir užsakymų skirtumas – antram užsakymui", () => {
+    // Iškrovė 10:00, nuvažiavo 280 km tuščia, pakrovė 15:00.
+    const result = run([order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 4 }), order("b", "2026-10-05 15:00:00", 290, { "2026-10-05": 9 })], [day("2026-10-05", 870)]);
+    expect(Object.fromEntries(result.carried)).toEqual({ b: 280 });
+  });
+
+  it("vienas užsakymas per kelias dienas – skirtumas jam pačiam; mažas skirtumas – triukšmas", () => {
+    const one = run([order("a", "2026-10-05 20:00:00", 800, { "2026-10-05": 4, "2026-10-06": 6 })], [day("2026-10-05", 100), day("2026-10-06", 850)]);
+    expect(Object.fromEntries(one.carried)).toEqual({ a: 150 });
+    const noise = run([order("a", "2026-10-05 08:00:00", 800, { "2026-10-05": 10 })], [day("2026-10-05", 815)]);
+    expect(noise.carried.size).toBe(0);
+  });
+
+  it("užsakymas be atkarpų km – blokas praleidžiamas, kad nebūtų įskaičiuota dukart", () => {
+    const result = run([order("a", "2026-10-05 08:00:00", null, { "2026-10-05": 10 })], [day("2026-10-05", 900)]);
+    expect(result.carried.size).toBe(0);
+  });
+
+  it("diena be užsakymų – kitam; be kito užsakymo – nepriskirta; už laikotarpio ribų – nieko", () => {
+    const result = run(
+      [order("b", "2026-10-07 08:00:00", 300, { "2026-10-07": 10 })],
+      [day("2026-10-06", 400), day("2026-10-08", 120), day("2026-09-30", 999), day("2026-10-07", 300)],
+      { "2026-10-06": "b" },
+    );
+    expect(Object.fromEntries(result.carried)).toEqual({ b: 400 });
+    expect(result.unassignedKm).toBe(120);
   });
 });
 
@@ -150,6 +186,26 @@ describe("buildOrderTrips", () => {
     expect(byOrder[1].trip.bridges_cents).toBe(0);
     expect(unassignedTollCents).toBe(900);
     expect(byOrder[2].notes).toContain("Keliai 5,00 € – pervažiavimas prieš užsakymą (dienos be užsakymo).");
+  });
+
+  it("pervažiavimas be užsakymo – tušti km kitam užsakymui; norma iš paties užsakymo km", () => {
+    const day = (date: string, km: number): DailyDistance => ({ plate: "MHE 763", date, km, fuelL: null });
+    const { trips, unassignedEmptyKm } = build(
+      [
+        leg("1", "2026-10-15 08:00:00", "2026-10-15 18:00:00", 300, { FuelConsumption: "90.000" }),
+        // 10-16 fura važiavo be užsakymo (280 km), 10-17 – užsakymas 2.
+        leg("2", "2026-10-17 08:00:00", "2026-10-17 18:00:00", 290),
+      ],
+      { daily: [day("2026-10-15", 300), day("2026-10-16", 280), day("2026-10-17", 290)] },
+    );
+    const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
+    expect(byOrder[2].trip.empty_km).toBe(280);
+    expect(byOrder[2].legs).toEqual([{ country: "Nemokami", km: 570 }]);
+    expect(byOrder[2].notes).toContain("Tušti km +280 – pervažiavimas be užsakymo prieš šį užsakymą (paros rida).");
+    expect(byOrder[1].trip.empty_km).toBe(0);
+    // 90 l / 300 km – norma nesumažėja dėl pridėtų km.
+    expect(byOrder[1].trip.fuel_l_per_100km).toBe(30);
+    expect(unassignedEmptyKm).toBe(0);
   });
 
   it("be atkarpų km – PTV adresai ir įvertis iš paros ridos, ne daugiau nei užsakymo valandų dalis", () => {

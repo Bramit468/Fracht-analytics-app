@@ -21,6 +21,11 @@ import { geocode, ptvJson, PtvError } from "../new/route-core";
 export interface OrderPreview extends ImportedTrip {
   /** Esamas reisas, jei šis užsakymas jau importuotas. */
   existingId: string | null;
+  /**
+   * Įrašyti apmokami km. Atnaujinant reisą be Telematikos km jie lieka – PTV
+   * jau skaičiavo, o kartojant ~150 užklausų baigtųsi PTV dienos limitas.
+   */
+  storedPaidKm: number | null;
   /** Kas pasikeitė nuo paskutinio importo; tuščias – nieko. `null` – naujas. */
   changes: string[] | null;
   /** Ką ranka pataisė vartotojas; netuščias – reisas neperrašomas. */
@@ -30,7 +35,7 @@ export interface OrderPreview extends ImportedTrip {
 }
 
 export type OrderImportResult =
-  | { ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number }
+  | { ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number }
   | { ok: false; message: string };
 
 /** Dabartinis laikas taip, kaip jį rašo Telematika: vietinis, be zonos. */
@@ -122,6 +127,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     return {
       ...item,
       existingId: stored?.id ?? null,
+      storedPaidKm: stored ? Number(stored.paid_km) : null,
       changes: stored ? importChanges(stored, item) : null,
       handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
@@ -129,7 +135,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents };
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

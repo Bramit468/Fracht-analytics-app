@@ -134,6 +134,7 @@ describe("actualsToCsv", () => {
     dieselCents: 320000,
     adblueCents: 12000,
     tollCents: 84000,
+    ferryCents: 0,
     otherCents: 5000,
     totalCents: 416000,
     adblueL: 60,

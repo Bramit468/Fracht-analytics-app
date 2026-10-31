@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actualsOverSpans, isCovered, planVsActual, telematicsCoverage, tripSpan } from "./plan-actual";
+import { actualsOutsideSpans, actualsOverSpans, isCovered, planVsActual, telematicsCoverage, tripSpan } from "./plan-actual";
 import type { DailyDistance, Supply } from "./telematics-costs";
 import type { TripSummary } from "./trips";
 
@@ -25,6 +25,24 @@ describe("actualsOverSpans", () => {
     expect(actualsOverSpans(daily, supplies, spans)).toEqual([{
       plate: "LOV141", km: 1200, fuelL: 360, fuelKm: 1200, fuelCents: 50_000, adblueCents: 0, roadCents: 7_000,
     }]);
+  });
+});
+
+describe("keltai ir dienos be reiso", () => {
+  it("keltas – kelių fakto dalis, kaip ir plane", () => {
+    const [row] = actualsOverSpans([day("2026-10-01", 500)], [supply("2026-10-01", "ferry", 30_000), supply("2026-10-01", "toll", 5_000)], [{ plate: "LOV 141", from: "2026-10-01", to: "2026-10-01" }]);
+    expect(row.roadCents).toBe(35_000);
+  });
+
+  it("dienos be reiso: tik tų furų ir tik tarp pirmo ir paskutinio reiso", () => {
+    const daily = [day("2026-10-01", 500), day("2026-10-02", 300), day("2026-10-03", 0), day("2026-10-04", 400), day("2026-10-09", 999), day("2026-10-02", 700, 200, "KITA 1")];
+    const supplies = [
+      supply("2026-10-02", "toll", 2_000), supply("2026-10-02", "ferry", 3_000), supply("2026-10-02", "diesel", 10_000),
+      supply("2026-10-02", "other", 9_999), supply("2026-10-09", "toll", 8_000), supply("2026-10-02", "toll", 4_000, "KITA 1"),
+    ];
+    const spans = [{ plate: "LOV 141", from: "2026-10-01", to: "2026-10-01" }, { plate: "LOV 141", from: "2026-10-04", to: "2026-10-04" }];
+    expect(actualsOutsideSpans(daily, supplies, spans)).toEqual({ days: 1, km: 300, fuelCents: 10_000, adblueCents: 0, roadCents: 5_000 });
+    expect(actualsOutsideSpans(daily, supplies, [])).toEqual({ days: 0, km: 0, fuelCents: 0, adblueCents: 0, roadCents: 0 });
   });
 });
 

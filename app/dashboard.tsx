@@ -359,8 +359,16 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
         </tr>)}</tbody>
       </table>
     </div>
+    {/* Pinigai, kurių nėra nė viename reise: dar vykstantys ar neimportuoti
+        reisai, furos be reisų. Anksčiau jie buvo tiesiog nerodomi – iš čia ir
+        „~20 % kelių neatitikimas“ (2026-10 patikra). */}
+    {report.outside.days > 0 || costTotal({ ...report.outside }) > 0 ? <p className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
+      <span className="font-medium">Dienomis be reiso</span> (tos pačios furos, tarp pirmo ir paskutinio reiso; į planą neįeina):{" "}
+      <span className="tabular-nums">{report.outside.days} d., {Math.round(report.outside.km).toLocaleString("lt-LT")} km, kuras {formatCents(report.outside.fuelCents)}, AdBlue {formatCents(report.outside.adblueCents)}, keliai ir keltai {formatCents(report.outside.roadCents)}</span>.
+      {" "}Dažniausiai tai dar vykstantys ar neimportuoti reisai, tušti pervažiavimai be užsakymo.
+    </p> : null}
     <div className="space-y-1 text-xs text-muted">
-      <p>Faktas skaičiuojamas tik reisų dienomis, kiekviena furos diena vieną kartą, stovėjimo dienos neįeina. Telematikos duomenys: {coverage.from} – {coverage.to}.</p>
+      <p>Faktas skaičiuojamas tik reisų dienomis, kiekviena furos diena vieną kartą, stovėjimo dienos neįeina. Telematikos duomenys: {coverage.from} – {coverage.to}. Sumos be PVM – kaip kortelių sąskaitose. Keliai su keltais ir tiltais.</p>
       {skipped > 0 && <p>Nelyginta {skipped} reis.: ne visos jų dienos patenka į Telematikos duomenis (seni arba dar vyksta).</p>}
       {missing.length > 0 && <p>Be Telematikos duomenų: {missing.join(", ")}.</p>}
       <p>Importuoti reisai jau skaičiuoti su faktinėmis sąnaudomis ir keliais, todėl jų skirtumas mažas. Kelių mokestis kartais Telematikoje atsiranda vėliau.</p>

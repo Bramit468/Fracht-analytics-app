@@ -15,6 +15,7 @@ function truck(plate: string, overrides: Partial<ActualCosts>): ActualCosts {
     dieselCents: 0,
     adblueCents: 0,
     tollCents: 0,
+    ferryCents: 0,
     otherCents: 0,
     totalCents: 0,
     adblueL: 0,

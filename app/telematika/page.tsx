@@ -130,7 +130,7 @@ export default async function TelematikaPage({
     km: eilutes.reduce((t, r) => t + r.km, 0),
     diesel: eilutes.reduce((t, r) => t + r.dieselCents, 0),
     adblue: eilutes.reduce((t, r) => t + r.adblueCents, 0),
-    toll: eilutes.reduce((t, r) => t + r.tollCents, 0),
+    toll: eilutes.reduce((t, r) => t + r.tollCents + r.ferryCents, 0),
     kita: eilutes.reduce((t, r) => t + r.otherCents, 0),
     total: eilutes.reduce((t, r) => t + r.totalCents, 0),
   };
@@ -170,8 +170,8 @@ export default async function TelematikaPage({
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-medium">Kaštai pagal furą</h2>
           <p className="text-sm text-muted">
-            „Iš viso“ apima kurą, AdBlue ir kelius; „Kita“ rodoma atskirai. Pajamų čia nėra:
-            telematika jų su fura nesieja.
+            „Iš viso“ apima kurą, AdBlue, kelius, tiltus ir keltus; „Kita“ rodoma atskirai. Sumos be
+            PVM – kaip kortelių sąskaitose. Pajamų čia nėra: telematika jų su fura nesieja.
           </p>
         </div>
       )}
@@ -213,7 +213,7 @@ export default async function TelematikaPage({
                 </td>
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.dieselCents)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.adblueCents)}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.tollCents)}</td>
+                <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.tollCents + row.ferryCents)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{formatCents(row.otherCents)}</td>
                 <td className="py-2 pr-4 text-right font-semibold tabular-nums">
                   {formatCents(row.totalCents)}

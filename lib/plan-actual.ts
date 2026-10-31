@@ -106,9 +106,49 @@ export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spa
     const current = row(supply.plate);
     if (supply.kind === "diesel") current.fuelCents += supply.costCents;
     if (supply.kind === "adblue") current.adblueCents += supply.costCents;
-    if (supply.kind === "toll") current.roadCents += supply.costCents;
+    // Plane keltai yra kelių kaštų dalis (`calcRoadCost`), todėl ir fakte.
+    if (supply.kind === "toll" || supply.kind === "ferry") current.roadCents += supply.costCents;
   }
   return [...totals.values()];
+}
+
+/** Kas išleista tų pačių furų dienomis be reiso – plane jų nėra, bet pinigai išleisti. */
+export interface OutsideSpans {
+  days: number;
+  km: number;
+  fuelCents: number;
+  adblueCents: number;
+  roadCents: number;
+}
+
+/**
+ * Faktas furų, turinčių reisų, dienomis be reiso – laikotarpyje nuo pirmo iki
+ * paskutinio reiso dienos. Tai ir buvo „~20 % kelių neatitikimas“: 2026-10
+ * 2 524 € iš 12 616 € sumokėta dienomis, kurių reisas dar neimportuotas
+ * (vyksta), arba furoms be reisų. Rodoma atskirai, kad nebūtų paslėpta.
+ */
+export function actualsOutsideSpans(daily: DailyDistance[], supplies: Supply[], spans: TripSpan[]): OutsideSpans {
+  const days = spanDayKeys(spans);
+  const total: OutsideSpans = { days: 0, km: 0, fuelCents: 0, adblueCents: 0, roadCents: 0 };
+  if (spans.length === 0) return total;
+  const plates = new Set(spans.map((span) => plateKey(span.plate)));
+  const from = spans.reduce((min, span) => (span.from < min ? span.from : min), spans[0].from);
+  const to = spans.reduce((max, span) => (span.to > max ? span.to : max), spans[0].to);
+  const outside = (row: { plate: string; date: string }) =>
+    plates.has(plateKey(row.plate)) && row.date >= from && row.date <= to && !days.has(`${plateKey(row.plate)}|${row.date}`);
+
+  const seen = new Set<string>();
+  for (const day of daily.filter(outside)) {
+    total.km += day.km;
+    if (day.km > 0) seen.add(`${plateKey(day.plate)}|${day.date}`);
+  }
+  for (const supply of supplies.filter(outside)) {
+    if (supply.kind === "diesel") total.fuelCents += supply.costCents;
+    if (supply.kind === "adblue") total.adblueCents += supply.costCents;
+    if (supply.kind === "toll" || supply.kind === "ferry") total.roadCents += supply.costCents;
+  }
+  total.days = seen.size;
+  return total;
 }
 
 export interface CostPair {

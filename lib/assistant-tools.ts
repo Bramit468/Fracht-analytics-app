@@ -42,6 +42,8 @@ import { calculateSavedTrip } from "./trip-input";
 import { addDays, isOnTheRoad, tripProgress } from "./trip-progress";
 import { compareTripToActuals } from "./trip-variance";
 import type { TripSummary } from "./trips";
+import { followedVerdict, quoteStats, VERDICT_LABELS, type QuoteRow } from "./quotes";
+import { todayInVilnius } from "./local-date";
 import type { Trip, TripCountryLeg } from "../types/trip";
 import type { Truck } from "../types/truck";
 
@@ -79,6 +81,8 @@ export interface AssistantContext {
   data(): Promise<AssistantData>;
   telematics(): Promise<TelematicsData | null>;
   live(): Promise<LiveData | null>;
+  /** Pasiūlymų žurnalas (0026). `null` – migracija nepaleista. */
+  quotes(): Promise<QuoteRow[] | null>;
 }
 
 export interface TripFilter {
@@ -678,6 +682,50 @@ function payments(data: AssistantData, args: Record<string, unknown>) {
   };
 }
 
+/** Vilniaus diena iš `timestamptz` – kaip žurnalo puslapyje. */
+function vilniusDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Europe/Vilnius" });
+}
+
+function quoteLog(quotes: QuoteRow[] | null, today: string, args: Record<string, unknown>) {
+  if (quotes === null) return { klaida: "Pasiūlymų žurnalo duomenų bazėje dar nėra (migracija 0026)." };
+  const to = optionalDate(args, "to") ?? today;
+  const from = optionalDate(args, "from") ?? addDays(to, -29);
+  if (from > to) throw new ToolInputError("„from“ negali būti vėliau už „to“.");
+
+  const rows = quotes.filter((row) => {
+    const day = vilniusDay(row.created_at);
+    return day >= from && day <= to;
+  });
+  const stats = quoteStats(rows, from, to);
+  const byVerdict = (["take", "negotiate", "reject"] as const).map((verdict) => {
+    const group = rows.filter((row) => row.verdict === verdict);
+    const judged = group.map(followedVerdict).filter((value): value is boolean => value !== null);
+    return {
+      bramit: VERDICT_LABELS[verdict],
+      pasiulymu: group.length,
+      paimta: group.filter((row) => row.decision === "taken").length,
+      nepaimta: group.filter((row) => row.decision === "declined").length,
+      sutapo_su_sprendimu: judged.length ? `${Math.round((judged.filter(Boolean).length / judged.length) * 100)} %` : null,
+    };
+  });
+
+  return {
+    laikotarpis: { nuo: from, iki: to },
+    pasiulymu: stats.count,
+    nuspresta: stats.decided,
+    laimeta: stats.won,
+    pralaimeta: stats.lost,
+    laimejimo_dalis: stats.winRate === null ? null : `${Math.round(stats.winRate)} %`,
+    sprendimas_sutapo_su_bramit: stats.followedRate === null ? null : `${Math.round(stats.followedRate)} %`,
+    darbo_dienu: stats.workingDays,
+    dispeceriu: stats.byDispatcher.map((row) => ({ pasiulymu: row.count, per_darbo_diena: row.perWorkingDay === null ? null : decimal(row.perWorkingDay, 1) })),
+    pagal_verdikta: byVerdict,
+    priezastys: stats.reasons.map((row) => ({ priezastis: row.reason, kartu: row.count })),
+    pastaba: "Laikotarpis – pagal įrašymo dieną. Laimėjimo dalis – nuo baigtų (laimėta + pralaimėta).",
+  };
+}
+
 // --- Aprašai modeliui -------------------------------------------------------
 
 const FILTER_PROPERTIES = {
@@ -795,6 +843,14 @@ export const ASSISTANT_TOOLS: FunctionTool[] = [
     "Kas vyksta dabar: šiandien kelyje esantys reisai (kelinta para, nuvažiuota, liko, faktinės sąnaudos) ir kur kiekviena fura yra, ar važiuoja, paskutinis signalas.",
     {},
   ),
+  tool(
+    "quote_log",
+    "Pasiūlymų žurnalas: kiek kainų suskaičiuota, kiek paimta ir laimėta, ar dispečeriai elgėsi pagal Bramit verdiktą (Imti / Derėtis / Neimti), kiek pasiūlymų per darbo dieną ir dažniausios atsisakymo priežastys.",
+    {
+      from: { type: ["string", "null"], description: "Įrašyta nuo (imtinai), YYYY-MM-DD. null – 30 dienų iki „to“." },
+      to: { type: ["string", "null"], description: "Įrašyta iki (imtinai), YYYY-MM-DD. null – šiandien." },
+    },
+  ),
 ];
 
 /** Vykdo įrankį. Neteisingi argumentai grąžinami modeliui kaip klaida, o ne metami. */
@@ -815,6 +871,8 @@ export async function runAssistantTool(name: string, rawArgs: string, context: A
       case "savings_insights": return savingsInsights(await context.data(), await context.telematics(), args);
       case "trip_plan_vs_actual": return planVsActual(await context.data(), await context.telematics(), args);
       case "live_status": return await liveStatus(context);
+      // Šiandiena – ne iš `data()`: visų reisų krauti dėl datos neverta.
+      case "quote_log": return quoteLog(await context.quotes(), todayInVilnius(), args);
       default: return { klaida: `Nežinomas įrankis: ${name}` };
     }
   } catch (cause) {

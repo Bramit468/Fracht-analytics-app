@@ -14,6 +14,7 @@ import type { CountryTariff } from "./calc";
 import { fetchCompanySettings } from "./company-settings";
 import { listCustomers } from "./customers";
 import { fetchEcbRates, toEuroCents } from "./ecb-rates";
+import { listQuotes, type QuoteRow } from "./quotes";
 import { liveTrucks, parseSnapshots } from "./telematics";
 import { canUseTelematics } from "./telematics-access";
 import { parseCanDaily, parseSupplies } from "./telematics-costs";
@@ -83,11 +84,14 @@ export function assistantContext(client: SupabaseClient, today: string): Assista
   let data: Promise<AssistantData> | null = null;
   let telematics: Promise<TelematicsData | null> | null = null;
   let live: Promise<LiveData | null> | null = null;
+  let quotes: Promise<QuoteRow[] | null> | null = null;
 
   const context: AssistantContext = {
     data: () => (data ??= loadData(client, today)),
     telematics: () => (telematics ??= loadTelematics(client)),
     live: () => (live ??= context.data().then((d) => loadLive(client, d.trucks.map((truck) => truck.plate), today))),
+    // Metų užtenka bet kuriam klausimui apie žurnalą; be 0026 – `null`, ne klaida.
+    quotes: () => (quotes ??= listQuotes(client, `${addDays(today, -366)}T00:00:00Z`).then((result) => (result.available ? result.rows : null))),
   };
   return context;
 }

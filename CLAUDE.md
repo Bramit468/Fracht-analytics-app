@@ -26,7 +26,8 @@ Next-specific code.
 
 - `app/` holds routes: `trips/`, `trucks/` (list, bulk costs and weights as
   `?skiltis=` tabs; `kastai/` only redirects),
-  `telematika/`, `imone/` (company + invitations), `api/`, `auth/`, `login/`.
+  `telematika/`, `imone/` (company + invitations), `pasiulymai/` (quote log),
+  `api/`, `auth/`, `login/`.
 - `lib/` holds pure business logic, each file next to its `*.test.ts`:
   `calc`, `money`, `telematics-*`, `ptv-*`, `dashboard`, `ferry-pricing`, etc.
 - `supabase/migrations/` holds numbered SQL migrations, applied manually in the

@@ -1,6 +1,7 @@
 import {
   Building2,
   ChartColumn,
+  ClipboardList,
   FileSpreadsheet,
   Handshake,
   LayoutGrid,
@@ -17,6 +18,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   "/": LayoutGrid,
   "/trips": List,
   "/trips/new": Plus,
+  "/pasiulymai": ClipboardList,
   "/trips/vyksta": Navigation,
   "/dedikuoti": Handshake,
   "/trucks": Truck,

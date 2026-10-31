@@ -32,12 +32,14 @@ import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, qu
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
 import { emptyRunNote } from "../../../lib/empty-run";
+import { MAX_OFFER_TEXT, mergeOffer, needsAi, offerSummary, offerWarnings, parseOffer, placeQuery, type OfferFields, type OfferPlace } from "../../../lib/offer-parse";
 import { routeFuelPrice, type RouteFuelPrice } from "../../../lib/fuel-prices";
 import type { CountryKm } from "../../../lib/ptv-route";
 import { rateFill } from "@/lib/telematics-costs";
 import {
   lookupRouteOptions,
   lookupSchedule,
+  resolveAddress,
   type RouteOptionResult,
 } from "./route-lookup";
 import {
@@ -60,6 +62,7 @@ import {
   addStop,
   buildWaypoints,
   moveStop,
+  normalizeStops,
   removeStop,
   routedStops,
   stopLetter,
@@ -217,6 +220,10 @@ export function TripForm({
   const quoteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const priceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const skaiciuota = useRef(false);
+  /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
+  const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
+  const [pasiulymasSkaitomas, setPasiulymasSkaitomas] = useState(false);
+  const [pasiulymoBusena, setPasiulymoBusena] = useState<{ summary: string; warnings: string[] } | null>(null);
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
   const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
@@ -505,6 +512,82 @@ export function TripForm({
   function removeStopAt(index: number) {
     const removed = stops[index];
     changeStops(removeStop(stops, index), { resetVia: true, recalc: Boolean(removed?.address.trim() || removed?.point) });
+  }
+
+  /**
+   * Įklijuotas pasiūlymas -> laukai (Phase 0, 4). Pirma taisyklės naršyklėje;
+   * AI tik tada, kai be jo nėra adresų ar datos. Furos nerenkame ir nieko
+   * neišsaugome: sustojimų pakeitimas pats paleidžia kainą, kaip rašant ranka.
+   */
+  async function applyOffer(text: string) {
+    const form = formRef.current;
+    if (!form || !text.trim() || pasiulymasSkaitomas) return;
+    setPasiulymasSkaitomas(true);
+    setPasiulymoBusena(null);
+    try {
+      const rules = parseOffer(text, todayInVilnius());
+      let fields: OfferFields = rules.fields;
+      let usedAi = false;
+      const warnings: string[] = [];
+      if (needsAi(rules)) {
+        try {
+          const response = await fetch("/api/offer-parse", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: text.slice(0, MAX_OFFER_TEXT) }),
+          });
+          const body = (await response.json().catch(() => null)) as { fields?: OfferFields; error?: string } | null;
+          if (response.ok && body?.fields) {
+            const merged = mergeOffer(rules.fields, body.fields);
+            fields = merged.fields;
+            usedAi = merged.fromAi.length > 0;
+          } else {
+            warnings.push(body?.error ?? "AI pasiūlymo neperskaitė – trūkstamus laukus įveskite ranka.");
+          }
+        } catch {
+          warnings.push("AI nepasiekiamas – trūkstamus laukus įveskite ranka.");
+        }
+      }
+
+      const places: { type: StopType; place: OfferPlace }[] = [
+        ...(fields.loading ? [{ type: "loading" as const, place: fields.loading }] : []),
+        ...fields.extraStops.map((stop) => ({ type: (stop.kind === "loading" ? "extra_loading" : "extra_unloading") as StopType, place: stop.place })),
+        ...(fields.unloading ? [{ type: "unloading" as const, place: fields.unloading }] : []),
+      ];
+      // Adresas su tašku – kaip pasirinkus pasiūlymą: be taško kaina nepasileistų.
+      const resolved = await Promise.all(places.map(async ({ type, place }) => {
+        const query = placeQuery(place);
+        const found = await resolveAddress(query).catch(() => null);
+        return { type, address: found?.formattedAddress || query, point: found ? `${found.latitude},${found.longitude}` : "" };
+      }));
+
+      // Laukai pirma, sustojimai paskui: jų pakeitimas paleidžia kainą su šiais laukais.
+      const setValue = (name: string, value: string) => {
+        const field = form.elements.namedItem(name);
+        if (field instanceof HTMLInputElement) field.value = value;
+      };
+      if (fields.loadingDate) setValue("trip_date", fields.loadingDate);
+      if (fields.loadingTime) setValue("departure_time", fields.loadingTime);
+      if (fields.priceCents !== null) {
+        if (mode !== "freight") flushSync(() => setMode("freight"));
+        setValue("revenue", centsToInput(fields.priceCents));
+      }
+      if (fields.weightKg !== null) setKrovinioSvoris(String(Math.round(fields.weightKg / 100) / 10).replace(".", ","));
+
+      if (fields.loading && fields.unloading) {
+        changeStops(normalizeStops(resolved.map((row) => ({ id: nextStopId.current++, ...row }))), { resetVia: true, recalc: true });
+      } else if (resolved.length === 1) {
+        const index = resolved[0].type === "loading" ? 0 : stops.length - 1;
+        changeStops(updateStop(stops, index, { address: resolved[0].address, point: resolved[0].point }), { resetVia: false, recalc: Boolean(resolved[0].point) });
+      }
+
+      for (const row of resolved) {
+        if (!row.point) warnings.push(`Adreso „${row.address}“ žemėlapyje nepavyko rasti – pasirinkite jį iš pasiūlymų.`);
+      }
+      setPasiulymoBusena({ summary: offerSummary(fields, usedAi), warnings: [...offerWarnings(fields), ...warnings] });
+    } finally {
+      setPasiulymasSkaitomas(false);
+    }
   }
 
   function moveStopAt(index: number, delta: -1 | 1) {
@@ -1164,6 +1247,34 @@ export function TripForm({
   >
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
       <Skiltis numeris={1} antraste="Kas ir kur veža">
+        {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
+            `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
+        {!tripId && routeLookup && <div className="mb-4">
+          <label className="block">Įklijuoti pasiūlymą
+            <textarea
+              value={pasiulymoTekstas}
+              rows={2}
+              maxLength={MAX_OFFER_TEXT}
+              placeholder="Įklijuokite krovinio skelbimą iš Timocom, Trans.eu ar laiško – laukai užsipildys patys"
+              onChange={(event) => { event.stopPropagation(); setPasiulymoTekstas(event.target.value); }}
+              onPaste={(event) => {
+                const pasted = event.clipboardData.getData("text");
+                if (!pasted.trim()) return;
+                event.preventDefault();
+                setPasiulymoTekstas(pasted);
+                void applyOffer(pasted);
+              }}
+              className={inputClass}
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+            <button type="button" disabled={pasiulymasSkaitomas || !pasiulymoTekstas.trim()} onClick={() => void applyOffer(pasiulymoTekstas)} className="rounded-md border border-line px-3 py-1.5 disabled:opacity-50">
+              {pasiulymasSkaitomas ? "Skaitoma…" : "Užpildyti"}
+            </button>
+            {pasiulymoBusena?.summary && <span>{pasiulymoBusena.summary}</span>}
+          </div>
+          {pasiulymoBusena?.warnings.map((warning) => <p key={warning} className="mt-1 text-sm text-warn">{warning}</p>)}
+        </div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { normuPildymas.current = prefillRates(event.target.value); if (quoteReady(stops)) scheduleQuote(); }} className={inputClass}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} onChange={() => { if (quoteReady(stops)) scheduleQuote(); }} className={inputClass} /></label>

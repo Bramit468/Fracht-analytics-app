@@ -81,3 +81,5 @@ const MINUTE = 60_000;
 export const assistantLimiter = createRateLimiter([{ max: 10, ms: MINUTE }, { max: 100, ms: 24 * 60 * MINUTE }]);
 export const routeLookupLimiter = createRateLimiter([{ max: 60, ms: MINUTE }]);
 export const addressSearchLimiter = createRateLimiter([{ max: 60, ms: MINUTE }]);
+/** Įklijuoti pasiūlymai, kurių taisyklės nesuprato – kiekvienas mokamas OpenAI kvietimas. */
+export const offerParseLimiter = createRateLimiter([{ max: 20, ms: MINUTE }, { max: 300, ms: 24 * 60 * MINUTE }]);

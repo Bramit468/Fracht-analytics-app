@@ -57,7 +57,7 @@ Next-specific code.
 - API rate limits are per user ID (not IP: the office shares one) in an
   in-memory sliding window (`lib/rate-limit.ts`), approximate per Vercel
   instance: `/api/klausk` 10/min + 100/day, `/api/route-lookup` and
-  `/api/address-search` 60/min. Over the limit: 429 + `Retry-After`, no
+  `/api/address-search` 60/min, `/api/offer-parse` 20/min + 300/day. Over the limit: 429 + `Retry-After`, no
   auto-retry. Map tiles, login (Supabase Auth limits it) and server actions are
   not limited.
 - The archive stores raw provider rows (classification changes, summaries can't

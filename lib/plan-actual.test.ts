@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actualsOutsideSpans, actualsOverSpans, isCovered, planVsActual, telematicsCoverage, tripSpan } from "./plan-actual";
+import { actualsOutsideSpans, actualsOverSpans, isCovered, kmGap, planVsActual, telematicsCoverage, tripSpan } from "./plan-actual";
 import type { DailyDistance, Supply } from "./telematics-costs";
 import type { TripSummary } from "./trips";
 
@@ -22,9 +22,26 @@ describe("actualsOverSpans", () => {
     const daily = [day("2026-10-01", 500), day("2026-10-02", 400), day("2026-10-03", 300), day("2026-10-04", 999, null)];
     const supplies = [supply("2026-10-02", "diesel", 50_000), supply("2026-10-03", "toll", 7_000), supply("2026-10-04", "diesel", 99_000), supply("2026-10-02", "other", 1_000)];
     const spans = [{ plate: "LOV 141", from: "2026-10-01", to: "2026-10-02" }, { plate: "LOV 141", from: "2026-10-02", to: "2026-10-03" }];
+    // Pirkimuose kiekio nėra – kainos nėra, todėl lieka pirkimų suma.
     expect(actualsOverSpans(daily, supplies, spans)).toEqual([{
-      plate: "LOV141", km: 1200, fuelL: 360, fuelKm: 1200, fuelCents: 50_000, adblueCents: 0, roadCents: 7_000,
+      plate: "LOV141", km: 1200, fuelL: 360, fuelKm: 1200, fuelCents: 50_000, fuelBoughtCents: 50_000, adblueCents: 0, roadCents: 7_000,
     }]);
+  });
+
+  it("kuras – sudegintas × sumokėta kaina, ne tą dieną pripiltas bakas", () => {
+    const daily = [day("2026-10-01", 1000, 300), day("2026-10-02", 500, null)];
+    const bought = (date: string, litres: number, cents: number): Supply => ({ plate: "LOV 141", date, kind: "diesel", costCents: cents, quantity: litres, country: null });
+    // Bakas pripiltas 10-01 (800 l), o 10-05 – už reiso ribų; kaina 1,50 €/l.
+    const supplies = [bought("2026-10-01", 800, 120_000), bought("2026-10-05", 200, 30_000)];
+    const [row] = actualsOverSpans(daily, supplies, [{ plate: "LOV 141", from: "2026-10-01", to: "2026-10-02" }]);
+    // 300 l + 500 km be daviklio × 30 l/100 = 450 l × 1,50 € = 675 €.
+    expect(row.fuelCents).toBe(67_500);
+    expect(row.fuelBoughtCents).toBe(120_000);
+  });
+
+  it("km tarp užsakymų ir jų kuras", () => {
+    expect(kmGap({ plannedKm: 800, actualKm: 1000, actual: { fuelCents: 50_000, adblueCents: 0, roadCents: 0 } })).toEqual({ km: 200, fuelCents: 10_000 });
+    expect(kmGap({ plannedKm: 1000, actualKm: 900, actual: { fuelCents: 50_000, adblueCents: 0, roadCents: 0 } })).toEqual({ km: 0, fuelCents: 0 });
   });
 });
 
@@ -67,8 +84,8 @@ describe("planVsActual", () => {
       trip("2026-10-01", 1, { fuel: 20_000, adblue: 0, roads: 0 }, "XXX 000"),
     ];
     const actuals = [
-      { plate: "LOV141", km: 2100, fuelL: 600, fuelKm: 2000, fuelCents: 60_000, adblueCents: 1_000, roadCents: 4_000 },
-      { plate: "NNN 888", km: 900, fuelL: 0, fuelKm: 0, fuelCents: 15_000, adblueCents: 0, roadCents: 0 },
+      { plate: "LOV141", km: 2100, fuelL: 600, fuelKm: 2000, fuelCents: 60_000, fuelBoughtCents: 60_000, adblueCents: 1_000, roadCents: 4_000 },
+      { plate: "NNN 888", km: 900, fuelL: 0, fuelKm: 0, fuelCents: 15_000, fuelBoughtCents: 15_000, adblueCents: 0, roadCents: 0 },
     ];
     const { rows, total, missing } = planVsActual(trips, actuals);
     expect(rows.map((row) => [row.plate, row.tripCount, row.diffCents])).toEqual([["LOV 141", 2, 9_000], ["NNN 888", 1, -5_000]]);

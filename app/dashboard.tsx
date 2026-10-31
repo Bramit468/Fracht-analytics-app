@@ -31,7 +31,7 @@ import { listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
 import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
-import { isCovered, planVsActual, spanDayKeys, tripSpan, type CostPair } from "../lib/plan-actual";
+import { isCovered, kmGap, planVsActual, spanDayKeys, tripSpan, type CostPair } from "../lib/plan-actual";
 import { idleCosts, idleDailyCents } from "../lib/idle-costs";
 import { truckRowToCalc } from "../lib/truck";
 import type { Truck } from "../types/truck";
@@ -339,6 +339,11 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
 
   const planned = costTotal(total.planned);
   const worse = total.diffCents > 0;
+  const gap = kmGap(total);
+  const coveredPlates = new Set(rows.map((row) => plateKey(row.plate)));
+  const boughtCents = report.actuals
+    .filter((row) => coveredPlates.has(plateKey(row.plate)))
+    .reduce((sum, row) => sum + row.fuelBoughtCents, 0);
   return <div className="space-y-3">
     <p className={`text-lg font-semibold ${worse ? "text-bad" : "text-good"}`}>
       Kuras, AdBlue ir keliai kainavo {formatCents(Math.abs(total.diffCents))} {worse ? "daugiau" : "mažiau"}, nei skaičiuota
@@ -359,6 +364,13 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
         </tr>)}</tbody>
       </table>
     </div>
+    {/* Didžioji kuro skirtumo dalis – km reisų dienomis, kurių nėra reisuose
+        (pervažiavimai tarp užsakymų): 2026-10 – 31 530 km, ≈ 14 700 €. */}
+    {gap.km > 0 && <p className="rounded-lg border border-line bg-surface px-5 py-3 text-sm">
+      <span className="font-medium">Km be užsakymo reisų dienomis:</span>{" "}
+      <span className="tabular-nums">{Math.round(gap.km).toLocaleString("lt-LT")} km ({formatPercent((gap.km / Math.max(1, total.plannedKm)) * 100)} daugiau nei reisuose), kuras jiems ≈ {formatCents(gap.fuelCents)}</span>.
+      {" "}Tai pervažiavimai į pakrovimą ir tušti grįžimai, kurių neapmoka nė vienas užsakymas – naujuose pasiūlymuose juos skaičiuoja „tušti km nuo furos vietos“.
+    </p>}
     {/* Pinigai, kurių nėra nė viename reise: dar vykstantys ar neimportuoti
         reisai, furos be reisų. Anksčiau jie buvo tiesiog nerodomi – iš čia ir
         „~20 % kelių neatitikimas“ (2026-10 patikra). */}
@@ -369,6 +381,7 @@ function PlanActualTab({ trips }: { trips: TripSummary[] }) {
     </p> : null}
     <div className="space-y-1 text-xs text-muted">
       <p>Faktas skaičiuojamas tik reisų dienomis, kiekviena furos diena vieną kartą, stovėjimo dienos neįeina. Telematikos duomenys: {coverage.from} – {coverage.to}. Sumos be PVM – kaip kortelių sąskaitose. Keliai su keltais ir tiltais.</p>
+      <p>Kuras – sudegintas pagal vilkiko skaitiklį × furos sumokėta kaina, ne tomis dienomis pripilti bakai (jų buvo {formatCents(boughtCents)}): bakas pilamas ne tą dieną, kai deginama.</p>
       {skipped > 0 && <p>Nelyginta {skipped} reis.: ne visos jų dienos patenka į Telematikos duomenis (seni arba dar vyksta).</p>}
       {missing.length > 0 && <p>Be Telematikos duomenų: {missing.join(", ")}.</p>}
       <p>Importuoti reisai jau skaičiuoti su faktinėmis sąnaudomis ir keliais, todėl jų skirtumas mažas. Kelių mokestis kartais Telematikoje atsiranda vėliau.</p>

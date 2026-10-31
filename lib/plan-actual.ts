@@ -59,9 +59,39 @@ export interface SpanActuals {
   fuelL: number;
   /** Km tik tų dienų, kai kuro daviklis veikė – kitaip l/100 būtų per mažas. */
   fuelKm: number;
+  /**
+   * Sudegintas kuras × sumokėta kaina. Ne pirkimai: bakas pilamas ne tą dieną,
+   * kai deginama – 2026-10 pirkimai reisų dienomis buvo 6 861 € didesni už
+   * sudegintą kurą, nors per mėnesį pirkta 75 615 l, sudeginta 75 111 l.
+   */
   fuelCents: number;
+  /** Kiek kuro nupirkta tomis dienomis – parodymui, ne palyginimui. */
+  fuelBoughtCents: number;
   adblueCents: number;
   roadCents: number;
+}
+
+/**
+ * Sudegintas kuras eurais: CAN litrai (dienoms be daviklio – pagal tos furos
+ * l/100) × furos sumokėta kaina. `price` – €/l; be jo (furai nepirkta) – `null`.
+ */
+export function burnedFuelCents(km: number, fuelL: number, fuelKm: number, price: number | null): number | null {
+  if (price === null || !(fuelKm > 0) || !(fuelL > 0)) return null;
+  const litres = fuelL + (km - fuelKm) * (fuelL / fuelKm);
+  return Math.round(litres * price * 100);
+}
+
+/** Furos vidutinė dyzelino kaina €/l iš visų jos pirkimų. `null`, kai nepirkta. */
+export function dieselPriceByPlate(supplies: Supply[]): Map<string, number> {
+  const totals = new Map<string, { cents: number; litres: number }>();
+  for (const supply of supplies) {
+    if (supply.kind !== "diesel" || !(supply.quantity && supply.quantity > 0)) continue;
+    const row = totals.get(plateKey(supply.plate)) ?? { cents: 0, litres: 0 };
+    row.cents += supply.costCents;
+    row.litres += supply.quantity;
+    totals.set(plateKey(supply.plate), row);
+  }
+  return new Map([...totals].map(([key, row]) => [key, row.cents / 100 / row.litres]));
 }
 
 /** Furos dienos su reisu, raktas `plateKey|data`. Persidengiantys reisai – viena diena. */
@@ -87,7 +117,7 @@ export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spa
     const key = plateKey(plate);
     let current = totals.get(key);
     if (!current) {
-      current = { plate, km: 0, fuelL: 0, fuelKm: 0, fuelCents: 0, adblueCents: 0, roadCents: 0 };
+      current = { plate, km: 0, fuelL: 0, fuelKm: 0, fuelCents: 0, fuelBoughtCents: 0, adblueCents: 0, roadCents: 0 };
       totals.set(key, current);
     }
     return current;
@@ -104,10 +134,16 @@ export function actualsOverSpans(daily: DailyDistance[], supplies: Supply[], spa
   }
   for (const supply of supplies.filter(wanted)) {
     const current = row(supply.plate);
-    if (supply.kind === "diesel") current.fuelCents += supply.costCents;
+    if (supply.kind === "diesel") current.fuelBoughtCents += supply.costCents;
     if (supply.kind === "adblue") current.adblueCents += supply.costCents;
     // Plane keltai yra kelių kaštų dalis (`calcRoadCost`), todėl ir fakte.
     if (supply.kind === "toll" || supply.kind === "ferry") current.roadCents += supply.costCents;
+  }
+  const prices = dieselPriceByPlate(supplies);
+  for (const current of totals.values()) {
+    // Be kuro daviklio ar be pirkimų sudeginto kuro nesuskaičiuosi – lieka pirkimai.
+    current.fuelCents = burnedFuelCents(current.km, current.fuelL, current.fuelKm, prices.get(plateKey(current.plate)) ?? null)
+      ?? current.fuelBoughtCents;
   }
   return [...totals.values()];
 }
@@ -138,17 +174,35 @@ export function actualsOutsideSpans(daily: DailyDistance[], supplies: Supply[], 
     plates.has(plateKey(row.plate)) && row.date >= from && row.date <= to && !days.has(`${plateKey(row.plate)}|${row.date}`);
 
   const seen = new Set<string>();
+  const prices = dieselPriceByPlate(supplies);
+  let boughtCents = 0;
   for (const day of daily.filter(outside)) {
     total.km += day.km;
     if (day.km > 0) seen.add(`${plateKey(day.plate)}|${day.date}`);
+    // Kuras – sudegintas, kaip ir reisų dienomis, kad abi eilutės būtų palyginamos.
+    const price = prices.get(plateKey(day.plate));
+    if (day.fuelL !== null && day.fuelL > 0 && price !== undefined) total.fuelCents += Math.round(day.fuelL * price * 100);
   }
   for (const supply of supplies.filter(outside)) {
-    if (supply.kind === "diesel") total.fuelCents += supply.costCents;
+    if (supply.kind === "diesel") boughtCents += supply.costCents;
     if (supply.kind === "adblue") total.adblueCents += supply.costCents;
     if (supply.kind === "toll" || supply.kind === "ferry") total.roadCents += supply.costCents;
   }
+  if (total.fuelCents === 0) total.fuelCents = boughtCents;
   total.days = seen.size;
   return total;
+}
+
+/**
+ * Km, kuriuos fura nuvažiavo reisų dienomis, bet kurių nėra reisuose
+ * (pervažiavimai tarp užsakymų), ir kiek kuro jiems sudeginta pagal faktinę
+ * normą ir kainą. 2026-10: 31 530 km, ≈ 14 700 € – didžioji kuro skirtumo dalis.
+ */
+export function kmGap(total: Pick<PlanActualRow, "plannedKm" | "actualKm" | "actual">): { km: number; fuelCents: number } {
+  const km = total.actualKm - total.plannedKm;
+  if (!(km > 0) || !(total.actualKm > 0)) return { km: 0, fuelCents: 0 };
+  // Faktinis kuras jau = sudeginta × kaina, todėl km dalis – ta pati kuro dalis.
+  return { km, fuelCents: Math.round(total.actual.fuelCents * (km / total.actualKm)) };
 }
 
 export interface CostPair {

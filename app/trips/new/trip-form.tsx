@@ -30,6 +30,8 @@ import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { emptyKmByTruck } from "../../../lib/empty-km";
 import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
+import { emptyRunToLoading } from "./empty-run";
+import { emptyRunNote } from "../../../lib/empty-run";
 import { routeFuelPrice, type RouteFuelPrice } from "../../../lib/fuel-prices";
 import type { CountryKm } from "../../../lib/ptv-route";
 import { rateFill } from "@/lib/telematics-costs";
@@ -932,26 +934,38 @@ export function TripForm({
       // Išsaugoto reiso laukai nekeičiami (#151 taisyklė): ten yra tai, kas buvo tada.
       const write = !tripId;
       const kuroLaikotarpis = paskutinesTrisdesimtDienu();
-      const [route, scheduleDays, kuroKainos] = await Promise.all([
+      const truckField = form.elements.namedItem("truck_id");
+      const truckValue = truckField instanceof HTMLSelectElement ? truckField.value : "";
+      const dateField = form.elements.namedItem("trip_date");
+      const quoteDate = dateField instanceof HTMLInputElement ? dateField.value : "";
+      const [route, scheduleDays, kuroKainos, tuscias] = await Promise.all([
         fillFromRoute(tarpiniai, write, stops),
         planDriverHours(),
         // Kuro kaina – pagal šalis, per kurias eina maršrutas, ne pagal tai, kur fura pylėsi praėjusį mėnesį.
         fetchFuelPrices(kuroLaikotarpis.from, kuroLaikotarpis.to).catch(() => null),
+        // Tušti km nuo ten, kur fura bus – tik naujam reisui: išsaugoto laukai nekeičiami.
+        write && truckValue && quoteDate && (stops[0].address.trim() || stops[0].point)
+          ? emptyRunToLoading(truckValue, quoteDate, { address: stops[0].address, point: stops[0].point }).catch(() => null)
+          : Promise.resolve(null),
       ]);
+      const emptyRun = tuscias?.ok ? tuscias : null;
       const routeFuel: RouteFuelPrice | null = route && kuroKainos ? routeFuelPrice(route.kmByCountry, kuroKainos) : null;
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
       const sustojimuVal = serviceHours(stops.map((stop) => stop.type), Number(krovimoVal.replace(",", ".")));
-      const quoted = quoteDays(picked.days, sustojimuVal);
+      // Kelias iki pakrovimo irgi užima furos laiką, nors už jį niekas nemoka.
+      const tusciuVal = emptyRun ? emptyRun.travelMinutes / 60 : 0;
+      const quoted = quoteDays(picked.days, sustojimuVal + tusciuVal);
       const text = (name: string) => {
         const field = form.elements.namedItem(name);
         return field instanceof HTMLInputElement ? field.value : "";
       };
-      const truckId = form.elements.namedItem("truck_id");
-      const plate = trucks.find((truck) => truck.id === (truckId instanceof HTMLSelectElement ? truckId.value : ""))?.plate;
+      const plate = trucks.find((truck) => truck.id === truckValue)?.plate;
       const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
-      const emptyKm = route ? defaultEmptyKm(route.paidKm, emptyShare) : 0;
-      const emptyTollCents = route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
+      const emptyKm = emptyRun ? emptyRun.km : route ? defaultEmptyKm(route.paidKm, emptyShare) : 0;
+      const emptyTollCents = emptyRun
+        ? emptyRun.tollCents
+        : route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
 
       if (write) {
         const days = form.elements.namedItem("days");
@@ -987,6 +1001,7 @@ export function TripForm({
         serviceHours: sustojimuVal,
         routeFuel: route ? routeFuel : undefined,
         emptyShare,
+        emptyRunNote: emptyRun && route ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write) : undefined,
         ferryUnknown: route?.ferryUnknown ?? false,
         approximateAddress: route?.approximate ?? false,
       }));

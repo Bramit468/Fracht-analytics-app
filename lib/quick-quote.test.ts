@@ -95,6 +95,12 @@ describe("quoteNotes", () => {
     expect(notes[1]).toContain("istorijos nėra");
   });
 
+  it("tikras kelias iki pakrovimo nustelbia istoriją", () => {
+    const notes = quoteNotes({ ...VISKAS_GERAI, emptyRunNote: "Tušti km: įrašyta 98 – PTV kelias…" });
+    expect(notes).toContain("Tušti km: įrašyta 98 – PTV kelias…");
+    expect(notes.join(" ")).not.toContain("istoriją");
+  });
+
   it("įspėja apie nežinomą kelto kainą, apytikslį adresą ir nepavykusį maršrutą", () => {
     const text = quoteNotes({
       ...VISKAS_GERAI,

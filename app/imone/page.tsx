@@ -10,7 +10,7 @@ import { fetchCompanySettings } from "@/lib/company-settings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 import { Page, PageHeader, SettingRow } from "../ui";
-import { saveMinContribution, saveMinMargin, savePerDiemPercent } from "./actions";
+import { saveMinContribution, saveMinMargin, saveNegotiationBand, savePerDiemPercent } from "./actions";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 import { SettingForm } from "./setting-form";
@@ -75,6 +75,19 @@ export default async function ImonePage() {
             placeholder="pvz. 50"
             current={settings.minContributionCents === null ? null : settings.minContributionCents / 100}
             action={saveMinContribution}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="Kada derėtis"
+          description="Kai kaina žemiau savikainos, skaičiuoklė sako „Derėtis iki X €“ (X – savikaina), jei X viršija pasiūlytą kainą ne daugiau nei šiuo procentu, ir „Neimti“, jei daugiau. Tuščia – 15 %. Keisti gali tik savininkas."
+        >
+          <SettingForm
+            name="negotiation_band_percent"
+            label="Derybų riba, %"
+            placeholder="15"
+            current={settings.negotiationBandPercent}
+            action={saveNegotiationBand}
           />
         </SettingRow>
 

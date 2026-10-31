@@ -1,0 +1,10 @@
+Trans.eu Freight Proposal
+Route: ES-43006 Tarragona >> IT-20126 Milano
+Pickup date/time: 2026-11-06 14:00
+Delivery date/time: 2026-11-09 08:00
+Goods description: Ceramic tiles
+Gross cargo weight: 20 tonnes
+Number of pallets: 26
+Required truck: 24t curtainsider
+Freight rate: EUR 1,980.00
+Payment: Bank transfer, 30 days

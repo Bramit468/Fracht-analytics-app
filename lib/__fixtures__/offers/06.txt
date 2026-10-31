@@ -1,0 +1,10 @@
+Oferta ładunku
+Załadunek: PL 93-231 Łódź
+Rozładunek: LT 51369 Kaunas
+Data załadunku: 02.11.2026
+Data rozładunku: 03.11.2026
+Towar: Materiały budowlane
+Waga: 24 t
+Typ nadwozia: Firanka
+Stawka: 890 EUR
+Płatność: 30 dni

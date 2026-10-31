@@ -1,0 +1,19 @@
+{
+  "source": "unknown",
+  "loading": {
+    "country": "NL",
+    "postalCode": "4815",
+    "city": "Breda"
+  },
+  "unloading": {
+    "country": "PL",
+    "postalCode": "02-222",
+    "city": "Warszawa"
+  },
+  "loadingDate": "2026-11-05",
+  "unloadingDate": "2026-11-07",
+  "priceCents": 165000,
+  "currency": "EUR",
+  "weightKg": 14000,
+  "pallets": 24
+}

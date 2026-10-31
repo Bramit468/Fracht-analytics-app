@@ -1,0 +1,9 @@
+Ladung verfügbar
+Beladestelle: DE-12099 Berlin
+Entladestelle: LT-02100 Vilnius
+Ladedatum: 04.11.2026
+Entladung: 06.11.2026
+Ware: Maschinenbauteile
+Gewicht: 22.000 kg
+Fahrzeugtyp: Sattelzug Plane
+Frachtpreis: 1.250,00 EUR

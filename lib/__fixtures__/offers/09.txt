@@ -1,0 +1,8 @@
+Nowy ładunek / New freight
+Trasa: Frankfurt am Main DE-60314 > Panevėžys LT-35100
+Załadunek / Loading: 05.11.2026, 10:00
+Rozładunek / Unloading: 07.11.2026
+Waga / Weight: 16.8 t
+Towar: Pakowane produkty
+Auto: Standard 13.6
+Cena frachtu: 1720 EUR netto

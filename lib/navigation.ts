@@ -26,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Suvestinė", group: "darbas" },
   { href: "/trips", label: "Reisai", group: "darbas" },
   { href: "/trips/new", label: "Naujas reisas", group: "darbas" },
+  { href: "/pasiulymai", label: "Pasiūlymai", group: "darbas" },
   { href: "/trips/vyksta", label: "Vyksta dabar", group: "darbas" },
   { href: "/dedikuoti", label: "Dedikuoti", group: "darbas" },
   // Kaštai ir svoriai – skirtukai furų puslapyje, ne atskiri punktai (#169).

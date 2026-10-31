@@ -32,6 +32,22 @@ import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, qu
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
 import { emptyRunNote } from "../../../lib/empty-run";
+import {
+  buildQuoteDraft,
+  decisionPatch,
+  DECISION_LABELS,
+  getQuote,
+  insertQuote,
+  QUOTE_REASONS,
+  quoteKey,
+  quoteLogAction,
+  QuoteLogError,
+  quoteTripPrice,
+  updateQuote,
+  type QuoteDecision,
+  type QuoteDraft,
+  type QuoteSource,
+} from "../../../lib/quotes";
 import { MAX_OFFER_TEXT, mergeOffer, needsAi, offerSummary, offerWarnings, parseOffer, placeQuery, type OfferFields, type OfferPlace } from "../../../lib/offer-parse";
 import { routeFuelPrice, type RouteFuelPrice } from "../../../lib/fuel-prices";
 import type { CountryKm } from "../../../lib/ptv-route";
@@ -167,11 +183,14 @@ interface RouteOutcome {
 export function TripForm({
   tripId,
   copyFromId,
+  quoteId,
   routeLookup = false,
 }: {
   tripId?: string;
   /** Reisas, iš kurio kopijuojama į naują (#129). */
   copyFromId?: string;
+  /** Pasiūlymas iš žurnalo, paverčiamas reisu (Phase 0, 5). */
+  quoteId?: string;
   routeLookup?: boolean;
 }) {
   const [trucks, setTrucks] = useState<Truck[]>([]);
@@ -224,6 +243,22 @@ export function TripForm({
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
   const [pasiulymasSkaitomas, setPasiulymasSkaitomas] = useState(false);
   const [pasiulymoBusena, setPasiulymoBusena] = useState<{ summary: string; warnings: string[] } | null>(null);
+  /** Iš kur atėjo pasiūlymas – žurnalui. `null` – vesta ranka. */
+  const pasiulymoSaltinis = useRef<{ source: QuoteSource; text: string } | null>(null);
+  /**
+   * Pasiūlymų žurnalas (Phase 0, 5): kuri eilutė atnaujinama perskaičiuojant.
+   * Įrašymai eina vienas po kito – kitaip du greiti perskaičiavimai sukurtų dvi eilutes.
+   */
+  const zurnalas = useRef<{ id: string | null; key: string; decided: boolean }>({ id: null, key: "", decided: false });
+  const zurnaloEile = useRef<Promise<void>>(Promise.resolve());
+  const konvertuojamas = useRef(false);
+  const [zurnaloId, setZurnaloId] = useState<string | null>(null);
+  const [zurnaloIspejimas, setZurnaloIspejimas] = useState("");
+  const [sprendimas, setSprendimas] = useState<QuoteDecision>("pending");
+  const [galutineKaina, setGalutineKaina] = useState("");
+  const [priezastis, setPriezastis] = useState("");
+  const [priezastiesTekstas, setPriezastiesTekstas] = useState("");
+  const [sprendimoKlaida, setSprendimoKlaida] = useState("");
   /** Anksčiau išsaugoti reisai – kainos istorijai (#109). */
   const [ankstesni, setAnkstesni] = useState<TripSummary[]>([]);
   const [istorija, setIstorija] = useState<RouteHistory | null>(null);
@@ -320,13 +355,14 @@ export function TripForm({
       try {
         const client = getSupabaseClient();
         const source = tripId ?? copyFromId;
-        const [t, c, existing, nustatymai, uzsakovai] = await Promise.all([
+        const [t, c, existing, nustatymai, uzsakovai, quote] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
           source ? getTripWithLegs(source) : null,
           fetchCompanySettings(client),
           // Užsakovų sąrašo klaida neturi užblokuoti reiso skaičiavimo.
           listCustomers(client).catch(() => ({ customers: [], available: false })),
+          !source && quoteId ? getQuote(client, quoteId).catch(() => null) : null,
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
@@ -363,6 +399,30 @@ export function TripForm({
               setLegs(copy.legs.map((leg, index) => ({ id: index, ...leg })));
               nextId.current = copy.legs.length;
             }
+          } else if (quote) {
+            // Pasiūlymas -> reisas: laukai iš žurnalo, o km, paros ir normos
+            // skaičiuojamos iš naujo, kai forma atsiras (efektas žemiau).
+            const price = quoteTripPrice(quote);
+            setDefaults({
+              ...(quote.truck_id ? { truck_id: quote.truck_id } : {}),
+              ...(quote.trip_date ? { trip_date: quote.trip_date } : {}),
+              ...(quote.customer_id ? { customer_id: quote.customer_id } : {}),
+              origin: quote.origin,
+              destination: quote.destination,
+              ...(price !== null ? { revenue: centsToInput(price) } : {}),
+            });
+            const loadedStops = stopsFromStored(quote.stops, quote.origin, quote.destination);
+            setStops(loadedStops);
+            nextStopId.current = loadedStops.length;
+            setMode("freight");
+            zurnalas.current = { id: quote.id, key: quoteKey(quote.stops, quote.trip_date), decided: quote.decision !== "pending" };
+            setZurnaloId(quote.id);
+            setSprendimas(quote.decision);
+            if (quote.final_price_cents !== null) setGalutineKaina(centsToInput(quote.final_price_cents));
+            konvertuojamas.current = Boolean(quote.truck_id);
+            if (quote.trip_id) setZurnaloIspejimas("Šis pasiūlymas jau paverstas reisu – išsaugojus atsiras dar vienas.");
+          } else if (quoteId) {
+            setZurnaloIspejimas("Pasiūlymo žurnale nerasta – užpildykite laukus ranka.");
           }
         }
       } catch {
@@ -373,7 +433,19 @@ export function TripForm({
     }
     void load();
     return () => { cancelled = true; };
-  }, [attempt, tripId, copyFromId]);
+  }, [attempt, tripId, copyFromId, quoteId]);
+
+  // Pasiūlymas -> reisas: kai forma jau matoma, furos normos ir kaina
+  // skaičiuojamos pačios – kaip pasirinkus furą ranka.
+  useEffect(() => {
+    if (loading || !konvertuojamas.current) return;
+    konvertuojamas.current = false;
+    const truck = formRef.current?.elements.namedItem("truck_id");
+    if (!(truck instanceof HTMLSelectElement) || !truck.value) return;
+    normuPildymas.current = prefillRates(truck.value);
+    void normuPildymas.current.then(() => clickWhenEnabled(kainosMygtukas.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- vienkartinis paleidimas po įkėlimo
+  }, [loading]);
 
   // Istorija kraunama atskirai ir formos nesulaiko: be jos skaičiuoklė veikia
   // kaip anksčiau, o laukti dėl patarimo nereikėtų (#109).
@@ -526,6 +598,7 @@ export function TripForm({
     setPasiulymoBusena(null);
     try {
       const rules = parseOffer(text, todayInVilnius());
+      pasiulymoSaltinis.current = { source: rules.fields.source, text };
       let fields: OfferFields = rules.fields;
       let usedAi = false;
       const warnings: string[] = [];
@@ -587,6 +660,61 @@ export function TripForm({
       setPasiulymoBusena({ summary: offerSummary(fields, usedAi), warnings: [...offerWarnings(fields), ...warnings] });
     } finally {
       setPasiulymasSkaitomas(false);
+    }
+  }
+
+  /**
+   * Suskaičiuotas pasiūlymas į žurnalą. Nepavykus kaina vis tiek rodoma –
+   * žurnalas yra priedas, ne skaičiavimo sąlyga.
+   */
+  function logQuote(draft: QuoteDraft) {
+    zurnaloEile.current = zurnaloEile.current.then(async () => {
+      const key = quoteKey(draft.stops, draft.trip_date);
+      const current = zurnalas.current;
+      const action = quoteLogAction(current, key);
+      if (action === "skip") return;
+      try {
+        if (action === "update" && current.id) {
+          await updateQuote(getSupabaseClient(), current.id, draft);
+          zurnalas.current = { ...current, key };
+        } else {
+          const id = await insertQuote(getSupabaseClient(), draft);
+          zurnalas.current = { id, key, decided: false };
+          setZurnaloId(id);
+          setSprendimas("pending");
+          setGalutineKaina("");
+          setPriezastis("");
+          setPriezastiesTekstas("");
+        }
+        setZurnaloIspejimas("");
+      } catch (cause) {
+        setZurnaloIspejimas(cause instanceof QuoteLogError ? cause.message : "Pasiūlymas į žurnalą neįrašytas.");
+      }
+    });
+  }
+
+  /** „Paėmėm / Deramės / Nepaėmėm“ – žmogaus sprendimas prie Bramit verdikto. */
+  async function saveDecision(decision: Exclude<QuoteDecision, "pending">) {
+    setSprendimoKlaida("");
+    const reason = priezastis === "Kita" ? priezastiesTekstas || "Kita" : priezastis;
+    const parsed = decisionPatch(decision, galutineKaina, reason);
+    if (!parsed.ok) {
+      setSprendimoKlaida(parsed.error);
+      return;
+    }
+    // Palaukiama, kol įsirašys paskutinis skaičiavimas – kitaip sprendimas atitektų ne tai eilutei.
+    await zurnaloEile.current;
+    const id = zurnalas.current.id;
+    if (!id) {
+      setSprendimoKlaida("Pasiūlymas dar neįrašytas į žurnalą.");
+      return;
+    }
+    try {
+      await updateQuote(getSupabaseClient(), id, parsed.patch);
+      zurnalas.current = { ...zurnalas.current, decided: true };
+      setSprendimas(decision);
+    } catch (cause) {
+      setSprendimoKlaida(cause instanceof QuoteLogError ? cause.message : "Sprendimas neįrašytas.");
     }
   }
 
@@ -1169,6 +1297,33 @@ export function TripForm({
       setParos(trip.days);
       setTusciKm(trip.empty_km);
       skaiciuota.current = true;
+      // Žurnalas – tik naujam reisui ir tik su kaina: be jos verdikto nėra.
+      if (!tripId && hasRevenue) {
+        const contribution = calcContribution(calculation, trip.days, alternatyva);
+        const customerName = text("customer_name").toLowerCase();
+        logQuote(buildQuoteDraft({
+          truckId: truck.id,
+          tripDate: trip.trip_date,
+          stops: trip.stops ?? [],
+          customerId: customers.find((customer) => customer.name.trim().toLowerCase() === customerName)?.id ?? null,
+          source: pasiulymoSaltinis.current?.source ?? "manual",
+          offerText: pasiulymoSaltinis.current?.text ?? null,
+          priceCents: calculation.revenueCents,
+          paidKm: trip.paid_km,
+          emptyKm: trip.empty_km,
+          days: trip.days,
+          totalCostCents: calculation.totalCostCents,
+          contributionCents: contribution.contributionCents,
+          verdict: quoteVerdict({
+            priceCents: calculation.revenueCents,
+            totalCostCents: calculation.totalCostCents,
+            contributionCents: contribution.contributionCents,
+            days: trip.days,
+            bandPercent: derybuRiba,
+            beatsAlternative: contribution.take,
+          }),
+        }));
+      }
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
       setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
       if (action !== "save") return;
@@ -1195,6 +1350,25 @@ export function TripForm({
       const perDiemLost = trip.per_diem_cents != null && persisted.per_diem_cents !== trip.per_diem_cents;
       // Be 0023 alternatyva neįrašoma – atidarius reisą verdiktas būtų kitas.
       const alternativeLost = (trip.alternative_days !== 0 || trip.alternative_cents !== 0) && persisted.alternative_cents === undefined;
+      // Išsaugotas reisas – laimėtas pasiūlymas: žurnale jis susiejamas su reisu.
+      if (!tripId) {
+        await zurnaloEile.current;
+        const quote = zurnalas.current.id;
+        if (quote) {
+          try {
+            await updateQuote(getSupabaseClient(), quote, {
+              trip_id: persisted.id,
+              decision: "taken",
+              outcome: "won",
+              final_price_cents: persisted.freight_price_cents ?? calculation.revenueCents,
+            });
+            zurnalas.current = { ...zurnalas.current, decided: true };
+            setSprendimas("taken");
+          } catch {
+            setZurnaloIspejimas("Reisas išsaugotas, bet pasiūlymas žurnale nepažymėtas laimėtu.");
+          }
+        }
+      }
       setSaved((tripId
         ? `Reiso ${persisted.trip_number} pakeitimai išsaugoti.`
         : `Reisas ${persisted.trip_number} išsaugotas.`)
@@ -1558,6 +1732,7 @@ export function TripForm({
 
       {error && <p role="alert" className="text-bad">{error}</p>}
       {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
+      {zurnaloIspejimas && <p className="text-sm text-warn">{zurnaloIspejimas}</p>}
 
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
@@ -1623,6 +1798,31 @@ export function TripForm({
               </details>
             </>}
         </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
+        {/* Pasiūlymų žurnalas (Phase 0, 5): ką nusprendė dispečeris prie Bramit verdikto.
+            `stopPropagation` – šie laukai ne reiso dalis ir rezultato nenuvalo. */}
+        {!tripId && verdiktas && <div className="mb-4 rounded-lg border border-line p-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label>Galutinė kaina, €<input type="text" inputMode="decimal" value={galutineKaina} onChange={(event) => { event.stopPropagation(); setGalutineKaina(event.target.value); }} placeholder="Neprivaloma" className={inputClass} /></label>
+            <label>Priežastis<select value={priezastis} onChange={(event) => { event.stopPropagation(); setPriezastis(event.target.value); }} className={inputClass}>
+              <option value="">—</option>
+              {QUOTE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+            </select></label>
+            {priezastis === "Kita" && <label>Kokia<input type="text" maxLength={500} value={priezastiesTekstas} onChange={(event) => { event.stopPropagation(); setPriezastiesTekstas(event.target.value); }} className={inputClass} /></label>}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {(["taken", "negotiating", "declined"] as const).map((decision) => (
+              <button key={decision} type="button" disabled={!zurnaloId} onClick={() => void saveDecision(decision)}
+                className={`rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${sprendimas === decision ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
+                {DECISION_LABELS[decision]}
+              </button>
+            ))}
+            <span className="text-muted">
+              {sprendimas !== "pending" ? `Žurnale: ${DECISION_LABELS[sprendimas]}. ` : zurnaloId ? "Įrašyta į žurnalą. " : ""}
+              <Link href="/pasiulymai" className="underline">Visi pasiūlymai</Link>
+            </span>
+          </div>
+          {sprendimoKlaida && <p role="alert" className="mt-2 text-bad">{sprendimoKlaida}</p>}
+        </div>}
         {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
             nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
         {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">

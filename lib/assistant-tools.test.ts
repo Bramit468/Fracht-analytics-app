@@ -8,6 +8,7 @@ import {
   type AssistantData,
   type TelematicsData,
 } from "./assistant-tools";
+import type { QuoteRow } from "./quotes";
 import { truckRowToCalc } from "./truck";
 import type { TripSummary } from "./trips";
 import type { Trip } from "../types/trip";
@@ -116,10 +117,29 @@ const telematics: TelematicsData = {
   issues: { unassignedRows: 0, unassignedCents: 0, otherCurrencyRows: 0, convertedRows: 0, convertedCents: 0, otherCurrency: [] },
 };
 
+/** Žurnalas: Imti – paimta ir laimėta, Neimti – vis tiek paimta, vienas nespręstas. */
+function quote(overrides: Partial<QuoteRow>): QuoteRow {
+  return {
+    id: "q", created_by: "u1", created_at: "2026-10-12T08:00:00Z", updated_at: "2026-10-12T08:00:00Z", truck_id: null,
+    trip_date: "2026-10-13", stops: [], origin: "Kaunas", destination: "Hamburg", customer_id: null, source: "manual",
+    offer_text: null, offered_price_cents: 100000, paid_km: 1000, empty_km: 0, days: 2, total_cost_cents: 90000,
+    contribution_cents: 40000, contribution_per_day_cents: 20000, verdict: "take", target_price_cents: 90000,
+    decision: "pending", outcome: "open", final_price_cents: null, reason: null, trip_id: null, ...overrides,
+  };
+}
+
+const quotes: QuoteRow[] = [
+  quote({ id: "1", decision: "taken", outcome: "won" }),
+  quote({ id: "2", verdict: "reject", decision: "taken", outcome: "won", created_by: "u2" }),
+  quote({ id: "3", verdict: "negotiate", decision: "declined", outcome: "lost", reason: "Per brangu užsakovui" }),
+  quote({ id: "4", created_at: "2026-09-01T08:00:00Z" }),
+];
+
 const context: AssistantContext = {
   data: async () => data,
   telematics: async () => telematics,
   live: async () => null,
+  quotes: async () => quotes,
 };
 
 const noTelematics: AssistantContext = { ...context, telematics: async () => null };
@@ -255,6 +275,30 @@ describe("klaidos grąžinamos modeliui, ne metamos", () => {
     const broken: AssistantContext = { ...context, telematics: async () => { throw new Error("timeout"); } };
     expect(await run("fuel_prices", { from: null, to: null, by: "country" }, broken)).toEqual({
       klaida: "Nepavyko gauti duomenų – šaltinis šiuo metu nepasiekiamas.",
+    });
+  });
+});
+
+describe("quote_log", () => {
+  it("laikotarpio skaičiai, verdiktas prieš sprendimą, priežastys", async () => {
+    const result = await run("quote_log", { from: "2026-10-01", to: "2026-10-31" });
+    expect(result).toMatchObject({
+      pasiulymu: 3, nuspresta: 3, laimeta: 2, pralaimeta: 1, laimejimo_dalis: "67 %",
+      // Imti→paimta ✓, Neimti→paimta ✗, Derėtis→nepaimta ✓.
+      sprendimas_sutapo_su_bramit: "67 %",
+      darbo_dienu: 22,
+      priezastys: [{ priezastis: "Per brangu užsakovui", kartu: 1 }],
+    });
+    expect(result.pagal_verdikta).toEqual([
+      { bramit: "Imti", pasiulymu: 1, paimta: 1, nepaimta: 0, sutapo_su_sprendimu: "100 %" },
+      { bramit: "Derėtis", pasiulymu: 1, paimta: 0, nepaimta: 1, sutapo_su_sprendimu: "100 %" },
+      { bramit: "Neimti", pasiulymu: 1, paimta: 1, nepaimta: 0, sutapo_su_sprendimu: "0 %" },
+    ]);
+  });
+
+  it("be migracijos – paaiškinimas, ne klaida", async () => {
+    expect(await run("quote_log", { from: null, to: null }, { ...context, quotes: async () => null })).toEqual({
+      klaida: "Pasiūlymų žurnalo duomenų bazėje dar nėra (migracija 0026).",
     });
   });
 });

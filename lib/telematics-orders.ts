@@ -243,6 +243,84 @@ export interface OrderImport {
   skipped: SkippedOrder[];
   /** Kelių mokesčiai dienomis, kai fura nevežė jokio užsakymo – nepriskirti. */
   unassignedTollCents: number;
+  /** Km be užsakymo, kai per `NEXT_ORDER_DAYS` kito užsakymo nėra – nepriskirti. */
+  unassignedEmptyKm: number;
+}
+
+/**
+ * Mažesnis paros ridos ir užsakymų km skirtumas – matavimo triukšmas, ne
+ * pervažiavimas.
+ */
+const MIN_GAP_KM = 20;
+
+/**
+ * Km, kuriuos fura nuvažiavo be užsakymo – pervažiavimas į kito užsakymo
+ * pakrovimą. Užsakymuose jų nėra, todėl istorijoje reisai atrodė pelningesni:
+ * 2026-10 – 31 530 km (18 % ridos), ≈ 14 000 € kuro, niekam nepriskirta.
+ *
+ * Paros ridos tikslumu, nes Telematika km duoda paromis:
+ * - diena be užsakymų – visa jos rida kitam tos furos užsakymui;
+ * - ištisinis užsakymų dienų blokas – paros ridos ir užsakymų km skirtumas
+ *   tenka blokui: po lygiai užsakymams po pirmojo (prieš juos fura važiavo
+ *   tuščia), o jei užsakymas vienas – jam.
+ * Blokas su užsakymu be atkarpų km praleidžiamas: jo km dar tik įvertis (vėliau
+ * PTV), ir skirtumas būtų įskaičiuotas dukart.
+ */
+export function carriedEmptyKm(input: {
+  orders: { orderId: string; plate: string; start: string; legKm: number | null; byDay: Map<string, number> }[];
+  daily: DailyDistance[];
+  firstDay: string;
+  lastDay: string;
+  nextOrder: (plate: string, date: string) => string | null;
+}): { carried: Map<string, number>; unassignedKm: number } {
+  const carried = new Map<string, number>();
+  const add = (id: string, km: number) => carried.set(id, (carried.get(id) ?? 0) + km);
+  let unassignedKm = 0;
+
+  const dayKm = new Map<string, number>();
+  for (const day of input.daily) dayKm.set(`${plateKey(day.plate)}|${day.date}`, (dayKm.get(`${plateKey(day.plate)}|${day.date}`) ?? 0) + day.km);
+
+  const byPlate = new Map<string, typeof input.orders>();
+  for (const order of input.orders) {
+    const key = plateKey(order.plate);
+    (byPlate.get(key) ?? byPlate.set(key, []).get(key)!).push(order);
+  }
+
+  for (const [key, orders] of byPlate) {
+    orders.sort((a, b) => a.start.localeCompare(b.start));
+    const onDay = new Map<string, Set<string>>();
+    for (const order of orders) {
+      for (const [date, hours] of order.byDay) if (hours > 0) (onDay.get(date) ?? onDay.set(date, new Set()).get(date)!).add(order.orderId);
+    }
+
+    // Ištisiniai užsakymų dienų blokai.
+    const dates = [...onDay.keys()].sort();
+    const blocks: string[][] = [];
+    for (const date of dates) {
+      const last = blocks[blocks.length - 1];
+      if (last && addDays(last[last.length - 1], 1) === date) last.push(date);
+      else blocks.push([date]);
+    }
+    for (const block of blocks) {
+      const ids = orders.filter((order) => block.some((date) => onDay.get(date)!.has(order.orderId)));
+      if (ids.some((order) => order.legKm === null)) continue;
+      const actual = block.reduce((sum, date) => sum + (dayKm.get(`${key}|${date}`) ?? 0), 0);
+      const gap = actual - ids.reduce((sum, order) => sum + (order.legKm ?? 0), 0);
+      if (gap < MIN_GAP_KM) continue;
+      const receivers = ids.length > 1 ? ids.slice(1) : ids;
+      for (const order of receivers) add(order.orderId, gap / receivers.length);
+    }
+
+    // Dienos be užsakymų – kitam užsakymui, kaip ir keliai.
+    for (const day of input.daily) {
+      if (plateKey(day.plate) !== key || day.km <= 0 || onDay.has(day.date)) continue;
+      if (day.date < input.firstDay || day.date > input.lastDay) continue;
+      const next = input.nextOrder(day.plate, day.date);
+      if (next) add(next, day.km);
+      else unassignedKm += day.km;
+    }
+  }
+  return { carried, unassignedKm };
 }
 
 const round = (value: number, places: number) => Math.round(value * 10 ** places) / 10 ** places;
@@ -365,6 +443,18 @@ export function buildOrderTrips(input: {
     for (const { id, share } of dayShares(day.plate, day.date, true)) estimatedKm.set(id, (estimatedKm.get(id) ?? 0) + day.km * share);
   }
 
+  // Atkarpų km – tik kai pakrautos atkarpos juos turi; kitaip `null` (įvertis, vėliau PTV).
+  const legKm = (legs: OrderLeg[]) => (legs.some((leg) => !leg.empty && leg.km > 0) ? legs.reduce((sum, leg) => sum + leg.km, 0) : null);
+  const emptyRuns = carriedEmptyKm({
+    orders: ready.map(({ orderId, legs, truck }) => ({
+      orderId, plate: truck.plate, start: legs[0].start, legKm: legKm(legs), byDay: allocated.get(orderId)?.byDay ?? new Map(),
+    })),
+    daily: input.daily,
+    firstDay,
+    lastDay,
+    nextOrder,
+  });
+
   const fleetFuel = fleetPrice(input.supplies, "diesel");
   const fleetAdblue = fleetPrice(input.supplies, "adblue");
 
@@ -375,23 +465,28 @@ export function buildOrderTrips(input: {
     const start = legs[0].start;
     const end = legs[legs.length - 1].end;
     let paidKm = round(legs.filter((leg) => !leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
-    const emptyKm = round(legs.filter((leg) => leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
+    const legEmptyKm = round(legs.filter((leg) => leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
     const loadedLegs = legs.filter((leg) => !leg.empty);
     let kmAddresses: string[] | null = null;
     if (paidKm === 0) {
       // Pakrautų atkarpų km Telematikoje nėra: peržiūrai – kas lieka iš paros
       // ridos po tuščių, importuojant – PTV maršrutas per tuos pačius adresus.
-      paidKm = round(Math.max(0, (estimatedKm.get(orderId) ?? 0) - emptyKm), 2);
+      paidKm = round(Math.max(0, (estimatedKm.get(orderId) ?? 0) - legEmptyKm), 2);
       const route = loadedLegs.length > 0 ? loadedLegs : legs;
       kmAddresses = [route[0].startPlace, ...route.map((leg) => leg.endPlace)].map(placeQuery);
       notes.push("Km Telematikoje nėra – importuojant skaičiuos PTV (dabar įvertis iš paros ridos).");
     }
+    const carriedKm = round(emptyRuns.carried.get(orderId) ?? 0, 2);
+    if (carriedKm > 0) notes.push(`Tušti km +${Math.round(carriedKm)} – pervažiavimas be užsakymo prieš šį užsakymą (paros rida).`);
+    const emptyKm = round(legEmptyKm + carriedKm, 2);
+    // Norma – iš paties užsakymo atkarpų: jų kuras matuotas tik jų km.
+    const orderKm = paidKm + legEmptyKm;
     const totalKm = paidKm + emptyKm;
 
     const fill = tripFillFromActuals(summarizeActuals(input.daily, input.supplies, truck.plate, start.slice(0, 10), end.slice(0, 10)));
     // Atkarpų kuras tikslesnis už paros eilutes: jis tik šio užsakymo.
     const legFuel = legs.every((leg) => leg.km === 0 || leg.fuelL > 0) ? legs.reduce((sum, leg) => sum + leg.fuelL, 0) : 0;
-    let fuelPer100 = totalKm > 0 && legFuel > 0 ? (legFuel / totalKm) * 100 : Number(fill.fuel_l_per_100km) || 0;
+    let fuelPer100 = orderKm > 0 && legFuel > 0 ? (legFuel / orderKm) * 100 : Number(fill.fuel_l_per_100km) || 0;
     if (fuelPer100 === 0 && truck.fuel_norm_l_per_100km) { fuelPer100 = truck.fuel_norm_l_per_100km; notes.push("Kuro norma – iš furos kortelės."); }
     if (fuelPer100 === 0 && totalKm > 0) notes.push("Kuro sąnaudų nėra – kuras 0.");
     let fuelPrice = Number(fill.fuel_price) || 0;
@@ -459,7 +554,7 @@ export function buildOrderTrips(input: {
   });
 
   trips.sort((a, b) => a.start.localeCompare(b.start));
-  return { trips, skipped, unassignedTollCents: Math.round(unassignedTollCents) };
+  return { trips, skipped, unassignedTollCents: Math.round(unassignedTollCents), unassignedEmptyKm: Math.round(emptyRuns.unassignedKm) };
 }
 
 /** Importuoto reiso laukai, pagal kuriuos sprendžiama, ar užsakymas pasikeitė. */

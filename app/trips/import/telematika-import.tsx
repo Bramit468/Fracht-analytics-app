@@ -28,6 +28,7 @@ interface ImportSummary {
   /** Ką teko spėti įrašytuose reisuose. */
   guesses: string[];
   unassignedTollCents: number;
+  unassignedEmptyKm: number;
 }
 
 /** Praleidimo priežastys suskaičiuotos: „furos nėra sąraše – 3“. */
@@ -86,7 +87,11 @@ export function TelematikaImport() {
         let legs = item.legs;
         // Telematikoje km nėra – PTV per pakrautų atkarpų adresus. Nepavykus
         // lieka paros ridos įvertis, ir tai pasakoma.
-        if (item.kmAddresses && !ptvStopped) {
+        if (item.kmAddresses && item.storedPaidKm !== null && item.storedPaidKm > 0) {
+          // Jau importuotas: km tie patys, kuriuos PTV suskaičiavo anksčiau.
+          trip = { ...trip, paid_km: item.storedPaidKm };
+          legs = [{ country: "Nemokami", km: Math.round((item.storedPaidKm + trip.empty_km) * 100) / 100 }];
+        } else if (item.kmAddresses && !ptvStopped) {
           const route = await ptvRouteKm(item.kmAddresses);
           if (route.ok) {
             const paidKm = Math.round(route.km * 100) / 100;
@@ -132,6 +137,7 @@ export function TelematikaImport() {
         failures,
         guesses: done.filter((item) => item.notes.length > 0).map((item) => `${item.trip.trip_number}: ${item.notes.join(" ")}`),
         unassignedTollCents: result.unassignedTollCents,
+        unassignedEmptyKm: result.unassignedEmptyKm,
       });
       setReload((value) => value + 1);
     } catch {
@@ -157,6 +163,7 @@ export function TelematikaImport() {
         <span className="font-medium">Nauji: {summary.created}</span> · atnaujinti: {summary.updated.length} · nepakito: {summary.unchanged}
         {summary.skipped.length > 0 && <> · praleista: {summary.skipped.length} ({reasonCounts(summary.skipped)})</>}.
         {summary.unassignedTollCents > 0 && <> Kelių mokesčių dienomis be užsakymų: {formatCents(summary.unassignedTollCents)} – jie reisams nepriskirti.</>}
+        {summary.unassignedEmptyKm > 0 && <> Km be užsakymo, po kurių kito užsakymo nebuvo (grįžimas į bazę, stovėjimas): {summary.unassignedEmptyKm.toLocaleString("lt-LT")} km – nepriskirti.</>}
       </p>
       {summary.failures.length > 0 && <p role="alert" className="text-bad">
         Neįrašyti: {summary.failures.join(", ")}. Dažniausia priežastis – nepaleista migracija 0019 arba trūksta „Nemokami“ įkainio.

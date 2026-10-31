@@ -10,6 +10,7 @@ import {
 } from "@/lib/invitations";
 import { formatMinMargin, parseMinMargin } from "@/lib/margin-guard";
 import { parsePerDiemPercent } from "@/lib/per-diem";
+import { DEFAULT_NEGOTIATION_BAND_PERCENT, parseNegotiationBand } from "@/lib/quote-verdict";
 import { formatCents, parseOptionalSignedEuro } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { isMissingColumnError } from "@/lib/truck";
@@ -145,7 +146,7 @@ type Parsed = { ok: true; value: number | null } | { ok: false; error: string };
 async function saveCompanySetting(
   formData: FormData,
   setting: {
-    column: "min_margin_percent" | "per_diem_percent" | "min_contribution_cents";
+    column: "min_margin_percent" | "per_diem_percent" | "min_contribution_cents" | "negotiation_band_percent";
     parse: (text: string) => Parsed;
     migration: string;
     saved: (value: number | null) => string;
@@ -223,6 +224,19 @@ export async function saveMinContribution(_previous: SettingState, formData: For
     parse: parseOptionalSignedEuro,
     migration: "0023",
     saved: (value) => (value === null ? "Riba panaikinta – imti, kai įnašas viršija alternatyvą." : `Riba išsaugota: ${formatCents(value)}.`),
+  });
+}
+
+/** Kiek % virš pasiūlytos kainos dar verta derėtis. Tuščias – 15 %. */
+export async function saveNegotiationBand(_previous: SettingState, formData: FormData): Promise<SettingState> {
+  return saveCompanySetting(formData, {
+    column: "negotiation_band_percent",
+    parse: parseNegotiationBand,
+    migration: "0024",
+    saved: (value) =>
+      value === null
+        ? `Grąžinta numatytoji riba: ${DEFAULT_NEGOTIATION_BAND_PERCENT} %.`
+        : `Išsaugota: derėtis, kai reikia ne daugiau kaip +${formatMinMargin(value)}.`,
   });
 }
 

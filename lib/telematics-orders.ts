@@ -339,20 +339,23 @@ export function buildOrderTrips(input: {
   const firstDay = ready.reduce((min, item) => (item.legs[0].start < min ? item.legs[0].start : min), "9999").slice(0, 10);
   const lastDay = ready.reduce((max, item) => (item.legs[item.legs.length - 1].end > max ? item.legs[item.legs.length - 1].end : max), "").slice(0, 10);
   const tollCents = new Map<string, number>();
+  // Keltai skirstomi taip pat kaip keliai, bet į savo lauką „Keltai“.
+  const ferryCents = new Map<string, number>();
   /** Kiek kelių atkelta iš dienų be užsakymo – reiso pastabai. */
   const carriedTollCents = new Map<string, number>();
   let unassignedTollCents = 0;
   for (const supply of input.supplies) {
-    if (supply.kind !== "toll" || supply.date < firstDay || supply.date > lastDay) continue;
+    if ((supply.kind !== "toll" && supply.kind !== "ferry") || supply.date < firstDay || supply.date > lastDay) continue;
+    const target = supply.kind === "ferry" ? ferryCents : tollCents;
     const shares = dayShares(supply.plate, supply.date);
     if (shares.length === 0) {
       const next = nextOrder(supply.plate, supply.date);
       if (!next) { unassignedTollCents += supply.costCents; continue; }
-      tollCents.set(next, (tollCents.get(next) ?? 0) + supply.costCents);
+      target.set(next, (target.get(next) ?? 0) + supply.costCents);
       carriedTollCents.set(next, (carriedTollCents.get(next) ?? 0) + supply.costCents);
       continue;
     }
-    for (const { id, share } of shares) tollCents.set(id, (tollCents.get(id) ?? 0) + supply.costCents * share);
+    for (const { id, share } of shares) target.set(id, (target.get(id) ?? 0) + supply.costCents * share);
   }
 
   // Paros rida – užsakymams, kurių atkarpos Telematikoje be km.
@@ -442,7 +445,7 @@ export function buildOrderTrips(input: {
         adblue_price: round(adbluePrice, 4),
         // Tikri sumokėti keliai, kaip ir telematikos užpildyme: atkarpa „Nemokami".
         bridges_cents: Math.round(tollCents.get(orderId) ?? 0),
-        ferries_cents: 0,
+        ferries_cents: Math.round(ferryCents.get(orderId) ?? 0),
         tunnels_cents: 0,
         parking_cents: 0,
         revenue_mode: "freight",

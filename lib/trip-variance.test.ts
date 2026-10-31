@@ -38,6 +38,7 @@ const ACTUAL: ActualCosts = {
   dieselCents: 42000,
   adblueCents: 900,
   tollCents: 27040,
+  ferryCents: 0,
   otherCents: 0,
   totalCents: 69940,
   adblueL: 20,

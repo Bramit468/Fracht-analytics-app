@@ -92,6 +92,24 @@ describe("parseSupplies", () => {
     expect(supplies.filter((s) => s.kind === "toll").map((s) => s.costCents)).toEqual([12650, 12400]);
   });
 
+  it("keltai – atskirai, tiltai – keliai, Telepass mokestis – kita (tikri 2026-10 komentarai)", () => {
+    const row = (Comment: string, ItemId: string) => ({
+      ItemId, Plates: "LOV 141", TypeTitle: "Other", OperationDate: "2026-09-05 10:00:00",
+      Comment, Quantity: "", TotalPrice: "100.000", CurrencyShortTitle: "EUR", Country: "NOR",
+    });
+    const { supplies } = parseSupplies([
+      row("Ferries NO Telepass, ", "f1"),
+      row("Ferry_Norway, ", "f2"),
+      row("Bridge DK Telepass, ", "b1"),
+      row("FeeTelepass NO R, ", "o1"),
+    ]);
+    expect(supplies.map((s) => s.kind)).toEqual(["ferry", "ferry", "toll", "other"]);
+
+    const actual = summarizeActuals([], supplies, "LOV 141", "2026-09-01", "2026-09-30");
+    expect(actual).toMatchObject({ ferryCents: 20000, tollCents: 10000, otherCents: 10000, totalCents: 30000 });
+    expect(tripFillFromActuals(actual).ferries_cents).toBe("200.00");
+  });
+
   it("kitos valiutos pirkimą suskaičiuoja atskirai, o ne priskiria nuliui", () => {
     const { supplies, issues } = parseSupplies(SUPPLIES);
 
@@ -212,6 +230,7 @@ describe("tripFillFromActuals", () => {
       adblue_l_per_100km: "4.4256",
       adblue_price: "0.7715",
       bridges_cents: "250.50",
+      ferries_cents: "0.00",
       legKm: "903.83",
     });
   });

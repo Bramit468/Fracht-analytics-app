@@ -11,6 +11,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 import { Page, PageHeader, SettingRow } from "../ui";
 import { saveMinContribution, saveMinMargin, saveNegotiationBand, savePerDiemPercent } from "./actions";
+import { FerryRatesEditor } from "./ferry-rates-editor";
 import { InvitationRowActions } from "./invitation-row-actions";
 import { InviteForm } from "./invite-form";
 import { SettingForm } from "./setting-form";
@@ -89,6 +90,13 @@ export default async function ImonePage() {
             current={settings.negotiationBandPercent}
             action={saveNegotiationBand}
           />
+        </SettingRow>
+
+        <SettingRow
+          title="Keltų kainos"
+          description="Jūsų sutartinė kaina vienam plaukimui (vilkikas su puspriekabe ir vairuotoju). Kai PTV maršrute randa keltą tarp tų pačių uostų, skaičiuoklė ima šią kainą; kitaip – viešą tarifą, jei jis žinomas, arba praneša, kad kaina nežinoma. Norvegijos vidaus keltai įskaičiuojami iš Telematikos pirkimų. Keisti gali tik savininkas."
+        >
+          <FerryRatesEditor />
         </SettingRow>
 
         <SettingRow

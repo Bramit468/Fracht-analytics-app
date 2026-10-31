@@ -3,7 +3,7 @@
 import { costInsights, type Insight } from "@/lib/cost-insights";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
 import { fuelPricesByCountry, type FuelPriceRow } from "@/lib/fuel-prices";
-import { actualsOverSpans, isCovered, spanDayKeys, telematicsCoverage, type Coverage, type SpanActuals, type TripSpan } from "@/lib/plan-actual";
+import { actualsOutsideSpans, actualsOverSpans, isCovered, spanDayKeys, telematicsCoverage, type Coverage, type OutsideSpans, type SpanActuals, type TripSpan } from "@/lib/plan-actual";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { actualsByTruck, parseCanDaily, parseSupplies, type ActualCosts } from "@/lib/telematics-costs";
@@ -86,7 +86,7 @@ export async function loadTollsByCountry(from: string, to: string, plate: string
 }
 
 export type PlanActualReport =
-  | { ok: true; coverage: Coverage | null; actuals: SpanActuals[] }
+  | { ok: true; coverage: Coverage | null; actuals: SpanActuals[]; outside: OutsideSpans }
   | { ok: false; message: string };
 
 /**
@@ -112,8 +112,9 @@ export async function loadPlanActuals(spans: unknown): Promise<PlanActualReport>
     const daily = parseCanDaily(canRaw);
     const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
     const coverage = telematicsCoverage(daily);
-    if (!coverage) return { ok: true, coverage, actuals: [] };
-    return { ok: true, coverage, actuals: actualsOverSpans(daily, supplies, valid.filter((span) => isCovered(span, coverage))) };
+    if (!coverage) return { ok: true, coverage, actuals: [], outside: actualsOutsideSpans([], [], []) };
+    const covered = valid.filter((span) => isCovered(span, coverage));
+    return { ok: true, coverage, actuals: actualsOverSpans(daily, supplies, covered), outside: actualsOutsideSpans(daily, supplies, covered) };
   } catch (cause) {
     console.error("Suvestinės planas ir faktas", cause instanceof TelematicsFeedError ? cause.message : cause);
     return { ok: false, message: "Nepavyko gauti Telematikos duomenų. Bandykite vėliau." };

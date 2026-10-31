@@ -21,8 +21,11 @@ export interface DailyDistance {
   fuelL: number | null;
 }
 
-/** Į ką išleista. `other` – viskas, kas nepatenka į reiso kaštų modelį. */
-export type SupplyKind = "diesel" | "adblue" | "toll" | "other";
+/**
+ * Į ką išleista. `other` – viskas, kas nepatenka į reiso kaštų modelį.
+ * `ferry` atskirai nuo kelių: reise jie turi savo lauką „Keltai“.
+ */
+export type SupplyKind = "diesel" | "adblue" | "toll" | "ferry" | "other";
 
 export interface Supply {
   plate: string;
@@ -46,9 +49,11 @@ export interface ActualCosts {
   dieselCents: number;
   adblueCents: number;
   tollCents: number;
+  /** Keltų bilietai (Norvegijos AutoPASS keltai ir pan.). */
+  ferryCents: number;
   /** Į reiso kaštų modelį netelpantys pirkimai. Rodomi atskirai, nemetami. */
   otherCents: number;
-  /** Kuras + AdBlue + keliai. `otherCents` čia neįeina sąmoningai. */
+  /** Kuras + AdBlue + keliai + keltai. `otherCents` čia neįeina sąmoningai. */
   totalCents: number;
   /** Nupirkti AdBlue litrai. Tai pirkimai, ne sunaudojimas. */
   adblueL: number;
@@ -123,7 +128,16 @@ export function parseCanDaily(payload: unknown): DailyDistance[] {
 const TOLL_WORDS = [
   "toll", "vignette", "vinjet", "maut", "peage", "pedaggio", "peaje",
   "portagem", "myto", "bompenger", "broavgift", "trangselskatt", "ecotaxe",
+  // „Bridge DK Telepass“ (Storebælt, Øresund) – kelių mokestis, ne „kita“:
+  // be šito tiltas krisdavo iš reiso kaštų (2026-10 patikra: 272 € per rugsėjį).
+  "bridge", "brobizz", "storebaelt", "oresund", "brucke",
 ];
+
+/**
+ * Keltai: „Ferries NO Telepass“, „Ferry_Norway“. Anksčiau jie krisdavo į
+ * „kita“, o tai 2–3 tūkst. € per mėnesį, kurių nebuvo nė viename reise.
+ */
+const FERRY_WORDS = ["ferry", "ferries", "ferje", "faerge", "færge", "farja", "fahre", "faehre", "prom", "keltas"];
 
 /** Be diakritikos ir mažosiomis: „Péage" ir „peage" turi sutapti. */
 function foldText(value: string): string {
@@ -136,6 +150,8 @@ function supplyKind(typeTitle: string | null, comment: string | null): SupplyKin
   if (typeTitle === "Eurovignettes") return "toll";
 
   const label = foldText(`${typeTitle ?? ""} ${comment ?? ""}`);
+  // Keltas pirmas: „Ferries NO Telepass“ eina per tą pačią kortelę kaip keliai.
+  if (FERRY_WORDS.some((word) => label.includes(word))) return "ferry";
   return TOLL_WORDS.some((word) => label.includes(word)) ? "toll" : "other";
 }
 
@@ -277,6 +293,7 @@ export function summarizeActuals(
   const dieselCents = sum("diesel");
   const adblueCents = sum("adblue");
   const tollCents = sum("toll");
+  const ferryCents = sum("ferry");
   const otherCents = sum("other");
 
   const litres = (kind: SupplyKind) =>
@@ -295,8 +312,9 @@ export function summarizeActuals(
     dieselCents,
     adblueCents,
     tollCents,
+    ferryCents,
     otherCents,
-    totalCents: dieselCents + adblueCents + tollCents,
+    totalCents: dieselCents + adblueCents + tollCents + ferryCents,
     adblueL,
     fuelPricePerL: dieselL > 0 ? dieselCents / 100 / dieselL : null,
     adbluePricePerL: adblueL > 0 ? adblueCents / 100 / adblueL : null,
@@ -342,6 +360,7 @@ export interface TripFill {
   adblue_l_per_100km: string;
   adblue_price: string;
   bridges_cents: string;
+  ferries_cents: string;
   /** Visi laikotarpio km – atkarpai „Nemokami", kad formos patikra sutaptų. */
   legKm: string;
 }
@@ -399,6 +418,7 @@ export function tripFillFromActuals(costs: ActualCosts): TripFill {
     adblue_l_per_100km: costs.km > 0 && costs.adblueL > 0 ? round((costs.adblueL / costs.km) * 100, 4) : "0",
     adblue_price: costs.adbluePricePerL === null ? "0" : round(costs.adbluePricePerL, 4),
     bridges_cents: round(costs.tollCents / 100, 2),
+    ferries_cents: round(costs.ferryCents / 100, 2),
     legKm: round(costs.km, 2),
   };
 }

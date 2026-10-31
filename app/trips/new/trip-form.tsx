@@ -32,6 +32,7 @@ import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, qu
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
 import { emptyRunNote } from "../../../lib/empty-run";
+import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import {
   buildQuoteDraft,
   decisionPatch,
@@ -227,6 +228,8 @@ export function TripForm({
   const [altParos, setAltParos] = useState("0");
   const [altInasas, setAltInasas] = useState("0");
   const [minInasas, setMinInasas] = useState<number | null>(null);
+  /** Įmonės sutartinės keltų kainos (0027). */
+  const [keltuKainos, setKeltuKainos] = useState<FerryRate[]>([]);
   /** Įmonės derybų riba (0024). `null` – numatytoji 15 %. */
   const [derybuRiba, setDerybuRiba] = useState<number | null>(null);
   /** Tušti km skaičiavimo metu – verdikto eilutei. */
@@ -355,7 +358,7 @@ export function TripForm({
       try {
         const client = getSupabaseClient();
         const source = tripId ?? copyFromId;
-        const [t, c, existing, nustatymai, uzsakovai, quote] = await Promise.all([
+        const [t, c, existing, nustatymai, uzsakovai, quote, keltai] = await Promise.all([
           client.from("trucks").select("*").order("plate"),
           client.from("country_tariffs").select("country,rate,rate_type").order("country"),
           source ? getTripWithLegs(source) : null,
@@ -363,6 +366,8 @@ export function TripForm({
           // Užsakovų sąrašo klaida neturi užblokuoti reiso skaičiavimo.
           listCustomers(client).catch(() => ({ customers: [], available: false })),
           !source && quoteId ? getQuote(client, quoteId).catch(() => null) : null,
+          // Be keltų kainų forma veikia kaip anksčiau – kaina lieka „nežinoma“.
+          listFerryRates(client).catch(() => ({ rates: [], available: false })),
         ]);
         if (t.error) throw t.error;
         if (c.error) throw c.error;
@@ -370,6 +375,7 @@ export function TripForm({
           setMinMarza(nustatymai.minMarginPercent);
           setMinInasas(nustatymai.minContributionCents);
           setDerybuRiba(nustatymai.negotiationBandPercent);
+          setKeltuKainos(keltai.rates);
           // Taisant – ta alternatyva, kuria remtasi priimant. Kopijai ji nekeliama:
           // kitą kartą fura bus kitur.
           if (tripId && existing) {
@@ -1050,7 +1056,13 @@ export function TripForm({
         }
       }
 
-      const needsFerryPrice = result.ferryDetected && result.ferriesCents === 0;
+      // Pirmiausia – įmonės sutartinė kaina (0027), tik tada viešas tarifas.
+      const contract = result.ferryDetected && result.ferriesCents === 0 ? contractFare(result.ferryNames, keltuKainos) : null;
+      if (contract && write) {
+        const field = form.elements.namedItem("ferries_cents");
+        if (field instanceof HTMLInputElement) field.value = centsToInput(contract.totalCents);
+      }
+      const needsFerryPrice = result.ferryDetected && result.ferriesCents === 0 && !contract;
       setNeivertintasKeltas(needsFerryPrice ? result.ferryNames : null);
       // Redaguojant tarifas tik paskaičiuojamas, bet į lauką neįrašomas.
       const publicFare = !needsFerryPrice
@@ -1079,12 +1091,15 @@ export function TripForm({
         result.ferryDetected && result.ferriesCents > 0
           ? `Kelto kaina ${formatCents(result.ferriesCents)} įtraukta.`
           : "",
+        contract
+          ? `Keltas – jūsų sutartinė kaina: ${contract.lines.map((line) => `${line.label} ${formatCents(line.cents)}`).join(", ")}.`
+          : "",
         result.avoidedFerries && result.ferryDetected
           ? "PTV šio kelto išvengti negalėjo."
           : "",
       ].filter(Boolean).join(" ");
 
-      const shownFerryCents = publicFare?.totalCents ?? result.ferriesCents;
+      const shownFerryCents = contract?.totalCents ?? publicFare?.totalCents ?? result.ferriesCents;
       const shownTollCents = result.bridgesCents + shownFerryCents + result.tunnelsCents;
 
       // Viena trumpa eilutė (#159): kelio suskaidymas į tiltus, keltus ir

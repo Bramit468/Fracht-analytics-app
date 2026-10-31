@@ -134,7 +134,8 @@ export function actualsToCsv(rows: ActualCosts[]): string {
       decimalToCsv(row.fuelPricePerL, 3),
       centsToCsv(row.dieselCents),
       centsToCsv(row.adblueCents),
-      centsToCsv(row.tollCents),
+      // Keliai su tiltais ir keltais – kad stulpeliai sudėti sutaptų su „Iš viso“.
+      centsToCsv(row.tollCents + row.ferryCents),
       // „Kita“ į bendrą sumą neįeina ir faile: telematikos puslapis ją laiko
       // atskirai, o dvi skirtingos sumos tame pačiame skaičiuje klaidintų.
       centsToCsv(row.otherCents),

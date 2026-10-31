@@ -100,6 +100,8 @@ export interface QuoteNoteInput {
   routeFuel?: RouteFuelPrice | null;
   /** Furos tuščios ridos dalis iš istorijos, `null`, jei istorijos nėra. */
   emptyShare: number | null;
+  /** Tušti km iš tikro kelio iki pakrovimo (`emptyRunNote`) – tada istorija nerodoma. */
+  emptyRunNote?: string;
   ferryUnknown: boolean;
   approximateAddress: boolean;
 }
@@ -134,7 +136,9 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
     notes.push(`Į paras įskaičiuota ${String(input.serviceHours).replace(".", ",")} val. pakrovimui ir iškrovimui.`);
   }
 
-  if (input.emptyShare === null) {
+  if (input.emptyRunNote) {
+    notes.push(input.emptyRunNote);
+  } else if (input.emptyShare === null) {
     notes.push("Šios furos tuščios ridos istorijos nėra, todėl tušti km – 0. Jei grįšite tuščias, įrašykite ranka.");
   } else {
     notes.push(

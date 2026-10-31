@@ -1,0 +1,11 @@
+Freight offer
+Loading: LT-49400 Kaunas, Lithuania
+Unloading: DE-22113 Hamburg, Germany
+Loading date: 02.11.2026 08:00–16:00
+Delivery date: 04.11.2026
+Cargo: Palletized goods
+Weight: 18,000 kg
+Length: 13.6 m
+Vehicle: Curtainsider / Mega
+Freight price: 1,450 EUR
+Payment terms: 30 days

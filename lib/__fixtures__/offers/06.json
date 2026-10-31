@@ -1,0 +1,18 @@
+{
+  "source": "unknown",
+  "loading": {
+    "country": "PL",
+    "postalCode": "93-231",
+    "city": "Łódź"
+  },
+  "unloading": {
+    "country": "LT",
+    "postalCode": "51369",
+    "city": "Kaunas"
+  },
+  "loadingDate": "2026-11-02",
+  "unloadingDate": "2026-11-03",
+  "priceCents": 89000,
+  "currency": "EUR",
+  "weightKg": 24000
+}

@@ -1,0 +1,19 @@
+{
+  "source": "unknown",
+  "loading": {
+    "country": "LT",
+    "postalCode": "49400",
+    "city": "Kaunas"
+  },
+  "unloading": {
+    "country": "DE",
+    "postalCode": "22113",
+    "city": "Hamburg"
+  },
+  "loadingDate": "2026-11-02",
+  "loadingTime": "08:00",
+  "unloadingDate": "2026-11-04",
+  "priceCents": 145000,
+  "currency": "EUR",
+  "weightKg": 18000
+}

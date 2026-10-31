@@ -1,0 +1,20 @@
+{
+  "source": "transeu",
+  "loading": {
+    "country": "ES",
+    "postalCode": "43006",
+    "city": "Tarragona"
+  },
+  "unloading": {
+    "country": "IT",
+    "postalCode": "20126",
+    "city": "Milano"
+  },
+  "loadingDate": "2026-11-06",
+  "loadingTime": "14:00",
+  "unloadingDate": "2026-11-09",
+  "priceCents": 198000,
+  "currency": "EUR",
+  "weightKg": 20000,
+  "pallets": 26
+}

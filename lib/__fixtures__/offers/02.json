@@ -1,0 +1,19 @@
+{
+  "source": "timocom",
+  "loading": {
+    "country": "LV",
+    "postalCode": "1050",
+    "city": "Riga"
+  },
+  "unloading": {
+    "country": "PL",
+    "postalCode": "60-101",
+    "city": "Poznan"
+  },
+  "loadingDate": "2026-11-03",
+  "unloadingDate": "2026-11-04",
+  "priceCents": 98000,
+  "currency": "EUR",
+  "weightKg": 12500,
+  "ldm": 8.2
+}

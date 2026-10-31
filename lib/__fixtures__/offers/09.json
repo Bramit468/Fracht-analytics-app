@@ -1,0 +1,19 @@
+{
+  "source": "unknown",
+  "loading": {
+    "country": "DE",
+    "postalCode": "60314",
+    "city": "Frankfurt am Main"
+  },
+  "unloading": {
+    "country": "LT",
+    "postalCode": "35100",
+    "city": "Panevėžys"
+  },
+  "loadingDate": "2026-11-05",
+  "loadingTime": "10:00",
+  "unloadingDate": "2026-11-07",
+  "priceCents": 172000,
+  "currency": "EUR",
+  "weightKg": 16800
+}

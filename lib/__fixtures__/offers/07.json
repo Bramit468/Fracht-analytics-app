@@ -1,0 +1,19 @@
+{
+  "source": "transeu",
+  "loading": {
+    "country": "LT",
+    "postalCode": "94102",
+    "city": "Klaipėda"
+  },
+  "unloading": {
+    "country": "DE",
+    "postalCode": "28195",
+    "city": "Bremen"
+  },
+  "loadingDate": "2026-11-03",
+  "loadingTime": "07:00",
+  "unloadingDate": "2026-11-05",
+  "priceCents": 159000,
+  "currency": "EUR",
+  "weightKg": 21000
+}

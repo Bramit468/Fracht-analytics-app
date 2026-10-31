@@ -1,0 +1,10 @@
+Freight Exchange - Available load
+Origin: Breda (NL), ZIP 4815
+Destination: Warszawa (PL), ZIP 02-222
+Collection date: 05-11-2026
+Unload date: 07-11-2026
+Cargo weight: 14 tonnes
+Pallets: 24 EUR pallets
+Transport type: FTL
+Agreed freight: EUR 1650
+Contact dispatcher for details

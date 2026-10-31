@@ -1,0 +1,20 @@
+{
+  "source": "timocom",
+  "loading": {
+    "country": "FR",
+    "postalCode": "69007",
+    "city": "Lyon"
+  },
+  "unloading": {
+    "country": "CZ",
+    "postalCode": "10200",
+    "city": "Praha"
+  },
+  "loadingDate": "2026-11-06",
+  "loadingTime": "09:00",
+  "unloadingDate": "2026-11-09",
+  "priceCents": 178000,
+  "currency": "EUR",
+  "weightKg": 19500,
+  "pallets": 33
+}

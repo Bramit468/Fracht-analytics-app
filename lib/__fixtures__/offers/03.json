@@ -1,0 +1,18 @@
+{
+  "source": "unknown",
+  "loading": {
+    "country": "DE",
+    "postalCode": "12099",
+    "city": "Berlin"
+  },
+  "unloading": {
+    "country": "LT",
+    "postalCode": "02100",
+    "city": "Vilnius"
+  },
+  "loadingDate": "2026-11-04",
+  "unloadingDate": "2026-11-06",
+  "priceCents": 125000,
+  "currency": "EUR",
+  "weightKg": 22000
+}

@@ -1,0 +1,10 @@
+TRANS.EU LOAD
+Loading place: Wrocław, Poland (54-156)
+Unloading place: Antwerp, Belgium (2030)
+Available: 04/11/2026
+Delivery deadline: 06/11/2026
+Commodity: Automotive parts
+Gross weight: 23,000 kg
+Equipment: Mega trailer
+Budget: 1 430 EUR
+Payment after 45 days

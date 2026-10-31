@@ -1,0 +1,10 @@
+TIMOCOM Transport Order
+From: Riga, LV-1050
+To: Poznan, PL-60-101
+Pickup: 03/11/2026
+Delivery: 04/11/2026
+Goods: Industrial equipment
+Total weight: 12.5 t
+Loading meters: 8.2 LDM
+Truck required: Standard tautliner
+Price offered: €980

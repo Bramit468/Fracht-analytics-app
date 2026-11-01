@@ -6,7 +6,8 @@
  * krovinys apsimoka, todėl kelias iki pakrovimo skaičiuojamas iš tikros vietos:
  *
  * - fura dar vykdo (ar vykdys) kitą reisą – nuo to reiso iškrovimo;
- * - kitaip – nuo jos GPS vietos dabar.
+ * - kitaip – nuo jos GPS vietos dabar, bet tik šiandienos ar rytojaus kroviniui;
+ * - vėlesniam be žinomo reiso – lieka istorija.
  */
 
 import { stopsFromStored } from "./stops";
@@ -67,8 +68,14 @@ export function emptyRunStart(
     }
   }
 
-  return gps ? { source: "gps", ...gps } : null;
+  // GPS – tik šiandienos ir rytojaus kroviniui: iki vėlesnio fura spės
+  // nuvažiuoti kitur, o dabartinė vieta skaičiuotų nesąmones (draugo pastaba).
+  if (!gps || quoteDate > addDays(today, GPS_VALID_DAYS)) return null;
+  return { source: "gps", ...gps };
 }
+
+/** Kiek dienų į priekį dabartinė GPS vieta dar tinka tuštiems km. */
+export const GPS_VALID_DAYS = 1;
 
 /** Žmogui: iš kur paimti tušti km. */
 export function emptyRunNote(start: EmptyRunStart, km: number, hours: number, applied: boolean): string {

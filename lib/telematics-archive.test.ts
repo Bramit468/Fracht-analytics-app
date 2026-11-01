@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyArchiveRows, supplyArchiveRows } from "./telematics-archive";
+import { dailyArchiveRows, rawArchiveRows, supplyArchiveRows } from "./telematics-archive";
+
+describe("rawArchiveRows", () => {
+  it("užsakymai – visi laukai, raktas OrderId, dublikatai suliejami", () => {
+    const rows = rawArchiveRows("orders", [
+      { OrderId: 77, OrderNo: "A", CargoWeight: "18000", Nauja: "x" },
+      { OrderId: 77, OrderNo: "A2" },
+      { OrderNo: "be ID" },
+      "ne objektas",
+    ]);
+    expect(rows).toEqual([{ feed: "orders", item_key: "77", payload: { OrderId: 77, OrderNo: "A2" } }]);
+  });
+
+  it("kelionės: tiekėjo ID, kitaip užsakymas + laikai + vilkikas", () => {
+    expect(rawArchiveRows("trips", [{ TripId: "9", OrderId: 1 }])[0].item_key).toBe("9");
+    expect(rawArchiveRows("trips", [{ OrderId: 1, DateStart: "2026-10-01 08:00:00", DateEnd: "2026-10-01 18:00:00", TruckPlates: "MHE 763" }])[0].item_key)
+      .toBe("1|2026-10-01 08:00:00|2026-10-01 18:00:00|MHE 763");
+  });
+
+  it("ne sąrašas – klaida", () => {
+    expect(() => rawArchiveRows("trips", {})).toThrow("Trips atsakymas turi būti sąrašas.");
+  });
+});
 
 describe("dailyArchiveRows", () => {
   it("paima ridą ir kurą, numerį suvienodina", () => {

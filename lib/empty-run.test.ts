@@ -52,6 +52,14 @@ describe("emptyRunStart", () => {
     expect(emptyRunStart([trip({ destination: "" })], "2026-11-01", "2026-10-31", null)).toBeNull();
   });
 
+  it("GPS – tik šiandienos ir rytojaus kroviniui; vėlesniam – istorija (null)", () => {
+    expect(emptyRunStart([], "2026-10-31", "2026-10-31", gps)?.source).toBe("gps");
+    expect(emptyRunStart([], "2026-11-01", "2026-10-31", gps)?.source).toBe("gps");
+    expect(emptyRunStart([], "2026-11-02", "2026-10-31", gps)).toBeNull();
+    // Žinomas nesibaigęs reisas tinka ir vėlesnei datai.
+    expect(emptyRunStart([trip({ tripDate: "2026-10-31", days: 4 })], "2026-11-05", "2026-10-31", gps)?.source).toBe("trip");
+  });
+
   it("reisai be parų praleidžiami", () => {
     expect(emptyRunStart([trip({ days: 0 })], "2026-11-01", "2026-10-31", gps)?.source).toBe("gps");
   });

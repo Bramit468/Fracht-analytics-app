@@ -34,7 +34,7 @@ import { emptyRunToLoading } from "./empty-run";
 import { emptyRunNote, GPS_VALID_DAYS } from "../../../lib/empty-run";
 import { addDays } from "../../../lib/trip-progress";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
-import { terrainAdjustedFuel } from "../../../lib/fuel-terrain";
+import { knownLoadFuel, terrainAdjustedFuel } from "../../../lib/fuel-terrain";
 import {
   buildQuoteDraft,
   decisionPatch,
@@ -1024,7 +1024,8 @@ export function TripForm({
         weights: {
           emptyWeightKg: selected?.empty_weight_kg ?? null,
           totalPermittedWeightKg: selected?.total_permitted_weight_kg ?? null,
-          loadWeightKg: Number.isFinite(loadTonnes) && loadTonnes > 0 ? loadTonnes * 1000 : null,
+          // Įrašytas 0 – tuščia fura (PTV tada nelaiko jos pilnos); tuščias laukas – nežinoma.
+          loadWeightKg: krovinioSvoris.trim() !== "" && Number.isFinite(loadTonnes) && loadTonnes >= 0 ? loadTonnes * 1000 : null,
         },
       });
       // Aplenkta naujesnės užklausos: jos rezultatas rodomas, šios – ne.
@@ -1228,7 +1229,10 @@ export function TripForm({
         const fuelField = form.elements.namedItem("fuel_l_per_100km");
         if (fuelField instanceof HTMLInputElement) {
           if (bazineNorma.current === null && Number(fuelField.value) > 0) bazineNorma.current = Number(fuelField.value);
-          const adjusted = terrainAdjustedFuel(bazineNorma.current, route.ptvL100);
+          // Žinomas krovinio svoris – PTV su juo tikslus (±7 %); nežinomas – furos vidurkis × profilis.
+          const tonnes = Number(krovinioSvoris.replace(",", "."));
+          const loadKnown = krovinioSvoris.trim() !== "" && Number.isFinite(tonnes) && tonnes >= 0;
+          const adjusted = loadKnown ? knownLoadFuel(route.ptvL100, tonnes) : terrainAdjustedFuel(bazineNorma.current, route.ptvL100);
           if (adjusted) {
             fuelField.value = String(adjusted.litresPer100Km);
             fuelNote = adjusted.note;

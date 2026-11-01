@@ -31,7 +31,8 @@ import { emptyKmByTruck } from "../../../lib/empty-km";
 import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
-import { emptyRunNote } from "../../../lib/empty-run";
+import { emptyRunNote, GPS_VALID_DAYS } from "../../../lib/empty-run";
+import { addDays } from "../../../lib/trip-progress";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import {
   buildQuoteDraft,
@@ -234,6 +235,8 @@ export function TripForm({
   const [derybuRiba, setDerybuRiba] = useState<number | null>(null);
   /** Tušti km skaičiavimo metu – verdikto eilutei. */
   const [tusciKm, setTusciKm] = useState(0);
+  /** Ranka įrašyti tušti km: kol laukas netuščias, skaičiuoklė jų neperrašo. */
+  const tusciKmRanka = useRef<number | null>(null);
   /**
    * Vieno ekrano pasiūlymas: kaina skaičiuojama pati, kai užpildyti fura, data
    * ir abu adresai, o pakeista kaina perskaičiuojama be PTV – tik kai laukai
@@ -1164,13 +1167,15 @@ export function TripForm({
       const truckValue = truckField instanceof HTMLSelectElement ? truckField.value : "";
       const dateField = form.elements.namedItem("trip_date");
       const quoteDate = dateField instanceof HTMLInputElement ? dateField.value : "";
+      // Ranka įrašyti tušti km – dispečeris žino geriau: jų neperrašome ir PTV neklausiame.
+      const rankaTusti = write ? tusciKmRanka.current : null;
       const [route, scheduleDays, kuroKainos, tuscias] = await Promise.all([
         fillFromRoute(tarpiniai, write, stops),
         planDriverHours(),
         // Kuro kaina – pagal šalis, per kurias eina maršrutas, ne pagal tai, kur fura pylėsi praėjusį mėnesį.
         fetchFuelPrices(kuroLaikotarpis.from, kuroLaikotarpis.to).catch(() => null),
         // Tušti km nuo ten, kur fura bus – tik naujam reisui: išsaugoto laukai nekeičiami.
-        write && truckValue && quoteDate && (stops[0].address.trim() || stops[0].point)
+        write && rankaTusti === null && truckValue && quoteDate && (stops[0].address.trim() || stops[0].point)
           ? emptyRunToLoading(truckValue, quoteDate, { address: stops[0].address, point: stops[0].point }).catch(() => null)
           : Promise.resolve(null),
       ]);
@@ -1188,7 +1193,16 @@ export function TripForm({
       };
       const plate = trucks.find((truck) => truck.id === truckValue)?.plate;
       const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
-      const emptyKm = emptyRun ? emptyRun.km : route ? defaultEmptyKm(route.paidKm, emptyShare) : 0;
+      const emptyKm = rankaTusti ?? (emptyRun ? emptyRun.km : route ? defaultEmptyKm(route.paidKm, emptyShare) : 0);
+      // Vėlesniam kroviniui dabartinė vieta netinka – primename, kad žinant galima įrašyti ranka.
+      const veliauNeiRytoj = quoteDate !== "" && quoteDate > addDays(todayInVilnius(), GPS_VALID_DAYS);
+      const tusciuPastaba = rankaTusti !== null
+        ? `Tušti km: ${String(rankaTusti).replace(".", ",")} – įrašyta ranka. Kad skaičiuotų pats, ištrinkite lauką „Tušti km“.`
+        : emptyRun && route
+          ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write)
+          : write && veliauNeiRytoj && !emptyRun
+            ? `Tušti km: ${String(emptyKm).replace(".", ",")} – pagal furos istoriją, nes krovinys vėliau nei rytoj, o furos reisas iki tol nežinomas. Jei žinote, iš kur fura atvažiuos, įrašykite tuščius km ranka („Pakeisti ranka“ → „Tušti km“).`
+            : undefined;
       const emptyTollCents = emptyRun
         ? emptyRun.tollCents
         : route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
@@ -1227,7 +1241,7 @@ export function TripForm({
         serviceHours: sustojimuVal,
         routeFuel: route ? routeFuel : undefined,
         emptyShare,
-        emptyRunNote: emptyRun && route ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write) : undefined,
+        emptyRunNote: tusciuPastaba,
         ferryUnknown: route?.ferryUnknown ?? false,
         approximateAddress: route?.approximate ?? false,
       }));
@@ -1702,7 +1716,16 @@ export function TripForm({
           <label>Išvykimo laikas<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
           {/* Jei vairuotojas jau vairavo, pirmas poilsis ateina anksčiau – keičia paras. */}
           {routeLookup && <label>Vairuotojas jau vairavo, val.<input type="text" inputMode="decimal" value={jauVairavo} onChange={(event) => setJauVairavo(event.target.value)} placeholder="0" className={inputClass} /></label>}
-          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 0.001 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : undefined} />
+          {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 0.001 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : name === "empty_km" ? (event) => {
+            const value = event.currentTarget.value.trim();
+            const km = Number(value);
+            tusciKmRanka.current = value !== "" && Number.isFinite(km) && km >= 0 ? km : null;
+            // Maršruto atkarpa „Nemokami“ turi sutapti su visais km – kitaip skaičiavimas atmestų formą.
+            const paid = Number((formRef.current?.elements.namedItem("paid_km") as HTMLInputElement | null)?.value);
+            if (tusciKmRanka.current !== null && Number.isFinite(paid) && legs.length === 1 && legs[0].country === "Nemokami") {
+              setLegs([{ ...legs[0], km: String(Math.round((paid + tusciKmRanka.current) * 100) / 100) }]);
+            }
+          } : undefined} />
             {name === "days" && dienuSaltinis && <span className="mt-1 block text-sm text-muted">
               {dienuSaltinis.source === "schedule" ? "Iš PTV vairavimo laiko plano." : "Apytiksliai pagal kelio valandas – plano nėra."}
               {dienuSaltinis.stale && <strong className="text-warn"> Maršrutas pakeistas – paspauskite „Skaičiuoti kainą“ iš naujo.</strong>}

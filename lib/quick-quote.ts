@@ -102,6 +102,8 @@ export interface QuoteNoteInput {
   emptyShare: number | null;
   /** Tušti km iš tikro kelio iki pakrovimo (`emptyRunNote`) – tada istorija nerodoma. */
   emptyRunNote?: string;
+  /** Kuro norma pagal maršruto profilį (`lib/fuel-terrain.ts`). */
+  fuelNote?: string;
   ferryUnknown: boolean;
   approximateAddress: boolean;
 }
@@ -146,6 +148,8 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
       + (input.emptyTollCents ? ` Keliai jiems ${(input.emptyTollCents / 100).toFixed(2).replace(".", ",")} € – pagal maršruto vidurkį €/km.` : ""),
     );
   }
+
+  if (input.fuelNote) notes.push(input.fuelNote);
 
   if (input.routeFuel) {
     const price = (value: number) => value.toFixed(3).replace(".", ",");

@@ -34,6 +34,7 @@ import { emptyRunToLoading } from "./empty-run";
 import { emptyRunNote, GPS_VALID_DAYS } from "../../../lib/empty-run";
 import { addDays } from "../../../lib/trip-progress";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
+import { terrainAdjustedFuel } from "../../../lib/fuel-terrain";
 import {
   buildQuoteDraft,
   decisionPatch,
@@ -180,6 +181,8 @@ interface RouteOutcome {
   kmByCountry: CountryKm[];
   ferryUnknown: boolean;
   approximate: boolean;
+  /** PTV kuro įvertis l/100 (HBEFA) – maršruto profiliui; `null`, jei PTV jo negrąžino. */
+  ptvL100: number | null;
 }
 
 export function TripForm({
@@ -237,6 +240,10 @@ export function TripForm({
   const [tusciKm, setTusciKm] = useState(0);
   /** Ranka įrašyti tušti km: kol laukas netuščias, skaičiuoklė jų neperrašo. */
   const tusciKmRanka = useRef<number | null>(null);
+  /** Furos kuro vidurkis (30 d.) – maršruto profilis jį koreguoja, bet neperrašo (`lib/fuel-terrain.ts`). */
+  const bazineNorma = useRef<number | null>(null);
+  /** Kuro normą žmogus pakeitė ranka – maršruto profilis jos neliečia. */
+  const kuroRanka = useRef(false);
   /**
    * Vieno ekrano pasiūlymas: kaina skaičiuojama pati, kai užpildyti fura, data
    * ir abu adresai, o pakeista kaina perskaičiuojama be PTV – tik kai laukai
@@ -933,6 +940,8 @@ export function TripForm({
     if (!form || tripId) return;
 
     const plate = trucks.find((truck) => truck.id === truckId)?.plate ?? "";
+    // Kita fura – senos furos vidurkis nebetinka (kol nauja neužpildyta – imamas laukas).
+    bazineNorma.current = null;
     if (!plate) {
       setNormos("");
       return;
@@ -953,6 +962,10 @@ export function TripForm({
         const field = form.elements.namedItem(name);
         if (field instanceof HTMLInputElement) field.value = filled;
       }
+      // Furos tikras vidurkis – pagrindas, kurį maršruto profilis tik koreguoja.
+      const norm = Number(result.fill.fuel_l_per_100km);
+      bazineNorma.current = norm > 0 ? norm : null;
+      kuroRanka.current = false;
 
       setNormos(
         rates.length > 0
@@ -1125,6 +1138,8 @@ export function TripForm({
         kmByCountry: result.kmByCountry,
         ferryUnknown: needsFerryPrice && !publicFare,
         approximate: result.approximate,
+        // PTV kuro įvertis pagal nuolydžius, kelius ir svorį – maršruto profiliui.
+        ptvL100: result.emissions?.litresPer100Km ?? null,
       };
     } catch {
       if (run === routeRun.current) setMarsrutas("Nepavyko suskaičiuoti maršruto.");
@@ -1207,6 +1222,20 @@ export function TripForm({
         ? emptyRun.tollCents
         : route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
 
+      // Kuro norma pagal maršrutą: furos vidurkis × PTV profilis (kalnai, keliai, svoris).
+      let fuelNote: string | undefined;
+      if (write && route && !kuroRanka.current) {
+        const fuelField = form.elements.namedItem("fuel_l_per_100km");
+        if (fuelField instanceof HTMLInputElement) {
+          if (bazineNorma.current === null && Number(fuelField.value) > 0) bazineNorma.current = Number(fuelField.value);
+          const adjusted = terrainAdjustedFuel(bazineNorma.current, route.ptvL100);
+          if (adjusted) {
+            fuelField.value = String(adjusted.litresPer100Km);
+            fuelNote = adjusted.note;
+          }
+        }
+      }
+
       if (write) {
         const days = form.elements.namedItem("days");
         if (days instanceof HTMLInputElement && quoted !== null) days.value = String(quoted);
@@ -1242,6 +1271,7 @@ export function TripForm({
         routeFuel: route ? routeFuel : undefined,
         emptyShare,
         emptyRunNote: tusciuPastaba,
+        fuelNote,
         ferryUnknown: route?.ferryUnknown ?? false,
         approximateAddress: route?.approximate ?? false,
       }));
@@ -1736,7 +1766,7 @@ export function TripForm({
 
       <Skiltis numeris={4} antraste="Kiek išleis">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} /></label>)}
+          {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} onChange={name === "fuel_l_per_100km" ? (event) => { kuroRanka.current = event.currentTarget.value.trim() !== ""; } : undefined} /></label>)}
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
         {normos && <p role="status" className="mt-2 text-sm text-muted">{normos}</p>}

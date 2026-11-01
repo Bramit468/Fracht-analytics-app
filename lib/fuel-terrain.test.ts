@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { knownLoadFuel, terrainAdjustedFuel, terrainFactor } from "./fuel-terrain";
 
 describe("žinomas krovinio svoris", () => {
-  it("PTV su svoriu × 0,94 – tuščias ruožas Langhus → Göteborg: 25,73 → ~24,2 (faktas ~24,1)", () => {
+  it("PTV su svoriu – be pataisų (per mažai duomenų koeficientui)", () => {
     expect(knownLoadFuel(25.73, 0)).toEqual({
-      litresPer100Km: 24.19,
-      note: "Kuras: 24,2 l/100 – PTV pagal maršrutą (nuolydžiai, keliai) ir 0,0 t krovinį 25,7 × 0,94 (pataisa pagal tuščių ruožų faktą).",
+      litresPer100Km: 25.73,
+      note: "Kuras: 25,7 l/100 – PTV pagal maršrutą (nuolydžiai, keliai) ir 0,0 t krovinį.",
     });
     expect(knownLoadFuel(null, 10)).toBeNull();
   });

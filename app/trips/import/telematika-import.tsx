@@ -29,6 +29,7 @@ interface ImportSummary {
   guesses: string[];
   unassignedTollCents: number;
   unassignedEmptyKm: number;
+  suspectEmptyKm: number;
 }
 
 /** Praleidimo priežastys suskaičiuotos: „furos nėra sąraše – 3“. */
@@ -138,6 +139,7 @@ export function TelematikaImport() {
         guesses: done.filter((item) => item.notes.length > 0).map((item) => `${item.trip.trip_number}: ${item.notes.join(" ")}`),
         unassignedTollCents: result.unassignedTollCents,
         unassignedEmptyKm: result.unassignedEmptyKm,
+        suspectEmptyKm: result.suspectEmptyKm,
       });
       setReload((value) => value + 1);
     } catch {
@@ -164,6 +166,7 @@ export function TelematikaImport() {
         {summary.skipped.length > 0 && <> · praleista: {summary.skipped.length} ({reasonCounts(summary.skipped)})</>}.
         {summary.unassignedTollCents > 0 && <> Kelių mokesčių dienomis be užsakymų: {formatCents(summary.unassignedTollCents)} – jie reisams nepriskirti.</>}
         {summary.unassignedEmptyKm > 0 && <> Km be užsakymo, po kurių kito užsakymo nebuvo (grįžimas į bazę, stovėjimas): {summary.unassignedEmptyKm.toLocaleString("lt-LT")} km – nepriskirti.</>}
+        {summary.suspectEmptyKm > 0 && <> Dar {summary.suspectEmptyKm.toLocaleString("lt-LT")} km be užsakymo – per daug vienam pervažiavimui, greičiausiai Telematikoje neįvesti užsakymai; reisams nepriskirti (žr. pastabas prie reisų).</>}
       </p>
       {summary.failures.length > 0 && <p role="alert" className="text-bad">
         Neįrašyti: {summary.failures.join(", ")}. Dažniausia priežastis – nepaleista migracija 0019 arba trūksta „Nemokami“ įkainio.

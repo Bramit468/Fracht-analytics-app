@@ -35,7 +35,7 @@ export interface OrderPreview extends ImportedTrip {
 }
 
 export type OrderImportResult =
-  | { ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number }
+  | { ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number; suspectEmptyKm: number }
   | { ok: false; message: string };
 
 /** Dabartinis laikas taip, kaip jį rašo Telematika: vietinis, be zonos. */
@@ -135,7 +135,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm };
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm, suspectEmptyKm: built.suspectEmptyKm };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

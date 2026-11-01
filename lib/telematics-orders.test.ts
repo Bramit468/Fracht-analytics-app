@@ -38,8 +38,8 @@ describe("allocateTime", () => {
 });
 
 describe("carriedEmptyKm", () => {
-  const order = (orderId: string, start: string, legKm: number | null, byDay: Record<string, number>) =>
-    ({ orderId, plate: "MHE 763", start, legKm, byDay: new Map(Object.entries(byDay)) });
+  const order = (orderId: string, start: string, legKm: number | null, byDay: Record<string, number>, odometer: [number | null, number | null] = [null, null], end = start) =>
+    ({ orderId, plate: "MHE 763", start, end, legKm, byDay: new Map(Object.entries(byDay)), odometerStart: odometer[0], odometerEnd: odometer[1] });
   const day = (date: string, km: number): DailyDistance => ({ plate: "MHE763", date, km, fuelL: null });
   const run = (orders: ReturnType<typeof order>[], daily: DailyDistance[], next: Record<string, string> = {}) =>
     carriedEmptyKm({ orders, daily, firstDay: "2026-10-01", lastDay: "2026-10-31", nextOrder: (_plate, date) => next[date] ?? null });
@@ -60,6 +60,33 @@ describe("carriedEmptyKm", () => {
   it("užsakymas be atkarpų km – blokas praleidžiamas, kad nebūtų įskaičiuota dukart", () => {
     const result = run([order("a", "2026-10-05 08:00:00", null, { "2026-10-05": 10 })], [day("2026-10-05", 900)]);
     expect(result.carried.size).toBe(0);
+  });
+
+  it("odometras – tikslu: kito pradžia − ankstesnio pabaiga; paros skaičiavimas jam netaikomas", () => {
+    const result = run(
+      [
+        order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 6 }, [100_000, 100_300], "2026-10-05 12:00:00"),
+        // Tarp jų – diena be užsakymo (10-06, 400 km), bet odometras sako 412.
+        order("b", "2026-10-07 08:00:00", 290, { "2026-10-07": 10 }, [100_712, 101_002], "2026-10-07 18:00:00"),
+      ],
+      [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 302)],
+      { "2026-10-06": "b" },
+    );
+    expect(Object.fromEntries(result.carried)).toEqual({ b: 412 });
+    expect(result.byOdometer.has("b")).toBe(true);
+  });
+
+  it("odometras netikėtinas (daugiau nei nuvažiuota tomis dienomis) – lieka paros rida", () => {
+    const result = run(
+      [
+        order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 6 }, [100_000, 100_300], "2026-10-05 12:00:00"),
+        order("b", "2026-10-07 08:00:00", 290, { "2026-10-07": 10 }, [105_000, 105_290], "2026-10-07 18:00:00"),
+      ],
+      [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 290)],
+      { "2026-10-06": "b" },
+    );
+    expect(Object.fromEntries(result.carried)).toEqual({ b: 400 });
+    expect(result.byOdometer.size).toBe(0);
   });
 
   it("diena be užsakymų – kitam; be kito užsakymo – nepriskirta; už laikotarpio ribų – nieko", () => {

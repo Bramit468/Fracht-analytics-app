@@ -76,6 +76,33 @@ export function dailyArchiveRows(payload: unknown): DailyArchiveRow[] {
   return [...rows.values()];
 }
 
+export interface RawArchiveRow {
+  feed: "orders" | "trips";
+  item_key: string;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Orders ir Trips eilutės visos, su visais laukais (0028). Raktas – tiekėjo ID,
+ * kad pakartotinis archyvavimas perrašytų, o ne dubliuotų. Kelionei be ID –
+ * užsakymas + pradžia + pabaiga + vilkikas: tas pats užsakymas turi kelias atkarpas.
+ */
+export function rawArchiveRows(feed: "orders" | "trips", payload: unknown): RawArchiveRow[] {
+  if (!Array.isArray(payload)) throw new Error(`${feed === "orders" ? "Orders" : "Trips"} atsakymas turi būti sąrašas.`);
+  const rows = new Map<string, RawArchiveRow>();
+  for (const row of payload) {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) continue;
+    const source = row as Record<string, unknown>;
+    const key = feed === "orders"
+      ? text(source.OrderId)
+      : text(source.TripId) ?? text(source.Id)
+        ?? [text(source.OrderId), text(source.DateStart), text(source.DateEnd), text(source.TruckPlates) ?? text(source.Number)].filter(Boolean).join("|");
+    if (!key) continue;
+    rows.set(key.slice(0, 200), { feed, item_key: key.slice(0, 200), payload: source });
+  }
+  return [...rows.values()];
+}
+
 export function supplyArchiveRows(payload: unknown): SupplyArchiveRow[] {
   if (!Array.isArray(payload)) throw new Error("Supplies atsakymas turi būti sąrašas.");
 

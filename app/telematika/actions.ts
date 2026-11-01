@@ -2,7 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
-import { dailyArchiveRows, supplyArchiveRows } from "@/lib/telematics-archive";
+import { dailyArchiveRows, rawArchiveRows, supplyArchiveRows, type RawArchiveRow } from "@/lib/telematics-archive";
 import { fetchTelematics } from "@/lib/telematics-feed";
 
 export interface ArchiveState {
@@ -40,13 +40,19 @@ export async function archiveTelematics(): Promise<ArchiveState> {
   }
 
   let daily, supplies;
+  let raw: RawArchiveRow[] = [];
   try {
-    const [canRaw, suppliesRaw] = await Promise.all([
+    const [canRaw, suppliesRaw, ordersRaw, tripsRaw] = await Promise.all([
       fetchTelematics("canDaily"),
       fetchTelematics("supplies"),
+      // Užsakymai ir kelionės – ne visada prijungti; be jų archyvas vis tiek veikia.
+      fetchTelematics("orders").catch(() => null),
+      fetchTelematics("trips").catch(() => null),
     ]);
     daily = dailyArchiveRows(canRaw);
     supplies = supplyArchiveRows(suppliesRaw);
+    if (ordersRaw !== null) raw = raw.concat(rawArchiveRows("orders", ordersRaw));
+    if (tripsRaw !== null) raw = raw.concat(rawArchiveRows("trips", tripsRaw));
   } catch {
     return { status: "error", message: "Nepavyko gauti telematikos duomenų." };
   }
@@ -71,8 +77,25 @@ export async function archiveTelematics(): Promise<ArchiveState> {
     }
   }
 
+  // Užsakymų ir kelionių visi laukai (0028). Be migracijos – praleidžiama, ne klaida.
+  let rawSaved = 0;
+  let rawMissing = false;
+  for (let i = 0; i < raw.length; i += PORCIJA) {
+    const { error } = await supabase
+      .from("telematics_raw")
+      .upsert(raw.slice(i, i + PORCIJA), { onConflict: "company_id,feed,item_key" });
+    if (error) {
+      rawMissing = error.code === "42P01" || error.code === "PGRST205";
+      if (!rawMissing) console.error("Nepavyko archyvuoti užsakymų", error);
+      break;
+    }
+    rawSaved += Math.min(PORCIJA, raw.length - i);
+  }
+
   return {
     status: "success",
-    message: `Archyvuota: ${daily.length} paros eilučių, ${supplies.length} pirkimų.`,
+    message: `Archyvuota: ${daily.length} paros eilučių, ${supplies.length} pirkimų`
+      + (rawSaved > 0 ? `, ${rawSaved} užsakymų ir kelionių eilučių.` : ".")
+      + (rawMissing ? " Užsakymams reikia migracijos 0028." : ""),
   };
 }

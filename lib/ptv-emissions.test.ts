@@ -37,6 +37,11 @@ describe("weightParams", () => {
     expect(weightParams({ emptyWeightKg: 0, loadWeightKg: -500 })).toEqual({});
   });
 
+  it("0 kg krovinio – perduodama: tai tuščia fura, ne nežinomas svoris", () => {
+    expect(weightParams({ loadWeightKg: 0 })).toEqual({ "vehicle[loadWeight]": "0" });
+    expect(hasWeights({ loadWeightKg: 0 })).toBe(true);
+  });
+
   it("apvalina iki kilogramų", () => {
     expect(weightParams({ loadWeightKg: 20500.6 })["vehicle[loadWeight]"]).toBe("20501");
   });

@@ -69,7 +69,10 @@ export function weightParams(weights: VehicleWeights): Record<string, string> {
   };
 
   add("emptyWeight", weights.emptyWeightKg);
-  add("loadWeight", weights.loadWeightKg);
+  // 0 kg krovinio – tikra reikšmė (tuščia fura), ne „nežinoma“: be jos PTV
+  // laiko furą pilną ir kuro rodo ~70 % daugiau (2026-11-01: 25,7 vs 43,9 l/100).
+  if (weights.loadWeightKg === 0) params["vehicle[loadWeight]"] = "0";
+  else add("loadWeight", weights.loadWeightKg);
   add("totalPermittedWeight", weights.totalPermittedWeightKg);
 
   return params;

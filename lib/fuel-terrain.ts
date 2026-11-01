@@ -17,13 +17,6 @@ export const PTV_REFERENCE_L100 = 44.3;
 /** Faktas ÷ PTV tiems patiems reisams – kai furos vidurkio nėra. */
 export const PTV_FLEET_CALIBRATION = 0.71;
 
-/**
- * Faktas ÷ PTV, kai krovinio svoris žinomas. Matuota tuščiais ruožais – vieninteliai,
- * kurių svoris tikrai žinomas (0 kg): LSE 728 Langhus → Göteborg, 6 važiavimai,
- * faktas ~24,1, PTV su 0 kg 25,7, be svorio 43,9 l/100 (2026-11-01). Vienas
- * maršrutas – kai bus daugiau tuščių ruožų su kuru, perskaičiuoti.
- */
-export const PTV_KNOWN_LOAD_CALIBRATION = 0.94;
 
 /** Ribos: vienas keistas PTV skaičius neturi padvigubinti kuro. */
 const MIN_FACTOR = 0.8;
@@ -43,16 +36,20 @@ export interface TerrainFuel {
 
 /**
  * Krovinio svoris žinomas – PTV su juo yra tiesioginis įvertis (kalnai, keliai,
- * svoris), ±7 % nuo fakto. Furos vidurkis čia nebetinka: jame sumaišyti visokie
- * kroviniai, o šio svoris jau žinomas.
+ * svoris). Furos vidurkis čia nebetinka: jame sumaišyti visokie kroviniai.
+ *
+ * Be pataisos sąmoningai: 2026-11-01 tuščių ruožų patikroje (0 kg, LSE 728
+ * Langhus → Göteborg, 6 važiavimai) PTV 25,7, faktas ~24,1 l/100 (PTV +7 %), bet
+ * vienas maršrutas ir viena fura – per mažai koeficientui. Kai bus daugiau
+ * važiavimų su žinomu svoriu – furos koeficientas.
  */
 export function knownLoadFuel(ptvLitresPer100Km: number | null, loadTonnes: number): TerrainFuel | null {
   if (ptvLitresPer100Km === null || !(ptvLitresPer100Km > 0)) return null;
-  const value = Math.round(ptvLitresPer100Km * PTV_KNOWN_LOAD_CALIBRATION * 100) / 100;
+  const value = Math.round(ptvLitresPer100Km * 100) / 100;
   const lt = (number: number, digits = 1) => number.toFixed(digits).replace(".", ",");
   return {
     litresPer100Km: value,
-    note: `Kuras: ${lt(value)} l/100 – PTV pagal maršrutą (nuolydžiai, keliai) ir ${lt(loadTonnes)} t krovinį ${lt(ptvLitresPer100Km)} × ${lt(PTV_KNOWN_LOAD_CALIBRATION, 2)} (pataisa pagal tuščių ruožų faktą).`,
+    note: `Kuras: ${lt(value)} l/100 – PTV pagal maršrutą (nuolydžiai, keliai) ir ${lt(loadTonnes)} t krovinį.`,
   };
 }
 

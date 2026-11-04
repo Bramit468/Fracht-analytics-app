@@ -1,6 +1,7 @@
 "use server";
 
 import { MIN_ADDRESS_QUERY } from "@/lib/address-suggest";
+import { ptvGeocodingUrl } from "@/lib/ptv-geocoding";
 import { parseRouteLine, simplifyRouteLine, type LineCoordinate } from "@/lib/route-line";
 import {
   firstPlace,
@@ -43,6 +44,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
  */
 export async function resolveAddress(
   searchText: string,
+  countryFilter?: string | null,
 ): Promise<Pick<GeocodedPlace, "latitude" | "longitude" | "formattedAddress"> | null> {
   if (searchText.trim().length < MIN_ADDRESS_QUERY) return null;
 
@@ -54,7 +56,7 @@ export async function resolveAddress(
   if (!key) return null;
 
   try {
-    const url = `${PTV_GEOCODING_URL}?searchText=${encodeURIComponent(searchText)}&language=lt`;
+    const url = ptvGeocodingUrl(PTV_GEOCODING_URL, searchText, countryFilter);
     return firstPlace(await ptvJson(url, key));
   } catch {
     return null;

@@ -1638,32 +1638,6 @@ export function TripForm({
           {/* Mygtukas paslėptas: kaina skaičiuojama pati, kai užpildyta fura,
               data ir adresai. Per jį eina visos apsaugos nuo lenktynių (#189). */}
           <button ref={kainosMygtukas} type="button" hidden disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} />
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={vengtiKeltu} onChange={(event) => { event.stopPropagation(); setVengtiKeltu(event.target.checked); requote(); }} />
-              Vengti keltų
-            </label>
-          </div>
-          {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
-          {/* Tušti km iš Telematikos furos vietos; vietai keičiantis – kur fura bus. */}
-          {!tripId && tusciInfo && <div className="mt-2 text-sm">
-            <p className="text-ink">{tusciInfo.text}</p>
-            {tusciInfo.gps && <p className="mt-1 text-warn">Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą.</p>}
-            <div className="mt-2 max-w-md">
-              <AddressField
-                label="Kur tuo metu bus fura"
-                value={furaBus.address}
-                point={furaBus.point}
-                onChange={(address, point) => {
-                  setFuraBus({ address, point });
-                  // Pasirinkta vieta ar išvalyta (grįžtama prie GPS) – kaina iš naujo.
-                  if (point || address.trim() === "") requote();
-                }}
-                enabled={routeLookup}
-                inputClass={inputClass}
-              />
-            </div>
-          </div>}
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
         </div>}
         {/* Kelto kaina ir apribojimai keičia sprendimą – trumpai čia, smulkiai apačioje. */}
@@ -1852,6 +1826,30 @@ export function TripForm({
         <div className="mt-4 space-y-6">
 
       {routeLookup && <Skiltis antraste="Maršrutas">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={vengtiKeltu} onChange={(event) => { event.stopPropagation(); setVengtiKeltu(event.target.checked); requote(); }} />
+            Vengti keltų
+          </label>
+          {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
+          {/* Tušti km iš Telematikos furos vietos; vietai keičiantis – kur fura bus. */}
+          {!tripId && tusciInfo && <div className="mt-2 text-sm">
+            <p className="text-ink">{tusciInfo.text}</p>
+            {tusciInfo.gps && <p className="mt-1 text-warn">Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą.</p>}
+            <div className="mt-2 max-w-md">
+              <AddressField
+                label="Kur tuo metu bus fura"
+                value={furaBus.address}
+                point={furaBus.point}
+                onChange={(address, point) => {
+                  setFuraBus({ address, point });
+                  // Pasirinkta vieta ar išvalyta (grįžtama prie GPS) – senas rezultatas nebetinka.
+                  if (point || address.trim() === "") requote();
+                }}
+                enabled={routeLookup}
+                inputClass={inputClass}
+              />
+            </div>
+          </div>}
           {/* Laikas – išvykimo vietos laiko juosta, kaip jį grąžina PTV (ne UTC). */}
           {tvarkarastis && <p className="mt-1 text-sm text-ink tabular-nums">
             Atvykimas {tvarkarastis.endTime.replace("T", " ").slice(0, 16)} · {skaicius((hoursBetween(tvarkarastis.startTime, tvarkarastis.endTime) ?? 0) / 24)} par. kelio · vairavimas {durationText(tvarkarastis.drivingMinutes)}, poilsis {durationText(tvarkarastis.restMinutes + tvarkarastis.breakMinutes)}

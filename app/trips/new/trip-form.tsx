@@ -1583,10 +1583,10 @@ export function TripForm({
       {/* Viena skiltis – tai, ko reikia sprendimui: pasiūlymas, šeši laukai,
           verdiktas. Visa kita (maršrutas, žemėlapis, normos, kaštų išskaidymas)
           – apačioje suskleista „Visi kintamieji“. */}
-      <section aria-label="Skaičiuoklė" className="rounded-xl border p-4">
+      <section aria-label="Skaičiuoklė">
         {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
             `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
-        {!tripId && routeLookup && <div className="mb-4 rounded-lg border-2 border-accent bg-raised p-4">
+        {!tripId && routeLookup && <div className="mb-5 rounded-lg bg-raised p-4">
           <label className="block font-semibold text-ink">Įklijuoti pasiūlymą
             <textarea
               value={pasiulymoTekstas}
@@ -1662,12 +1662,12 @@ export function TripForm({
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
         </div>}
         {/* Kelto kaina ir apribojimai keičia sprendimą – trumpai čia, smulkiai apačioje. */}
-        {neivertintasKeltas !== null && <p role="status" className="mt-3 rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
+        {neivertintasKeltas !== null && <p role="status" className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-ink">
           Maršrute keltas{neivertintasKeltas.length ? ` (${neivertintasKeltas.join(", ")})` : ""}:{" "}
           {keltoIvertis ? <>įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong> pagal Scandlines viešą tarifą.</> : <strong className="text-bad">kainos nėra – įrašykite lauke „Keltai (€)“.</strong>}
           {" "}<button type="button" onClick={() => setDetaliai(true)} className="font-semibold underline">Keisti</button>
         </p>}
-        {routeLookup && marsrutoPazeidimai.length > 0 && <p role="alert" className="mt-3 rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
+        {routeLookup && marsrutoPazeidimai.length > 0 && <p role="alert" className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-ink">
           Maršrute yra apribojimų.{" "}<button type="button" onClick={() => setDetaliai(true)} className="font-semibold underline">Žiūrėti</button>
         </p>}
 
@@ -1682,7 +1682,7 @@ export function TripForm({
 
       {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
           paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
-      {result && <section aria-label="Reiso rezultatai" className="mt-4 rounded-lg border border-line-strong bg-surface p-4">
+      {result && <section aria-label="Reiso rezultatai" className="mt-6">
         {/* Pagrindinis klausimas – imti ar ne. Žemiausia kaina – savikaina; žemiau
             jos tik su vadovo pritarimu, jei krovinys padengia kintamus kaštus. */}
         {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${!verdiktas ? "border-line" : verdiktas.kind === "take" ? "border-good" : verdiktas.kind === "negotiate" ? "border-warn" : "border-bad"}`}>
@@ -1746,7 +1746,7 @@ export function TripForm({
         </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
         {/* Pasiūlymų žurnalas (Phase 0, 5): ką nusprendė dispečeris prie Bramit verdikto.
             `stopPropagation` – šie laukai ne reiso dalis ir rezultato nenuvalo. */}
-        {!tripId && verdiktas && <div className="mb-4 rounded-lg border border-line p-3 text-sm">
+        {!tripId && verdiktas && <div className="mb-4 text-sm">
           <div className="grid gap-3 sm:grid-cols-3">
             <label>Galutinė kaina, €<input type="text" inputMode="decimal" value={galutineKaina} onChange={(event) => { event.stopPropagation(); setGalutineKaina(event.target.value); }} placeholder="Neprivaloma" className={inputClass} /></label>
             <label>Priežastis<select value={priezastis} onChange={(event) => { event.stopPropagation(); setPriezastis(event.target.value); }} className={inputClass}>
@@ -1836,7 +1836,7 @@ export function TripForm({
       {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
           skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
           `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
-      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
+      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="border-t border-line pt-5">
         <summary className="cursor-pointer font-semibold">Visi kintamieji</summary>
         <div className="mt-4 space-y-6">
 
@@ -1848,7 +1848,7 @@ export function TripForm({
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
             {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
           </ul>}
-        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
+        {neivertintasKeltas !== null && <div className="mt-4 rounded-lg bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
           <p className="mt-1 text-sm text-ink">
             Maršrute yra keltas {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : ""}. Krovininių bilietų kainų PTV neturi,{" "}
@@ -1907,7 +1907,7 @@ export function TripForm({
         </div>}
         {/* Apribojimai sugrupuoti pagal vietą: prie pakrovimo ar iškrovimo tai
             adreso problema, ne maršruto (#193). */}
-        {routeLookup && marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 space-y-3 rounded-lg border border-warn bg-warn-soft p-4 text-sm text-ink">
+        {routeLookup && marsrutoPazeidimai.length > 0 && <div role="alert" className="mt-3 space-y-3 rounded-lg bg-warn-soft p-4 text-sm text-ink">
           {groupViolations(marsrutoPazeidimai, santrauka?.km ?? null).map((group) => <div key={group.place}>
             <p className="font-semibold">{VIOLATION_HEADINGS[group.place]}:</p>
             <ul className="mt-1 list-disc space-y-1 pl-5">
@@ -2127,7 +2127,7 @@ export function TripForm({
       {/* Atkarpos reikalingos tik tada, kai kelių kaina skaičiuojama pagal
           įkainius. Su PTV ten lieka viena „Nemokami" eilutė,
           todėl skiltis suskleista ir nebeblaško. */}
-      <details className="rounded-xl border p-4">
+      <details>
         <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis (kai keliai pagal įkainius)</summary>
         <div className="mt-3 space-y-3">
           {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
@@ -2144,7 +2144,7 @@ export function TripForm({
 /** Poskyris suskleistoje „Visi kintamieji“ dalyje. */
 function Skiltis({ antraste, children }: { antraste: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border p-4">
+    <section>
       <h3 className="mb-3 font-semibold">{antraste}</h3>
       {children}
     </section>

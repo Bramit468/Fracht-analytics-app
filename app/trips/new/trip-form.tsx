@@ -512,10 +512,10 @@ export function TripForm({
   function quoteReady(stopList: Stop[]): boolean {
     const form = formRef.current;
     if (!form || tripId || !routeLookup) return false;
+    // Data neprivaloma: be jos tušti km imami iš istorijos, kaip ir anksčiau
+    // spaudžiant mygtuką. Reikalaujant datos, be jos rezultato nebūdavo visai.
     const truck = form.elements.namedItem("truck_id");
-    const date = form.elements.namedItem("trip_date");
     return truck instanceof HTMLSelectElement && truck.value !== ""
-      && date instanceof HTMLInputElement && date.value !== ""
       && stopList.length >= 2 && stopList.every((stop) => stop.point);
   }
 
@@ -1586,7 +1586,7 @@ export function TripForm({
             </label>
             {kainaSkaiciuojama
               ? <span role="status" className="text-muted">Skaičiuojama…</span>
-              : !result && !tripId && <span className="text-muted">Užpildykite furą, datą ir abu adresus – kaina susiskaičiuos pati.</span>}
+              : !result && !tripId && <span className="text-muted">Pasirinkite furą ir abu adresus iš sąrašo – kaina susiskaičiuos pati.</span>}
           </div>
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}

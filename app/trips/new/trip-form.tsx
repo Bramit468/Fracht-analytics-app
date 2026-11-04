@@ -256,7 +256,7 @@ export function TripForm({
   /** Kur fura bus prieš krovinį – įrašo dispečeris, kai GPS vieta pasikeis. */
   const [furaBus, setFuraBus] = useState({ address: "", point: "" });
   /** Tuščių km eilutė pagrindinėje skiltyje; `gps` – vieta gali keistis. */
-  const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean; unknown: boolean } | null>(null);
+  const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean; unknown: boolean; failed?: boolean } | null>(null);
   /** Tuščias kelias iki pakrovimo žemėlapyje (raudonas) ir furos vieta. */
   const [tuscioKelias, setTuscioKelias] = useState<{ line: LineCoordinate[]; truck: MapStop } | null>(null);
   /** Tarpiniai taškai, nutempti ant raudonos (tuščio kelio) linijos. */
@@ -1281,6 +1281,7 @@ export function TripForm({
       const quoteDate = dateField instanceof HTMLInputElement ? dateField.value : "";
       // Ranka įrašyti tušti km – dispečeris žino geriau: jų neperrašome ir PTV neklausiame.
       const rankaTusti = write ? tusciKmRanka.current : null;
+      let tusciuKlaida = false;
       const [route, scheduleDays, kuroKainos, tuscias] = await Promise.all([
         fillFromRoute(tarpiniai, write, stops),
         planDriverHours(),
@@ -1294,7 +1295,13 @@ export function TripForm({
             { address: stops[0].address, point: stops[0].point },
             furaBus.address.trim() || furaBus.point ? furaBus : null,
             tusciVia,
-          ).catch(() => null)
+          ).catch((cause: unknown) => {
+            // Dažniausiai – atidarytas puslapis iš senesnės versijos (po atnaujinimo
+            // serverio veiksmas nebesutampa). Tyliai praryjus dingdavo tušti km.
+            console.error("Tušti km", cause);
+            tusciuKlaida = true;
+            return null;
+          })
           : Promise.resolve(null),
       ]);
       const emptyRun = tuscias?.ok ? tuscias : null;
@@ -1324,7 +1331,7 @@ export function TripForm({
           : emptyRun
             ? { text: emptyRunShort(emptyRun.start, emptyRun.km), gps: emptyRun.start.source === "gps", unknown: false }
             : route
-              ? { text: "Tušti km iki pakrovimo: 0 – furos vieta nežinoma.", gps: false, unknown: true }
+              ? { text: "Tušti km iki pakrovimo: 0 – furos vieta nežinoma.", gps: false, unknown: true, failed: tusciuKlaida }
               : null);
       }
       const emptyTollCents = emptyRun
@@ -1660,7 +1667,9 @@ export function TripForm({
           <button ref={kainosMygtukas} type="button" hidden disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} />
           {/* Tušti km nuo dabartinės GPS vietos – vietai keičiantis, kur fura bus. */}
           {!tripId && (tusciInfo?.gps || tusciInfo?.unknown || furaBus.address) && <div className="text-sm">
-            <p className="text-warn">{tusciInfo?.unknown
+            <p className={tusciInfo?.failed ? "text-bad" : "text-warn"}>{tusciInfo?.failed
+              ? "Tuščių km gauti nepavyko – perkraukite puslapį (F5) ir spauskite „Skaičiuoti“."
+              : tusciInfo?.unknown
               ? "Furos vieta nežinoma – tušti km neįskaičiuoti. Įveskite, kur tuo metu bus fura."
               : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>
             <div className="mt-2 max-w-md">

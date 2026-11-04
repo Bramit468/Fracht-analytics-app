@@ -1586,7 +1586,7 @@ export function TripForm({
       <section aria-label="Skaičiuoklė">
         {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
             `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
-        {!tripId && routeLookup && <div className="mb-5 rounded-lg bg-raised p-4">
+        {!tripId && routeLookup && <div className="mb-5 rounded-lg border-2 border-accent bg-raised p-4">
           <label className="block font-semibold text-ink">Įklijuoti pasiūlymą
             <textarea
               value={pasiulymoTekstas}
@@ -1609,7 +1609,7 @@ export function TripForm({
                 setPasiulymoTekstas(pasted);
                 void applyOffer(pasted);
               }}
-              className={`${inputClass} border-2! border-accent! font-normal text-ink focus:outline-none focus:ring-2 focus:ring-accent/20`}
+              className={`${inputClass} border-0! font-normal text-ink focus:outline-none focus:ring-2 focus:ring-accent/20`}
             />
           </label>
           {(pasiulymasSkaitomas || pasiulymoBusena?.summary) && <p role="status" className="mt-2 text-sm text-muted">

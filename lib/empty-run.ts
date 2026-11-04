@@ -5,9 +5,11 @@
  * nors fura atvažiavo 98 km tuščia. O tušti km dažnai ir nusprendžia, ar
  * krovinys apsimoka, todėl kelias iki pakrovimo skaičiuojamas iš tikros vietos:
  *
+ * - dispečeris įrašė, kur fura tuo metu bus – nuo ten;
  * - fura dar vykdo (ar vykdys) kitą reisą – nuo to reiso iškrovimo;
- * - kitaip – nuo jos GPS vietos dabar, bet tik šiandienos ar rytojaus kroviniui;
- * - vėlesniam be žinomo reiso – lieka istorija.
+ * - kitaip – nuo jos GPS vietos dabar (bet kuriai datai: forma primena, kad
+ *   vietai keičiantis reikia įrašyti, kur fura bus, arba skaičiuoti prieš reisą);
+ * - be GPS – lieka istorija.
  */
 
 import { stopsFromStored } from "./stops";
@@ -31,7 +33,8 @@ export interface TruckGps {
 
 export type EmptyRunStart =
   | { source: "trip"; tripNumber: string; address: string; /** „55.7,24.3“ arba tuščia. */ point: string }
-  | { source: "gps"; latitude: number; longitude: number; gpsTime: string };
+  | { source: "gps"; latitude: number; longitude: number; gpsTime: string }
+  | { source: "manual"; address: string; point: string };
 
 /** Paskutinė reiso diena imtinai, kaip `isOnTheRoad`: prasidėjusi para yra kelyje. */
 function lastDay(trip: TruckTrip): string {
@@ -68,14 +71,22 @@ export function emptyRunStart(
     }
   }
 
-  // GPS – tik šiandienos ir rytojaus kroviniui: iki vėlesnio fura spės
-  // nuvažiuoti kitur, o dabartinė vieta skaičiuotų nesąmones (draugo pastaba).
-  if (!gps || quoteDate > addDays(today, GPS_VALID_DAYS)) return null;
+  // GPS – bet kuriai datai. Vėlesniam kroviniui vieta gali pasikeisti, todėl
+  // forma tai pasako ir leidžia įrašyti, kur fura tuo metu bus.
+  if (!gps) return null;
   return { source: "gps", ...gps };
 }
 
-/** Kiek dienų į priekį dabartinė GPS vieta dar tinka tuštiems km. */
-export const GPS_VALID_DAYS = 1;
+/** Viena eilutė pagrindinėje skiltyje: kiek ir nuo kur. */
+export function emptyRunShort(start: EmptyRunStart, km: number): string {
+  const kmText = Math.round(km).toLocaleString("lt-LT").replace(/\s/g, " ");
+  const from = start.source === "trip"
+    ? `nuo reiso ${start.tripNumber} iškrovimo (${start.address})`
+    : start.source === "manual"
+      ? `nuo ${start.address}`
+      : `nuo furos vietos dabar (Telematika, ${start.gpsTime.slice(0, 16)})`;
+  return `Tušti km iki pakrovimo: ${kmText} km ${from}.`;
+}
 
 /** Žmogui: iš kur paimti tušti km. */
 export function emptyRunNote(start: EmptyRunStart, km: number, hours: number, applied: boolean): string {
@@ -84,6 +95,8 @@ export function emptyRunNote(start: EmptyRunStart, km: number, hours: number, ap
   const hoursText = String(Math.round(hours * 10) / 10).replace(".", ",");
   const from = start.source === "trip"
     ? `nuo reiso ${start.tripNumber} iškrovimo (${start.address})`
-    : `nuo furos GPS vietos (${start.gpsTime})`;
+    : start.source === "manual"
+      ? `nuo įrašytos furos vietos (${start.address})`
+      : `nuo furos GPS vietos (${start.gpsTime})`;
   return `Tušti km: ${verb} ${kmText} – PTV kelias ${from} iki pakrovimo. Į paras pridėta ${hoursText} val. važiavimo.`;
 }

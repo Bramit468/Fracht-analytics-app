@@ -31,8 +31,7 @@ import { emptyKmByTruck } from "../../../lib/empty-km";
 import { defaultEmptyKm, emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
-import { emptyRunNote, GPS_VALID_DAYS } from "../../../lib/empty-run";
-import { addDays } from "../../../lib/trip-progress";
+import { emptyRunNote, emptyRunShort } from "../../../lib/empty-run";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import { knownLoadFuel, terrainAdjustedFuel } from "../../../lib/fuel-terrain";
 import {
@@ -260,6 +259,10 @@ export function TripForm({
   const [bandyta, setBandyta] = useState(false);
   /** Kaina suplanuota, bet dar neprasidėjo – raudonai tuo metu nežymime. */
   const [kainaLaukia, setKainaLaukia] = useState(false);
+  /** Kur fura bus prieš krovinį – įrašo dispečeris, kai GPS vieta pasikeis. */
+  const [furaBus, setFuraBus] = useState({ address: "", point: "" });
+  /** Tuščių km eilutė pagrindinėje skiltyje; `gps` – vieta gali keistis. */
+  const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean } | null>(null);
   const skaiciuota = useRef(false);
   /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
@@ -1269,8 +1272,13 @@ export function TripForm({
         // Kuro kaina – pagal šalis, per kurias eina maršrutas, ne pagal tai, kur fura pylėsi praėjusį mėnesį.
         fetchFuelPrices(kuroLaikotarpis.from, kuroLaikotarpis.to).catch(() => null),
         // Tušti km nuo ten, kur fura bus – tik naujam reisui: išsaugoto laukai nekeičiami.
-        write && rankaTusti === null && truckValue && quoteDate && (stops[0].address.trim() || stops[0].point)
-          ? emptyRunToLoading(truckValue, quoteDate, { address: stops[0].address, point: stops[0].point }).catch(() => null)
+        write && rankaTusti === null && truckValue && (stops[0].address.trim() || stops[0].point)
+          ? emptyRunToLoading(
+            truckValue,
+            quoteDate,
+            { address: stops[0].address, point: stops[0].point },
+            furaBus.address.trim() || furaBus.point ? furaBus : null,
+          ).catch(() => null)
           : Promise.resolve(null),
       ]);
       const emptyRun = tuscias?.ok ? tuscias : null;
@@ -1288,15 +1296,20 @@ export function TripForm({
       const plate = trucks.find((truck) => truck.id === truckValue)?.plate;
       const emptyShare = emptyKmByTruck(ankstesni).find((row) => row.plate === plate)?.emptyShare ?? null;
       const emptyKm = rankaTusti ?? (emptyRun ? emptyRun.km : route ? defaultEmptyKm(route.paidKm, emptyShare) : 0);
-      // Vėlesniam kroviniui dabartinė vieta netinka – primename, kad žinant galima įrašyti ranka.
-      const veliauNeiRytoj = quoteDate !== "" && quoteDate > addDays(todayInVilnius(), GPS_VALID_DAYS);
       const tusciuPastaba = rankaTusti !== null
         ? `Tušti km: ${String(rankaTusti).replace(".", ",")} – įrašyta ranka. Kad skaičiuotų pats, ištrinkite lauką „Tušti km“.`
         : emptyRun && route
           ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write)
-          : write && veliauNeiRytoj && !emptyRun
-            ? `Tušti km: ${String(emptyKm).replace(".", ",")} – pagal furos istoriją, nes krovinys vėliau nei rytoj, o furos reisas iki tol nežinomas. Jei žinote, iš kur fura atvažiuos, įrašykite tuščius km ranka („Visi kintamieji“ → „Tušti km“).`
-            : undefined;
+          : undefined;
+      if (write) {
+        setTusciInfo(rankaTusti !== null
+          ? { text: `Tušti km iki pakrovimo: ${String(rankaTusti).replace(".", ",")} km – įrašyta ranka.`, gps: false }
+          : emptyRun
+            ? { text: emptyRunShort(emptyRun.start, emptyRun.km), gps: emptyRun.start.source === "gps" }
+            : route
+              ? { text: `Tušti km iki pakrovimo: ${Math.round(emptyKm)} km – pagal furos istoriją, nes jos vieta nežinoma. Įrašykite, kur fura bus.`, gps: false }
+              : null);
+      }
       const emptyTollCents = emptyRun
         ? emptyRun.tollCents
         : route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
@@ -1659,6 +1672,25 @@ export function TripForm({
               : null}
           </div>
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
+          {/* Tušti km iš Telematikos furos vietos; vietai keičiantis – kur fura bus. */}
+          {!tripId && tusciInfo && <div className="mt-2 text-sm">
+            <p className="text-ink">{tusciInfo.text}</p>
+            {tusciInfo.gps && <p className="mt-1 text-warn">Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą.</p>}
+            <div className="mt-2 max-w-md">
+              <AddressField
+                label="Kur tuo metu bus fura"
+                value={furaBus.address}
+                point={furaBus.point}
+                onChange={(address, point) => {
+                  setFuraBus({ address, point });
+                  // Pasirinkta vieta ar išvalyta (grįžtama prie GPS) – kaina iš naujo.
+                  if (point || address.trim() === "") requote();
+                }}
+                enabled={routeLookup}
+                inputClass={inputClass}
+              />
+            </div>
+          </div>}
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
         </div>}
         {/* Kelto kaina ir apribojimai keičia sprendimą – trumpai čia, smulkiai apačioje. */}

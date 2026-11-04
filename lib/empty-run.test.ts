@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emptyRunNote, emptyRunStart, type TruckTrip } from "./empty-run";
+import { emptyRunNote, emptyRunShort, emptyRunStart, type TruckTrip } from "./empty-run";
 
 const gps = { latitude: 54.9, longitude: 23.9, gpsTime: "2026-10-31 09:12:00" };
 
@@ -52,10 +52,10 @@ describe("emptyRunStart", () => {
     expect(emptyRunStart([trip({ destination: "" })], "2026-11-01", "2026-10-31", null)).toBeNull();
   });
 
-  it("GPS – tik šiandienos ir rytojaus kroviniui; vėlesniam – istorija (null)", () => {
+  it("GPS – bet kuriai datai (forma įspėja, kad vieta gali keistis)", () => {
     expect(emptyRunStart([], "2026-10-31", "2026-10-31", gps)?.source).toBe("gps");
     expect(emptyRunStart([], "2026-11-01", "2026-10-31", gps)?.source).toBe("gps");
-    expect(emptyRunStart([], "2026-11-02", "2026-10-31", gps)).toBeNull();
+    expect(emptyRunStart([], "2026-11-12", "2026-10-31", gps)?.source).toBe("gps");
     // Žinomas nesibaigęs reisas tinka ir vėlesnei datai.
     expect(emptyRunStart([trip({ tripDate: "2026-10-31", days: 4 })], "2026-11-05", "2026-10-31", gps)?.source).toBe("trip");
   });
@@ -71,5 +71,11 @@ describe("emptyRunNote", () => {
       "Tušti km: įrašyta 98,46 – PTV kelias nuo reiso R-7 iškrovimo (Oslo) iki pakrovimo. Į paras pridėta 1,8 val. važiavimo.",
     );
     expect(emptyRunNote({ source: "gps", ...gps }, 12, 0.25, false)).toContain("siūloma 12 – PTV kelias nuo furos GPS vietos (2026-10-31 09:12:00)");
+    expect(emptyRunNote({ source: "manual", address: "Kaunas", point: "54.9,23.9" }, 100, 1.5, true)).toContain("nuo įrašytos furos vietos (Kaunas)");
+  });
+
+  it("trumpa eilutė pagrindinei skilčiai", () => {
+    expect(emptyRunShort({ source: "gps", ...gps }, 1234.4)).toBe("Tušti km iki pakrovimo: 1 234 km nuo furos vietos dabar (Telematika, 2026-10-31 09:12).");
+    expect(emptyRunShort({ source: "manual", address: "Kaunas", point: "" }, 86.4)).toBe("Tušti km iki pakrovimo: 86 km nuo Kaunas.");
   });
 });

@@ -1,0 +1,13 @@
+{
+  "source": "unknown",
+  "loading": { "country": "FR", "postalCode": "69800", "city": "Saint-Priest" },
+  "unloading": { "country": "BE", "postalCode": "9000", "city": "Gent" },
+  "loadingDate": "2026-11-17",
+  "loadingTime": "06:00",
+  "unloadingDate": "2026-11-19",
+  "priceCents": 170000,
+  "currency": "EUR",
+  "weightKg": 17600,
+  "ldm": 13.6,
+  "pallets": 33
+}

@@ -1,0 +1,38 @@
+# TRANSPORTO UŽSAKYMAS Nr. SIM-FRBE-2026-004
+
+**Statusas:** Demonstracinis pervežimo pasiūlymas
+
+### 1. Pakrovimo informacija
+
+- Šalis: Prancūzija
+- Miestas: Saint-Priest (Lyon)
+- Pašto kodas: FR-69800
+- Data: 2026-11-17
+- Laikas: 06:00–10:00
+- Pakrovimo būdas: per galinę rampą
+
+### 2. Iškrovimo informacija
+
+- Šalis: Belgija
+- Miestas: Gent
+- Pašto kodas: BE-9000
+- Data: 2026-11-19
+- Laikas: 07:00–11:00
+- Iškrovimas per rampą, iš anksto rezervavus laiko intervalą.
+
+### 3. Krovinio duomenys
+
+- Prekės: atšaldyti pieno produktai
+- Kiekis: 33 EUR paletės
+- Bendras svoris: 17 600 kg
+- Krovimo metrai: 13,6 LDM
+- Krovinio klasė: ne ADR
+
+### 4. Transporto reikalavimai
+
+- 13,6 m šaldytuvinė puspriekabė.
+- Temperatūra viso transportavimo metu nuo +2 °C iki +6 °C.
+
+### 5. Pervežimo užmokestis
+
+**Siūlomas tarifas: 1 700 EUR be PVM.**

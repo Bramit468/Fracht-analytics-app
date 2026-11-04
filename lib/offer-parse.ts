@@ -90,6 +90,8 @@ const WEIGHT_WORDS = ["weight", "gewicht", "waga", "svoris", "masa"];
 const PALLET_WORDS = ["pallet", "palet", "palett"];
 const LDM_WORDS = ["ldm", "loading meter", "lademeter", "metry ładowne", "krovimo metr"];
 const ROUTE_WORDS = ["route", "trasa", "relacja", "maršrutas", "strecke"];
+/** Operaciniai laukai turi pakrovimo žodį, bet nėra pakrovimo vieta. */
+const PLACE_METHOD_WORDS = ["būd", "bud", "method", "ramp"];
 
 function hasWord(label: string, words: readonly string[]): boolean {
   return words.some((word) => label.includes(word));
@@ -315,6 +317,83 @@ export function parsePlace(raw: string): OfferPlace | null {
   return { country, postalCode, city };
 }
 
+type PlaceSide = "loading" | "unloading";
+
+function countryCode(raw: string): string | null {
+  const value = raw.trim();
+  const upper = value.toUpperCase();
+  if (COUNTRIES.includes(upper)) return upper;
+  const name = fold(value);
+  return Object.entries(COUNTRY_NAMES).find(([candidate]) => fold(candidate) === name)?.[1] ?? null;
+}
+
+function postalParts(raw: string): { country: string | null; postalCode: string | null } {
+  const value = raw.trim().toUpperCase();
+  const prefixed = /^([A-Z]{2})[\s-]+([0-9A-Z][0-9A-Z\s-]{2,7})$/.exec(value);
+  if (prefixed && COUNTRIES.includes(prefixed[1])) {
+    return { country: prefixed[1], postalCode: prefixed[2].trim() };
+  }
+  return /^[0-9A-Z][0-9A-Z\s-]{2,7}$/.test(value)
+    ? { country: null, postalCode: value }
+    : { country: null, postalCode: null };
+}
+
+/**
+ * Lentelės tipo užsakymai šalį, miestą ir pašto kodą pateikia atskiromis
+ * eilutėmis po „Pakrovimo informacija“ / „Iškrovimo informacija“ antraštėmis.
+ * Bendras eilučių skaitytuvas jų sujungti negali, todėl sekcijos surenkamos
+ * prieš skaitant likusius laukus.
+ */
+function structuredPlaces(lines: string[]): Partial<Record<PlaceSide, OfferPlace>> {
+  const drafts: Record<PlaceSide, Partial<OfferPlace>> = { loading: {}, unloading: {} };
+  let side: PlaceSide | null = null;
+
+  for (const raw of lines) {
+    const line = raw.replace(/^\s*[-*]\s+/, "").replace(/\*\*/g, "").trim();
+    const normalized = fold(line);
+    if (normalized.includes("pakrovimo informacija") || normalized.includes("loading information")) {
+      side = "loading";
+      continue;
+    }
+    if (normalized.includes("iskrovimo informacija") || normalized.includes("unloading information")) {
+      side = "unloading";
+      continue;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      side = null;
+      continue;
+    }
+    if (!side) continue;
+
+    const separator = line.indexOf(":");
+    if (separator < 0) continue;
+    const label = fold(line.slice(0, separator)).trim();
+    const value = line.slice(separator + 1).trim().replace(/[.;]$/, "");
+    if (["salis", "country", "land", "kraj"].includes(label)) {
+      drafts[side].country = countryCode(value);
+    } else if (["miestas", "city", "stadt", "miasto"].includes(label)) {
+      drafts[side].city = value.replace(/\s*\([^)]*\)\s*$/, "").trim() || null;
+    } else if (["pasto kodas", "postal code", "postcode", "zip", "plz"].includes(label)) {
+      const postal = postalParts(value);
+      drafts[side].postalCode = postal.postalCode;
+      drafts[side].country ??= postal.country;
+    }
+  }
+
+  const found: Partial<Record<PlaceSide, OfferPlace>> = {};
+  for (const side of ["loading", "unloading"] as const) {
+    const draft = drafts[side];
+    if (draft.city) {
+      found[side] = {
+        country: draft.country ?? null,
+        postalCode: draft.postalCode ?? null,
+        city: draft.city,
+      };
+    }
+  }
+  return found;
+}
+
 /** Maršruto eilutė „FR 69007 Lyon -> CZ 10200 Praha“: dvi vietos. */
 function routePlaces(value: string): [OfferPlace, OfferPlace] | null {
   const parts = value.split(/\s*(?:->|=>|>>|→|–>|>)\s*/).filter((part) => part.trim() !== "");
@@ -361,6 +440,9 @@ export function parseOffer(raw: string, today: string): ParsedOffer {
   };
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const structured = structuredPlaces(lines);
+  if (structured.loading) set("loading", structured.loading, "high");
+  if (structured.unloading) set("unloading", structured.unloading, "high");
   // Pavadinimas atskiroje eilutėje („Siūloma kaina“ ⏎ „2 050 €“) galioja kitai
   // eilutei. Be to „Paletės ⏎ 33 EUR“ buvo paimta kaip kaina 33 € (2026-11-04).
   let carried: string | null = null;
@@ -406,7 +488,7 @@ export function parseOffer(raw: string, today: string): ParsedOffer {
     }
 
     const side = route ? null : sideOf(label);
-    if (side && !hasWord(label, LDM_WORDS)) {
+    if (side && !hasWord(label, LDM_WORDS) && !hasWord(label, PLACE_METHOD_WORDS)) {
       const dates = findDates(value, today);
       if (dates.length > 0) {
         if (side === "loading") {

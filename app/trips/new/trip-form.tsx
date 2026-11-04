@@ -26,10 +26,10 @@ import { truckRowToCalc } from "../../../lib/truck";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
-import { emptyKmTollCents, hoursBetween, pickDays, quoteDays, quoteNotes, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
+import { emptyKmTollCents, hoursBetween, pickDays, quoteDays, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading } from "./empty-run";
-import { emptyRunNote, emptyRunShort } from "../../../lib/empty-run";
+import { emptyRunShort } from "../../../lib/empty-run";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import { ptvTripFuel } from "../../../lib/fuel-terrain";
 import {
@@ -358,7 +358,6 @@ export function TripForm({
   const kainosMygtukas = useRef<HTMLButtonElement>(null);
   /** Vykstantis vairavimo laiko plano skaičiavimas ir jo duomenys (#189). */
   const planavimas = useRef<{ key: string; promise: Promise<number | null> } | null>(null);
-  const [pastabos, setPastabos] = useState<string[]>([]);
   /** Iš ko paimtos paros ir ar po to keistas maršrutas. `null` – rašė žmogus. */
   const [dienuSaltinis, setDienuSaltinis] = useState<{ source: DaysSource; stale: boolean } | null>(null);
   /** Rezultatas skaičiuotas be pajamų: antraštė – kiek prašyti, ne pelnas. */
@@ -1219,7 +1218,6 @@ export function TripForm({
     kainaVyksta.current = true;
     laukiaPerskaiciavimo.current = false;
     setKainaSkaiciuojama(true);
-    setPastabos([]);
     setError("");
     try {
       // Tik ką pasirinktos furos normas kraunasi fone; jų nelaukus, vėliau
@@ -1258,17 +1256,8 @@ export function TripForm({
       // Kelias iki pakrovimo irgi užima furos laiką, nors už jį niekas nemoka.
       const tusciuVal = emptyRun ? emptyRun.travelMinutes / 60 : 0;
       const quoted = quoteDays(picked.days, sustojimuVal + tusciuVal);
-      const text = (name: string) => {
-        const field = form.elements.namedItem(name);
-        return field instanceof HTMLInputElement ? field.value : "";
-      };
       // Be istorijos vidurkių (vartotojo sprendimas, 2026-11-04): vieta nežinoma – 0 ir prašoma įrašyti.
       const emptyKm = rankaTusti ?? (emptyRun ? emptyRun.km : 0);
-      const tusciuPastaba = rankaTusti !== null
-        ? `Tušti km: ${String(rankaTusti).replace(".", ",")} – įrašyta ranka. Kad skaičiuotų pats, ištrinkite lauką „Tušti km“.`
-        : emptyRun && route
-          ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write)
-          : "Tušti km: 0 – furos vieta nežinoma. Įrašykite, kur tuo metu bus fura.";
       if (write) {
         setTusciInfo(rankaTusti !== null
           ? { text: `Tušti km iki pakrovimo: ${String(rankaTusti).replace(".", ",")} km – įrašyta ranka.`, gps: false, unknown: false }
@@ -1283,7 +1272,6 @@ export function TripForm({
         : route ? emptyKmTollCents(route.tollCents, route.paidKm, emptyKm) : 0;
 
       // Kuras tik iš PTV: krovinio km su svoriu, tušti km su 0 kg (be istorijos vidurkių).
-      let fuelNote: string | undefined;
       if (write && route && !kuroRanka.current) {
         const fuelField = form.elements.namedItem("fuel_l_per_100km");
         if (fuelField instanceof HTMLInputElement) {
@@ -1296,12 +1284,7 @@ export function TripForm({
             emptyL100: rankaTusti === null && emptyRun ? emptyRun.fuelL100 : null,
             loadTonnes: loadKnown ? tonnes : null,
           });
-          if (ptvFuel) {
-            fuelField.value = String(ptvFuel.litresPer100Km);
-            fuelNote = ptvFuel.note;
-          } else {
-            fuelNote = "PTV kuro sąnaudų nepateikė – lauke „Kuras l/100“ liko ankstesnė reikšmė, patikrinkite.";
-          }
+          if (ptvFuel) fuelField.value = String(ptvFuel.litresPer100Km);
         }
       }
 
@@ -1326,24 +1309,6 @@ export function TripForm({
           });
         }
       }
-
-      setPastabos(quoteNotes({
-        applied: write,
-        routeOk: route !== null,
-        scheduleOk: scheduleDays !== null,
-        noDeparture: !departureIso(text("trip_date"), text("departure_time")),
-        days: quoted,
-        daysSource: quoted === null ? "none" : picked.source,
-        emptyKm,
-        emptyTollCents: write ? emptyTollCents : 0,
-        serviceHours: sustojimuVal,
-        routeFuel: route ? routeFuel : undefined,
-        emptyShare: null,
-        emptyRunNote: tusciuPastaba,
-        fuelNote,
-        ferryUnknown: route?.ferryUnknown ?? false,
-        approximateAddress: route?.approximate ?? false,
-      }));
 
       // Įprastas skaičiavimas su visomis patikromis; trūkstamą lauką parodys
       // ir atvers „Visi kintamieji“; raudonai pažymima, ko kaina neužpildė.
@@ -1826,9 +1791,6 @@ export function TripForm({
           {tvarkarastis && <p className="mt-1 text-sm text-ink tabular-nums">
             Atvykimas {tvarkarastis.endTime.replace("T", " ").slice(0, 16)} · {skaicius((hoursBetween(tvarkarastis.startTime, tvarkarastis.endTime) ?? 0) / 24)} par. kelio · vairavimas {durationText(tvarkarastis.drivingMinutes)}, poilsis {durationText(tvarkarastis.restMinutes + tvarkarastis.breakMinutes)}
           </p>}
-          {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-            {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
-          </ul>}
         {neivertintasKeltas !== null && <div className="mt-4 rounded-lg bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
           <p className="mt-1 text-sm text-ink">

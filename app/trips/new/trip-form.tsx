@@ -23,7 +23,6 @@ import { fetchCompanySettings } from "../../../lib/company-settings";
 import { countriesByDay, fitPerDiemDays, perDiemCentsFor, perDiemDays, type PerDiemDay } from "../../../lib/per-diem";
 import { ensureCustomer, listCustomers, parseCustomerName, type Customer } from "../../../lib/customers";
 import { truckRowToCalc } from "../../../lib/truck";
-import { copiedTruckIds } from "../../../lib/truck-costs-bulk";
 import { getTripWithLegs, listTrips, saveTrip, type TripSummary } from "../../../lib/trips";
 import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
@@ -302,7 +301,6 @@ export function TripForm({
   /** Dienos, pagal kurias suskaičiuotas rodomas rezultatas. */
   const [skaiciuotiDienpinigiai, setSkaiciuotiDienpinigiai] = useState<PerDiemDay[] | null>(null);
   /** Furos numeris, kai jos paros savikaina atrodo nukopijuota (#111). */
-  const [nepatikslinta, setNepatikslinta] = useState<string | null>(null);
   /** Krovinio svoris tonomis – tik PTV užklausai, reise nesaugomas (#86). */
   const [krovinioSvoris, setKrovinioSvoris] = useState("");
   /** Vairavimo laiko planas: pertraukos, poilsis ir teisėtas atvykimas (#87). */
@@ -1459,7 +1457,6 @@ export function TripForm({
         }));
       }
       setIstorija(routeHistory(ankstesni, trip.origin, trip.destination, tripId));
-      setNepatikslinta(copiedTruckIds(trucks).has(truck.id) ? truck.plate : null);
       if (action !== "save") return;
       const customerName = parseCustomerName(text("customer_name"));
       if (!customerName.ok) throw new Error(customerName.error);
@@ -1753,13 +1750,6 @@ export function TripForm({
           </div>
           {sprendimoKlaida && <p role="alert" className="mt-2 text-bad">{sprendimoKlaida}</p>}
         </div>}
-        {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
-            nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
-        {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
-          Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura – greičiausiai
-          nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
-          <Link href="/trucks?skiltis=kastai" className="font-semibold underline">Patikslinti kaštus</Link>
-        </p>}
 
         {/* Įmonės riba (#181): be jos per pigus užsakymas priimamas, nes skaičius
             tik parodomas, bet niekas jo nepažymi. */}

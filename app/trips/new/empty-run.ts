@@ -5,6 +5,7 @@ import { todayInVilnius } from "@/lib/local-date";
 import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
 import { parseRouteLine, simplifyRouteLine, type LineCoordinate } from "@/lib/route-line";
+import { MAX_VIA_POINTS, type ViaPoint } from "@/lib/via-points";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { liveTrucks, parseSnapshots } from "@/lib/telematics";
 import { canUseTelematics } from "@/lib/telematics-access";
@@ -64,7 +65,17 @@ export async function emptyRunToLoading(
   loading: { address: string; point: string },
   /** Dispečerio įrašyta vieta, kur fura tuo metu bus – nustelbia viską. */
   manualStart: { address: string; point: string } | null = null,
+  /** Tarpiniai taškai, nutempti ant raudonos linijos žemėlapyje. */
+  viaInput: ViaPoint[] = [],
 ): Promise<EmptyRunResult> {
+  // Iš kliento – tikrinama: tik skaičiai, tik žemėje, ne daugiau nei leidžia forma.
+  const via = Array.isArray(viaInput)
+    ? viaInput
+      .filter((point) => Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude)
+        && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180)
+      .slice(0, MAX_VIA_POINTS)
+      .map((point) => ({ latitude: point.latitude, longitude: point.longitude }))
+    : [];
   const key = process.env.PTV_API_KEY?.trim();
   if (!key) return { ok: false, reason: "Maršrutų skaičiavimas neįjungtas." };
   const today = todayInVilnius();
@@ -111,7 +122,7 @@ export async function emptyRunToLoading(
     if (!from || !to) return { ok: false, reason: "Nepavyko rasti pradžios ar pakrovimo vietos." };
 
     // Tuščia fura: 0 kg krovinio (PTV kuras tuščiai furai) ir be išvykimo laiko – tipinis eismas.
-    const payload = await ptvJson(routeRequestUrl(from, to, false, routeTiming() ?? undefined, { loadWeightKg: 0 }), key);
+    const payload = await ptvJson(routeRequestUrl(from, to, false, routeTiming() ?? undefined, { loadWeightKg: 0 }, via), key);
     const estimate = routeEstimate(payload);
     if (!estimate) return { ok: false, reason: "Nepavyko suskaičiuoti kelio iki pakrovimo." };
 

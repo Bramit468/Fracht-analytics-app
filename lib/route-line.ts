@@ -151,19 +151,43 @@ export function sharedSegments(
   };
 
   const flags = line.map(near);
-  const result: LineCoordinate[][] = [];
-  let current: LineCoordinate[] = [];
+  const runs: [number, number][] = [];
+  let start = -1;
   for (let i = 1; i < line.length; i++) {
     if (flags[i - 1] && flags[i]) {
-      if (current.length === 0) current.push(line[i - 1]);
-      current.push(line[i]);
-    } else if (current.length > 0) {
-      result.push(current);
-      current = [];
+      if (start < 0) start = i - 1;
+    } else if (start >= 0) {
+      runs.push([start, i - 1]);
+      start = -1;
     }
   }
-  if (current.length > 0) result.push(current);
-  return result;
+  if (start >= 0) runs.push([start, line.length - 1]);
+  return runs.map(([from, to]) => line.slice(from, to + 1));
+}
+
+/**
+ * Kurioje pusėje (žiūrint `line` kryptimi) atsidurti `line` pusei bendrame
+ * ruože: ten, iš kur linija ateina (arba, jei ji ruožu prasideda, kur nueina).
+ * Taip raudona pusė nekerta juodos. 1 – dešinėje, -1 – kairėje (MapLibre
+ * `line-offset` ženklas).
+ */
+export function sharedSide(line: LineCoordinate[], segment: LineCoordinate[]): 1 | -1 {
+  if (segment.length < 2) return 1;
+  const startIndex = line.findIndex((point) => point[0] === segment[0][0] && point[1] === segment[0][1]);
+  const scale = Math.cos((segment[0][1] * Math.PI) / 180);
+  const cross = (a: LineCoordinate, b: LineCoordinate, p: LineCoordinate) => {
+    const dx = (b[0] - a[0]) * scale;
+    const dy = b[1] - a[1];
+    return dx * (p[1] - a[1]) - dy * (p[0] - a[0]) * scale;
+  };
+  // Kryžminė sandauga > 0 – taškas kairėje.
+  if (startIndex > 0) return cross(segment[0], segment[1], line[startIndex - 1]) > 0 ? -1 : 1;
+  const endIndex = startIndex + segment.length - 1;
+  if (startIndex === 0 && endIndex + 1 < line.length) {
+    const last = segment.length - 1;
+    return cross(segment[last - 1], segment[last], line[endIndex + 1]) > 0 ? -1 : 1;
+  }
+  return 1;
 }
 
 /** Kraštinės, kad žemėlapis iškart parodytų visą maršrutą. */

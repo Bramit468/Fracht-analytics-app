@@ -259,6 +259,8 @@ export function TripForm({
   const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean; unknown: boolean } | null>(null);
   /** Tuščias kelias iki pakrovimo žemėlapyje (raudonas) ir furos vieta. */
   const [tuscioKelias, setTuscioKelias] = useState<{ line: LineCoordinate[]; truck: MapStop } | null>(null);
+  /** Tarpiniai taškai, nutempti ant raudonos (tuščio kelio) linijos. */
+  const [tusciVia, setTusciVia] = useState<ViaPoint[]>([]);
   const skaiciuota = useRef(false);
   /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
@@ -623,6 +625,47 @@ export function TripForm({
   }
 
   /**
+   * Raudona linija (tuščias kelias) tempiama kaip ir juoda: perbraižoma iškart
+   * (viena PTV užklausa), o kaina – paspaudus „Skaičiuoti“, kaip ir juodai.
+   */
+  async function changeEmptyVia(points: ViaPoint[]) {
+    const ordered = orderViaPoints(points, tuscioKelias?.line ?? []);
+    setTusciVia(ordered);
+    setResult(null);
+    setSaved("");
+    const form = formRef.current;
+    const truckField = form?.elements.namedItem("truck_id");
+    const dateField = form?.elements.namedItem("trip_date");
+    const truckValue = truckField instanceof HTMLSelectElement ? truckField.value : "";
+    if (!truckValue || !(stops[0].address.trim() || stops[0].point)) return;
+    const run = await emptyRunToLoading(
+      truckValue,
+      dateField instanceof HTMLInputElement ? dateField.value : "",
+      { address: stops[0].address, point: stops[0].point },
+      furaBus.address.trim() || furaBus.point ? furaBus : null,
+      ordered,
+    ).catch(() => null);
+    if (!run?.ok || run.line.length < 2) return;
+    setTuscioKelias((current) => current && { ...current, line: run.line });
+    setTusciInfo({ text: emptyRunShort(run.start, run.km), gps: run.start.source === "gps", unknown: false });
+  }
+
+  function addEmptyVia(point: ViaPoint): boolean {
+    const change = addViaPoint(tusciVia, point);
+    if (!change.ok) return false;
+    void changeEmptyVia(change.points);
+    return true;
+  }
+
+  function moveEmptyVia(index: number, point: ViaPoint) {
+    void changeEmptyVia(moveViaPoint(tusciVia, index, point));
+  }
+
+  function removeEmptyVia(index: number) {
+    void changeEmptyVia(removeViaPoint(tusciVia, index));
+  }
+
+  /**
    * Sustojimų sąrašo pakeitimas. Eilės ir sudėties keitimas nuima tarpinius
    * taškus: jie priklauso konkrečiam ruožui tarp dviejų sustojimų. Perskaičiuojama,
    * jei maršrutas jau buvo suskaičiuotas arba visi adresai patvirtinti – tada
@@ -632,8 +675,9 @@ export function TripForm({
     setStops(next);
     setResult(null);
     setSaved("");
-    // Kitas pakrovimas – senas tuščias kelias nebetinka (naujas – paspaudus „Skaičiuoti“).
+    // Kitas pakrovimas – senas tuščias kelias ir jo taškai nebetinka (naujas – paspaudus „Skaičiuoti“).
     setTuscioKelias(null);
+    setTusciVia([]);
     markDaysStale();
 
     const via = resetVia ? [] : tarpiniai;
@@ -1249,6 +1293,7 @@ export function TripForm({
             quoteDate,
             { address: stops[0].address, point: stops[0].point },
             furaBus.address.trim() || furaBus.point ? furaBus : null,
+            tusciVia,
           ).catch(() => null)
           : Promise.resolve(null),
       ]);
@@ -1582,7 +1627,7 @@ export function TripForm({
           {pasiulymoBusena?.warnings.map((warning) => <p key={warning} className="mt-1 text-sm text-warn">{warning}</p>)}
         </div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { setFurosId(event.target.value); normuPildymas.current = prefillRates(event.target.value); }} className={`${inputClass} ${raudona("truck_id")}`}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+          <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { setFurosId(event.target.value); setTusciVia([]); setTuscioKelias(null); normuPildymas.current = prefillRates(event.target.value); }} className={`${inputClass} ${raudona("truck_id")}`}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
           {/* Užsakovas renkamas iš sąrašo arba įrašomas naujas – jis sukuriamas
               išsaugant reisą (#183). Kol migracija 0014 nepaleista, lauko nėra. */}
@@ -1625,6 +1670,8 @@ export function TripForm({
                 point={furaBus.point}
                 onChange={(address, point) => {
                   setFuraBus({ address, point });
+                  // Kita pradžia – senas raudonos linijos taškai nebetinka.
+                  if (point || address.trim() === "") setTusciVia([]);
                   // Pasirinkta vieta ar išvalyta (grįžtama prie GPS) – senas rezultatas nebetinka.
                   if (point || address.trim() === "") requote();
                 }}
@@ -1888,6 +1935,10 @@ export function TripForm({
             line={marsrutoLinija}
             emptyLine={tuscioKelias?.line}
             truck={tuscioKelias?.truck ?? null}
+            emptyVia={tusciVia}
+            onAddEmptyVia={addEmptyVia}
+            onMoveEmptyVia={moveEmptyVia}
+            onRemoveEmptyVia={removeEmptyVia}
             stops={marsrutoSustojimai}
             violations={marsrutoPazeidimai}
             via={tarpiniai}

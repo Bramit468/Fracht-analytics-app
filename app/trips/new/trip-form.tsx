@@ -1486,7 +1486,7 @@ export function TripForm({
       <Skiltis numeris={1} antraste="Kas ir kur veža">
         {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
             `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
-        {!tripId && routeLookup && <div className="mb-4 rounded-lg border border-good/30 bg-accent-soft p-4">
+        {!tripId && routeLookup && <div className="mb-4 rounded-lg border-2 border-good bg-brand/35 p-4">
           <label className="block font-semibold text-good">Įklijuoti pasiūlymą
             <textarea
               value={pasiulymoTekstas}
@@ -1501,7 +1501,7 @@ export function TripForm({
                 setPasiulymoTekstas(pasted);
                 void applyOffer(pasted);
               }}
-              className={`${inputClass} border-good/40 font-normal text-ink focus:border-good focus:outline-none focus:ring-2 focus:ring-good/30`}
+              className={`${inputClass} border-good font-normal text-ink focus:border-good focus:outline-none focus:ring-2 focus:ring-good/40`}
             />
           </label>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">

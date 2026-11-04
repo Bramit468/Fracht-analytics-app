@@ -1,37 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRouteLine, routeBounds, sharedSegments, sharedSide, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
+import { parseRouteLine, routeBounds, sharedRuns, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
 
-describe("sharedSegments", () => {
+describe("sharedRuns", () => {
   // Krovinio kelias rytų kryptimi palei 55° platumą.
   const loaded: LineCoordinate[] = [[24.0, 55.0], [24.5, 55.0], [25.0, 55.0]];
 
   it("tuščias kelias ateina iš šiaurės ir toliau eina tuo pačiu keliu – bendras tik sutampantis ruožas", () => {
     const empty: LineCoordinate[] = [[24.2, 55.5], [24.2, 55.0002], [24.6, 55.0001], [24.9, 55.0]];
-    expect(sharedSegments(empty, loaded)).toEqual([[[24.2, 55.0002], [24.6, 55.0001], [24.9, 55.0]]]);
+    expect(sharedRuns(empty, loaded).map((run) => run.coordinates)).toEqual([[[24.2, 55.0002], [24.6, 55.0001], [24.9, 55.0]]]);
   });
 
-  it("priešingos juostos (~20 m) – bendra; kitas kelias (~1 km) – ne", () => {
-    expect(sharedSegments([[24.1, 55.00018], [24.4, 55.00018]], loaded)).toHaveLength(1);
-    expect(sharedSegments([[24.1, 55.01], [24.4, 55.01]], loaded)).toEqual([]);
+  it("priešingos greitkelio juostos (~40 m) – bendra; kitas kelias (~1 km) – ne", () => {
+    expect(sharedRuns([[24.1, 55.00036], [24.4, 55.00036]], loaded)).toHaveLength(1);
+    expect(sharedRuns([[24.1, 55.01], [24.4, 55.01]], loaded)).toEqual([]);
   });
 
-  it("raudona pusė – toje pusėje, iš kurios ateina linija", () => {
-    // Ateina iš šiaurės, toliau į rytus: šiaurė – kairėje (-1).
-    const fromNorth: LineCoordinate[] = [[24.2, 55.5], [24.2, 55.0], [24.6, 55.0]];
-    expect(sharedSide(fromNorth, sharedSegments(fromNorth, loaded)[0])).toBe(-1);
-    // Ateina iš pietų – dešinėje (1).
-    const fromSouth: LineCoordinate[] = [[24.2, 54.5], [24.2, 55.0], [24.6, 55.0]];
-    expect(sharedSide(fromSouth, sharedSegments(fromSouth, loaded)[0])).toBe(1);
-    // Prasideda ant kelio, nueina į šiaurę – kairėje.
-    const leavesNorth: LineCoordinate[] = [[24.2, 55.0], [24.6, 55.0], [24.6, 55.5]];
-    expect(sharedSide(leavesNorth, sharedSegments(leavesNorth, loaded)[0])).toBe(-1);
+  it("pusė – iš kur ateina (ar kur nueina) linija, viena visam ruožui", () => {
+    expect(sharedRuns([[24.2, 55.5], [24.2, 55.0], [24.6, 55.0]], loaded)[0].side).toBe(-1);
+    expect(sharedRuns([[24.2, 54.5], [24.2, 55.0], [24.6, 55.0]], loaded)[0].side).toBe(1);
+    expect(sharedRuns([[24.2, 55.0], [24.6, 55.0], [24.6, 55.5]], loaded)[0].side).toBe(-1);
   });
 
-  it("kelios atskiros sutapimo vietos – atskiri ruožai; per trumpos linijos – nieko", () => {
-    const empty: LineCoordinate[] = [[24.1, 55.0], [24.2, 55.0], [24.3, 55.2], [24.6, 55.0], [24.7, 55.0]];
-    expect(sharedSegments(empty, loaded)).toEqual([[[24.1, 55.0], [24.2, 55.0]], [[24.6, 55.0], [24.7, 55.0]]]);
-    expect(sharedSegments([[24.1, 55.0]], loaded)).toEqual([]);
+  it("trumpas tarpas (mazgas) – vienas ruožas; ilgas nuokrypis – du; per trumpa linija – nieko", () => {
+    // ~100 m į šoną ~600 m ruože – užpildoma.
+    const small: LineCoordinate[] = [[24.1, 55.0], [24.2, 55.0], [24.205, 55.001], [24.21, 55.0], [24.3, 55.0]];
+    expect(sharedRuns(small, loaded)).toHaveLength(1);
+    const detour: LineCoordinate[] = [[24.1, 55.0], [24.2, 55.0], [24.3, 55.2], [24.6, 55.0], [24.7, 55.0]];
+    expect(sharedRuns(detour, loaded).map((run) => run.coordinates)).toEqual([[[24.1, 55.0], [24.2, 55.0]], [[24.6, 55.0], [24.7, 55.0]]]);
+    expect(sharedRuns([[24.1, 55.0]], loaded)).toEqual([]);
   });
 });
 

@@ -14,7 +14,7 @@ import {
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import { routeBounds, sharedSegments, sharedSide, type LineCoordinate } from "@/lib/route-line";
+import { routeBounds, sharedRuns, type LineCoordinate } from "@/lib/route-line";
 import { PTV_VECTOR_STYLE, ptvVectorProxyUrl, type PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
@@ -578,10 +578,10 @@ function RouteMapView({
     if (!ready || !map) return;
     (map.getSource("shared-route") as GeoJSONSource | undefined)?.setData({
       type: "FeatureCollection",
-      features: sharedSegments(emptyLine, line).map((segment) => ({
+      features: sharedRuns(emptyLine, line).map((run) => ({
         type: "Feature" as const,
-        properties: { side: sharedSide(emptyLine, segment) },
-        geometry: { type: "LineString" as const, coordinates: segment },
+        properties: { side: run.side },
+        geometry: { type: "LineString" as const, coordinates: run.coordinates },
       })),
     });
   }, [ready, line, emptyLine]);

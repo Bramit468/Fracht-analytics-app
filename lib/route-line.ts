@@ -113,48 +113,75 @@ export function simplifyRouteLine(
   return rounded.filter((_, index) => keep[index] === 1);
 }
 
-/** Kelio ruožai, kuriais važiuoja abi linijos (vienas kelias ar priešingos juostos). */
-export const SHARED_TOLERANCE_M = 30;
+/**
+ * Kelio ruožai, kuriais važiuoja abi linijos. 60 m – kad priešingos greitkelio
+ * juostos (tuščia fura atvažiuoja, pakrauta išvažiuoja) būtų tas pats kelias:
+ * su 30 m jos trūkinėjo ir linija buvo sukarpyta (2026-11-04, A2 ties Poznane).
+ */
+export const SHARED_TOLERANCE_M = 60;
+/** Trumpesni tarpai tarp bendrų ruožų (mazgai, nuovažos) užpildomi – vienas ruožas. */
+const SHARED_GAP_M = 2000;
+/** Toliau nei tiek – jau kitas kelias: iš ten sprendžiama, kurioje pusėje raudona. */
+const APPROACH_M = 300;
+
+export interface SharedRun {
+  coordinates: LineCoordinate[];
+  /** Kurioje pusėje (žiūrint `line` kryptimi) `line` pusė: 1 – dešinėje, -1 – kairėje (`line-offset`). */
+  side: 1 | -1;
+}
 
 /**
- * Linijos `line` ruožai, einantys ne toliau kaip `tolerance` metrų nuo `other`.
+ * Linijos `line` ruožai, einantys tuo pačiu keliu kaip `other`.
  *
  * Žemėlapiui: kur tuščias ir krovinio kelias sutampa, linija perskeliama per
- * pusę – abi spalvos matomos greta, o ne viena uždengia kitą. Ruožas laikomas
- * bendru, kai abu jo galai yra prie kitos linijos.
+ * pusę – abi spalvos greta. Pusė parenkama ta, iš kurios `line` atvažiuoja
+ * (arba, jei ji kelyje prasideda, į kurią nuvažiuoja), kad raudona nekirstų
+ * juodos – ir viena visam ruožui, kad nešokinėtų.
  */
-export function sharedSegments(
+export function sharedRuns(
   line: LineCoordinate[],
   other: LineCoordinate[],
   tolerance = SHARED_TOLERANCE_M,
-): LineCoordinate[][] {
+): SharedRun[] {
   if (line.length < 2 || other.length < 2) return [];
   const scale = Math.cos((line[0][1] * Math.PI) / 180) * METRES_PER_DEGREE;
   const toXY = ([lon, lat]: LineCoordinate) => [lon * scale, lat * METRES_PER_DEGREE] as const;
+  const reach = APPROACH_M;
   const segments = other.slice(1).map((end, index) => {
     const [ax, ay] = toXY(other[index]);
     const [bx, by] = toXY(end);
-    return { ax, ay, bx, by, minX: Math.min(ax, bx) - tolerance, maxX: Math.max(ax, bx) + tolerance, minY: Math.min(ay, by) - tolerance, maxY: Math.max(ay, by) + tolerance };
+    return { ax, ay, bx, by, minX: Math.min(ax, bx) - reach, maxX: Math.max(ax, bx) + reach, minY: Math.min(ay, by) - reach, maxY: Math.max(ay, by) + reach };
   });
 
-  const near = (point: LineCoordinate): boolean => {
+  // Atstumas iki `other`, bet ne daugiau nei `reach` (toliau – nesvarbu kiek).
+  const distance = (point: LineCoordinate): number => {
     const [px, py] = toXY(point);
+    let best = Infinity;
     for (const s of segments) {
       if (px < s.minX || px > s.maxX || py < s.minY || py > s.maxY) continue;
       const dx = s.bx - s.ax;
       const dy = s.by - s.ay;
       const lengthSq = dx * dx + dy * dy;
       const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - s.ax) * dx + (py - s.ay) * dy) / lengthSq));
-      if (Math.hypot(px - (s.ax + t * dx), py - (s.ay + t * dy)) <= tolerance) return true;
+      best = Math.min(best, Math.hypot(px - (s.ax + t * dx), py - (s.ay + t * dy)));
+      if (best <= tolerance) break;
     }
-    return false;
+    return best;
+  };
+  const metres = (a: LineCoordinate, b: LineCoordinate) => {
+    const [ax, ay] = toXY(a);
+    const [bx, by] = toXY(b);
+    return Math.hypot(bx - ax, by - ay);
   };
 
-  const flags = line.map(near);
+  const gaps = line.map(distance);
+  const near = gaps.map((gap) => gap <= tolerance);
+
+  // Bendri ruožai (bent dvi gretimos artimos viršūnės), tada trumpi tarpai užpildomi.
   const runs: [number, number][] = [];
   let start = -1;
   for (let i = 1; i < line.length; i++) {
-    if (flags[i - 1] && flags[i]) {
+    if (near[i - 1] && near[i]) {
       if (start < 0) start = i - 1;
     } else if (start >= 0) {
       runs.push([start, i - 1]);
@@ -162,32 +189,41 @@ export function sharedSegments(
     }
   }
   if (start >= 0) runs.push([start, line.length - 1]);
-  return runs.map(([from, to]) => line.slice(from, to + 1));
-}
-
-/**
- * Kurioje pusėje (žiūrint `line` kryptimi) atsidurti `line` pusei bendrame
- * ruože: ten, iš kur linija ateina (arba, jei ji ruožu prasideda, kur nueina).
- * Taip raudona pusė nekerta juodos. 1 – dešinėje, -1 – kairėje (MapLibre
- * `line-offset` ženklas).
- */
-export function sharedSide(line: LineCoordinate[], segment: LineCoordinate[]): 1 | -1 {
-  if (segment.length < 2) return 1;
-  const startIndex = line.findIndex((point) => point[0] === segment[0][0] && point[1] === segment[0][1]);
-  const scale = Math.cos((segment[0][1] * Math.PI) / 180);
-  const cross = (a: LineCoordinate, b: LineCoordinate, p: LineCoordinate) => {
-    const dx = (b[0] - a[0]) * scale;
-    const dy = b[1] - a[1];
-    return dx * (p[1] - a[1]) - dy * (p[0] - a[0]) * scale;
-  };
-  // Kryžminė sandauga > 0 – taškas kairėje.
-  if (startIndex > 0) return cross(segment[0], segment[1], line[startIndex - 1]) > 0 ? -1 : 1;
-  const endIndex = startIndex + segment.length - 1;
-  if (startIndex === 0 && endIndex + 1 < line.length) {
-    const last = segment.length - 1;
-    return cross(segment[last - 1], segment[last], line[endIndex + 1]) > 0 ? -1 : 1;
+  const merged: [number, number][] = [];
+  for (const run of runs) {
+    const previous = merged[merged.length - 1];
+    if (previous) {
+      let gap = 0;
+      for (let i = previous[1]; i < run[0]; i++) gap += metres(line[i], line[i + 1]);
+      if (gap <= SHARED_GAP_M) {
+        previous[1] = run[1];
+        continue;
+      }
+    }
+    merged.push([...run]);
   }
-  return 1;
+
+  const crossSide = (a: LineCoordinate, b: LineCoordinate, p: LineCoordinate): 1 | -1 => {
+    const [ax, ay] = toXY(a);
+    const [bx, by] = toXY(b);
+    const [px, py] = toXY(p);
+    // Kryžminė sandauga > 0 – taškas kairėje.
+    return (bx - ax) * (py - ay) - (by - ay) * (px - ax) > 0 ? -1 : 1;
+  };
+
+  return merged.map(([from, to]): SharedRun => {
+    let side: 1 | -1 = 1;
+    let before = -1;
+    for (let i = from - 1; i >= 0; i--) if (gaps[i] > APPROACH_M) { before = i; break; }
+    if (before >= 0) {
+      side = crossSide(line[from], line[from + 1], line[before]);
+    } else {
+      let after = -1;
+      for (let i = to + 1; i < line.length; i++) if (gaps[i] > APPROACH_M) { after = i; break; }
+      if (after >= 0) side = crossSide(line[to - 1], line[to], line[after]);
+    }
+    return { coordinates: line.slice(from, to + 1), side };
+  });
 }
 
 /** Kraštinės, kad žemėlapis iškart parodytų visą maršrutą. */

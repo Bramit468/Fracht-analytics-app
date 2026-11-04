@@ -83,7 +83,9 @@ const zoomWidth = (stops: [number, number][], extra = 0) => [
   ...stops.flatMap(([zoom, width]) => [zoom, width + extra]),
 ] as ExpressionSpecification;
 const ROUTE_WIDTH = [[3, 3], [8, 4.5], [12, 6.5], [16, 10]] as [number, number][];
+const SHARED_WIDTH = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width * 0.55]);
 const CASING_EXTRA = 3;
+const HOVER_EXTRA = 2;
 
 /** Mažiau nei tiek pikselių nuvilkta linija laikoma paprastu spustelėjimu, o ne taško pridėjimu. */
 const MIN_DRAG_PX = 5;
@@ -94,6 +96,11 @@ const NO_VIA: ViaPoint[] = [];
 
 /** Kuri linija tempiama: krovinio (juoda) ar tuščia (raudona). */
 type DragTarget = "route" | "empty";
+interface RouteHit {
+  target: DragTarget;
+  /** Ar paspausta perskelta bendro ruožo pusė. */
+  shared: boolean;
+}
 const TARGET_LAYERS: Record<DragTarget, [string, string]> = {
   route: ["route", "route-casing"],
   empty: ["empty-route", "empty-route-casing"],
@@ -368,7 +375,6 @@ function RouteMapView({
       // Abi pusės truputį persidengia per vidurį. Be persidengimo jų apvalūs
       // galai su pilna raudona linija susiliesdavo tik vienu pikseliu ir ties
       // bendro ruožo pradžia atrodydavo nutrūkę.
-      const half = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width * 0.55]);
       // `side` – kurioje pusėje raudona (iš kur ateina tuščias kelias); juoda – priešingoje.
       const offset = (sign: 1 | -1) => [
         "interpolate", ["linear"], ["zoom"],
@@ -380,14 +386,14 @@ function RouteMapView({
         type: "line",
         source: "shared-route",
         layout: round,
-        paint: { "line-color": ROUTE_COLOR, "line-width": zoomWidth(half), "line-offset": offset(-1) },
+        paint: { "line-color": ROUTE_COLOR, "line-width": zoomWidth(SHARED_WIDTH), "line-offset": offset(-1) },
       });
       map.addLayer({
         id: "shared-route-empty",
         type: "line",
         source: "shared-route",
         layout: round,
-        paint: { "line-color": EMPTY_COLOR, "line-width": zoomWidth(half), "line-offset": offset(1) },
+        paint: { "line-color": EMPTY_COLOR, "line-width": zoomWidth(SHARED_WIDTH), "line-offset": offset(1) },
       });
 
       // Tempiamas ruožas: vietinis vaizdas be užklausos.
@@ -467,8 +473,28 @@ function RouteMapView({
     // Taškas pridedamas tik paleidus, tad PTV užklausa viena, o ne po kiekvieno judesio.
     let dragging = false;
     const canvas = map.getCanvas();
+    let hovered: RouteHit | null = null;
+
+    function setHitWidth(hit: RouteHit, extra: number) {
+      if (hit.shared) {
+        map.setPaintProperty(SHARED_TARGET_LAYERS[hit.target], "line-width", zoomWidth(SHARED_WIDTH, extra));
+        return;
+      }
+      const [lineId, casingId] = TARGET_LAYERS[hit.target];
+      map.setPaintProperty(lineId, "line-width", zoomWidth(ROUTE_WIDTH, extra));
+      map.setPaintProperty(casingId, "line-width", zoomWidth(ROUTE_WIDTH, CASING_EXTRA + extra));
+    }
+
+    function setHover(next: RouteHit | null) {
+      if (hovered?.target === next?.target && hovered?.shared === next?.shared) return;
+      if (hovered) setHitWidth(hovered, 0);
+      hovered = next;
+      if (hovered) setHitWidth(hovered, HOVER_EXTRA);
+      canvas.style.cursor = hovered ? "grab" : "";
+    }
 
     function beginDrag(kind: "mouse" | "touch", start: Pointer, target: DragTarget) {
+      setHover(null);
       dragging = true;
       canvas.style.cursor = "grabbing";
       let last = start.lngLat;
@@ -487,7 +513,7 @@ function RouteMapView({
       map.once(kind === "mouse" ? "mouseup" : "touchend", () => {
         map.off(moveEvent, move);
         dragging = false;
-        canvas.style.cursor = "";
+        setHover(null);
         // Paskutinė žinoma vieta: `touchend` pats koordinačių dažnai neturi.
         // Peržiūra paliekama, kol ateis tikras maršrutas: nuvalius ji sušoktų
         // atgal į seną kelią. Ją nuvalo kitas linijos atnaujinimas.
@@ -499,39 +525,39 @@ function RouteMapView({
 
     // Kuri linija po pele. MapLibre pats `line-offset` pusių hit-test'e
     // neatskiria, todėl bendras ruožas tikrinamas ekrano koordinatėmis.
-    const hitTarget = (point: { x: number; y: number }): DragTarget | null => {
+    const hitTarget = (point: { x: number; y: number }): RouteHit | null => {
       const shared = sharedRouteTarget(point, sharedRunsRef.current, (coordinate) => {
         const projected = map.project(coordinate);
         return { x: projected.x, y: projected.y };
       });
-      if (shared === "empty" && callbacks.current.onAddEmptyVia) return "empty";
-      if (shared === "route") return "route";
+      if (shared === "empty" && callbacks.current.onAddEmptyVia) return { target: "empty", shared: true };
+      if (shared === "route") return { target: "route", shared: true };
 
       const layers = ["route-hit", "empty-route-hit"].filter((id) => map.getLayer(id));
       const ids = map.queryRenderedFeatures([point.x, point.y], { layers }).map((feature) => feature.layer.id);
-      if (ids.includes("route-hit")) return "route";
-      if (ids.includes("empty-route-hit") && callbacks.current.onAddEmptyVia) return "empty";
+      if (ids.includes("route-hit")) return { target: "route", shared: false };
+      if (ids.includes("empty-route-hit") && callbacks.current.onAddEmptyVia) return { target: "empty", shared: false };
       return null;
     };
     map.on("mousemove", (event) => {
-      if (!dragging) canvas.style.cursor = hitTarget(event.point) ? "grab" : "";
+      if (!dragging) setHover(hitTarget(event.point));
     });
     map.on("mouseout", () => {
-      if (!dragging) canvas.style.cursor = "";
+      if (!dragging) setHover(null);
     });
     map.on("mousedown", (event) => {
-      const target = hitTarget(event.point);
-      if (!target) return;
+      const hit = hitTarget(event.point);
+      if (!hit) return;
       event.preventDefault();
-      beginDrag("mouse", event, target);
+      beginDrag("mouse", event, hit.target);
     });
     map.on("touchstart", (event) => {
       // Du pirštai yra mastelio keitimas, o ne taško tempimas.
       if (event.points.length !== 1) return;
-      const target = hitTarget(event.points[0]);
-      if (!target) return;
+      const hit = hitTarget(event.points[0]);
+      if (!hit) return;
       event.preventDefault();
-      beginDrag("touch", { lngLat: event.lngLat, point: event.points[0] }, target);
+      beginDrag("touch", { lngLat: event.lngLat, point: event.points[0] }, hit.target);
     });
 
     return () => {
@@ -774,9 +800,15 @@ function RouteMapView({
     {onAddVia && <p className="mt-2 text-sm text-muted">
       Nutempkite liniją – maršrutas eis per tą vietą. Mastelis: Ctrl + ratukas.
     </p>}
-    {via.length > 0 && <ul className="mt-2 flex flex-wrap gap-2 text-sm">
-      {via.map((point, index) => <li key={`${point.latitude}-${point.longitude}`} className="flex items-center gap-2 rounded-lg border bg-surface px-2 py-1">
-        <span className="tabular-nums">Taškas {index + 1}: {point.latitude.toFixed(3)}, {point.longitude.toFixed(3)}</span>
+    {(via.length > 0 || emptyVia.length > 0) && <ul className="mt-2 flex flex-wrap gap-2 text-sm">
+      {emptyVia.map((point, index) => <li key={`empty-${point.latitude}-${point.longitude}`} className="flex items-center gap-2 rounded-lg border border-red-300 bg-surface px-2 py-1">
+        <span className="tabular-nums">Tuščio maršruto taškas {index + 1}: {point.latitude.toFixed(3)}, {point.longitude.toFixed(3)}</span>
+        {onRemoveEmptyVia && <button type="button" onClick={() => onRemoveEmptyVia(index)} aria-label={`Pašalinti tuščio maršruto tarpinį tašką ${index + 1}`} className="underline">
+          Pašalinti
+        </button>}
+      </li>)}
+      {via.map((point, index) => <li key={`route-${point.latitude}-${point.longitude}`} className="flex items-center gap-2 rounded-lg border bg-surface px-2 py-1">
+        <span className="tabular-nums">Pakrauto maršruto taškas {index + 1}: {point.latitude.toFixed(3)}, {point.longitude.toFixed(3)}</span>
         {onRemoveVia && <button type="button" onClick={() => onRemoveVia(index)} aria-label={`Pašalinti tarpinį tašką ${index + 1}`} className="underline">
           Pašalinti
         </button>}

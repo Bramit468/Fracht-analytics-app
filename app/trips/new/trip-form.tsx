@@ -258,6 +258,8 @@ export function TripForm({
   const [furosId, setFurosId] = useState<string | null>(null);
   /** Ar žmogus jau ką nors įvedė – iki tol nieko raudonai nežymime. */
   const [bandyta, setBandyta] = useState(false);
+  /** Kaina suplanuota, bet dar neprasidėjo – raudonai tuo metu nežymime. */
+  const [kainaLaukia, setKainaLaukia] = useState(false);
   const skaiciuota = useRef(false);
   /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
@@ -536,10 +538,16 @@ export function TripForm({
     clearTimeout(routeTimer.current);
     clearTimeout(quoteTimer.current);
     if (kainaVyksta.current) {
+      // Laikmatis nuimtas – kaina perskaičiuos pati, baigusi dabartinę.
+      setKainaLaukia(false);
       laukiaPerskaiciavimo.current = true;
       return;
     }
-    quoteTimer.current = setTimeout(() => void clickWhenEnabled(kainosMygtukas.current), delay);
+    setKainaLaukia(true);
+    quoteTimer.current = setTimeout(() => {
+      setKainaLaukia(false);
+      void clickWhenEnabled(kainosMygtukas.current);
+    }, delay);
   }
 
   /**
@@ -1547,7 +1555,9 @@ export function TripForm({
     ...(stops[0].point ? [] : [{ name: "origin", label: "Iš (pasirinkite adresą iš sąrašo)" }]),
     ...(stops[stops.length - 1].point ? [] : [{ name: "destination", label: "Į (pasirinkite adresą iš sąrašo)" }]),
   ] : [];
-  const visiTruksta = result || !bandyta ? [] : trukstaPagrindiniai.length > 0 ? trukstaPagrindiniai : truksta;
+  // Raudonai – tik kai viskas baigta: pasiūlymas perskaitytas, kaina suskaičiuota.
+  const skaiciuojama = pasiulymasSkaitomas || kainaSkaiciuojama || kainaLaukia;
+  const visiTruksta = result || !bandyta || skaiciuojama ? [] : trukstaPagrindiniai.length > 0 ? trukstaPagrindiniai : truksta;
   const raudona = (name: string) => visiTruksta.some((field) => field.name === name) ? "border-bad! ring-2 ring-bad/30" : "";
   // Trūksta lauko apačioje – žymimi visi neteisingi laukai ten (jų daug, sąrašu).
   const trukstaApacioje = visiTruksta.some((field) => !["truck_id", "origin", "destination"].includes(field.name));

@@ -607,6 +607,20 @@ export function TripForm({
     scheduleRecalc();
   }
 
+  /** Mygtukas „Skaičiuoti“: viskas iš naujo; ko trūksta – pažymima raudonai. */
+  function skaiciuotiViska() {
+    setBandyta(true);
+    clearTimeout(priceTimer.current);
+    if (quoteReady(stops)) {
+      clearTimeout(quoteTimer.current);
+      setKainaLaukia(false);
+      void clickWhenEnabled(kainosMygtukas.current);
+    } else if (!routeLookup || tripId) {
+      // Be PTV ar taisant reisą – formulė; trūkstamą lauką parodys naršyklė.
+      formRef.current?.requestSubmit(skaiciuotiMygtukas.current);
+    }
+  }
+
   /** Laukai, nuo kurių priklauso PTV maršrutas ar paros: kaina iš naujo. */
   function requote() {
     if (quoteReady(stops)) scheduleQuote(700);
@@ -1667,9 +1681,6 @@ export function TripForm({
               <input type="checkbox" checked={vengtiKeltu} onChange={(event) => { event.stopPropagation(); setVengtiKeltu(event.target.checked); requote(); }} />
               Vengti keltų
             </label>
-            {kainaSkaiciuojama
-              ? <span role="status" className="text-muted">Skaičiuojama…</span>
-              : null}
           </div>
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
           {/* Tušti km iš Telematikos furos vietos; vietai keičiantis – kur fura bus. */}
@@ -1704,7 +1715,13 @@ export function TripForm({
         </p>}
 
       {/* Paslėptas: per jį formulę perskaičiuoja `scheduleRecalc`; Enter lauke taip pat. */}
-      <div className="mt-4 flex flex-wrap gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" hidden /><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+      <div className="mt-4 flex flex-wrap gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" hidden />
+        {/* Vienas mygtukas viskam: su PTV – maršrutas, tušti km ir kaina; be jo – formulė.
+            Laukai ir toliau perskaičiuoja patys; mygtukas – kai norisi iš naujo. */}
+        <button type="button" disabled={kainaSkaiciuojama} onClick={skaiciuotiViska} className="rounded-lg bg-accent px-5 py-3 font-medium text-accent-ink disabled:opacity-50">
+          {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti"}
+        </button>
+        <button type="submit" value="save" disabled={!!saved} className="rounded-lg border border-line-strong bg-surface p-3 disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
 
         {(error || saved || zurnaloIspejimas) && <div className="mt-3 space-y-2">
         {error && <p role="alert" className="text-bad">{error}</p>}

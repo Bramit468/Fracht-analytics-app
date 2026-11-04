@@ -256,6 +256,8 @@ export function TripForm({
   const [truksta, setTruksta] = useState<{ name: string; label: string }[]>([]);
   /** Pasirinkta fura – `null`, kol nekeista (tada galioja `defaults`). Raudonam žymėjimui. */
   const [furosId, setFurosId] = useState<string | null>(null);
+  /** Ar žmogus jau ką nors įvedė – iki tol nieko raudonai nežymime. */
+  const [bandyta, setBandyta] = useState(false);
   const skaiciuota = useRef(false);
   /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
@@ -677,6 +679,7 @@ export function TripForm({
   async function applyOffer(text: string) {
     const form = formRef.current;
     if (!form || !text.trim() || pasiulymasSkaitomas) return;
+    setBandyta(true);
     setPasiulymasSkaitomas(true);
     setPasiulymoBusena(null);
     try {
@@ -1544,7 +1547,7 @@ export function TripForm({
     ...(stops[0].point ? [] : [{ name: "origin", label: "Iš (pasirinkite adresą iš sąrašo)" }]),
     ...(stops[stops.length - 1].point ? [] : [{ name: "destination", label: "Į (pasirinkite adresą iš sąrašo)" }]),
   ] : [];
-  const visiTruksta = result ? [] : trukstaPagrindiniai.length > 0 ? trukstaPagrindiniai : truksta;
+  const visiTruksta = result || !bandyta ? [] : trukstaPagrindiniai.length > 0 ? trukstaPagrindiniai : truksta;
   const raudona = (name: string) => visiTruksta.some((field) => field.name === name) ? "border-bad! ring-2 ring-bad/30" : "";
   // Trūksta lauko apačioje – žymimi visi neteisingi laukai ten (jų daug, sąrašu).
   const trukstaApacioje = visiTruksta.some((field) => !["truck_id", "origin", "destination"].includes(field.name));
@@ -1554,6 +1557,8 @@ export function TripForm({
     ref={formRef}
     onSubmit={submit}
     onChange={() => { setSaved(""); scheduleRecalc(); }}
+    // Gaudymo fazė: pasiekia ir laukus su `stopPropagation`.
+    onInputCapture={() => setBandyta(true)}
     onInvalidCapture={() => {
       // Tuščias privalomas laukas uždarytoje skiltyje blokuotų siuntimą be
       // jokio ženklo: atidarome ją ir iš naujo parodome, kurio lauko trūksta.

@@ -1559,7 +1559,11 @@ export function TripForm({
         {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
           <p className="mt-1 text-sm text-ink">
-            PTV aptiko {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : "keltą"}, bet bilieto kainos nepateikė.
+            Maršrute yra keltas {neivertintasKeltas.length ? neivertintasKeltas.join(", ") : ""}. Krovininių bilietų kainų PTV neturi,{" "}
+            {keltoIvertis
+              ? "todėl įrašytas Scandlines viešas tarifas (žemiau)."
+              : "todėl kainą įrašykite lauke „Keltai (€)“."}
+            {" "}Jei turite sutartį – įveskite ją Įmonė → „Keltų kainos“, ir ji bus naudojama vietoj tarifo.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label>

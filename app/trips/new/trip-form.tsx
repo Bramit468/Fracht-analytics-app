@@ -337,7 +337,7 @@ export function TripForm({
   const [saved, setSaved] = useState("");
   const [attempt, setAttempt] = useState(0);
   /**
-   * Greita kaina (#157). Visa, ko čia nėra, guli skiltyje „Pakeisti ranka“.
+   * Greita kaina (#157). Visa, ko čia nėra, guli skiltyje „Visi kintamieji“.
    * Be PTV rakto ir taisant išsaugotą reisą ji atvira iškart: ten laukus
    * pildo žmogus, o ne mygtukas.
    */
@@ -1120,7 +1120,7 @@ export function TripForm({
       const shownTollCents = result.bridgesCents + shownFerryCents + result.tunnelsCents;
 
       // Viena trumpa eilutė (#159): kelio suskaidymas į tiltus, keltus ir
-      // tunelius matomas laukuose skiltyje „Pakeisti ranka“, o paros jau
+      // tunelius matomas laukuose skiltyje „Visi kintamieji“, o paros jau
       // įrašytos pačios ir jų šaltinis parašytas prie lauko.
       setMarsrutas(
         `${result.fromAddress} → ${result.toAddress}: ${Math.round(result.km).toLocaleString("lt-LT")} km, `
@@ -1217,7 +1217,7 @@ export function TripForm({
         : emptyRun && route
           ? emptyRunNote(emptyRun.start, emptyRun.km, tusciuVal, write)
           : write && veliauNeiRytoj && !emptyRun
-            ? `Tušti km: ${String(emptyKm).replace(".", ",")} – pagal furos istoriją, nes krovinys vėliau nei rytoj, o furos reisas iki tol nežinomas. Jei žinote, iš kur fura atvažiuos, įrašykite tuščius km ranka („Pakeisti ranka“ → „Tušti km“).`
+            ? `Tušti km: ${String(emptyKm).replace(".", ",")} – pagal furos istoriją, nes krovinys vėliau nei rytoj, o furos reisas iki tol nežinomas. Jei žinote, iš kur fura atvažiuos, įrašykite tuščius km ranka („Visi kintamieji“ → „Tušti km“).`
             : undefined;
       const emptyTollCents = emptyRun
         ? emptyRun.tollCents
@@ -1281,7 +1281,7 @@ export function TripForm({
       }));
 
       // Įprastas skaičiavimas su visomis patikromis; trūkstamą lauką parodys
-      // ir atvers „Pakeisti ranka“.
+      // ir atvers „Visi kintamieji“.
       form.requestSubmit(skaiciuotiMygtukas.current);
     } finally {
       setKainaSkaiciuojama(false);
@@ -1483,7 +1483,10 @@ export function TripForm({
     className="space-y-6"
   >
     <fieldset disabled={saving} className="space-y-6 disabled:opacity-60">
-      <Skiltis numeris={1} antraste="Kas ir kur veža">
+      {/* Viena skiltis – tai, ko reikia sprendimui: pasiūlymas, šeši laukai,
+          verdiktas. Visa kita (maršrutas, žemėlapis, normos, kaštų išskaidymas)
+          – apačioje suskleista „Visi kintamieji“. */}
+      <section aria-label="Skaičiuoklė" className="rounded-xl border p-4">
         {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
             `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
         {!tripId && routeLookup && <div className="mb-4 rounded-lg border-2 border-good bg-brand/35 p-4">
@@ -1547,6 +1550,187 @@ export function TripForm({
             </label>
           </div>
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
+          {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
+        </div>}
+        {/* Kelto kaina ir apribojimai keičia sprendimą – trumpai čia, smulkiai apačioje. */}
+        {neivertintasKeltas !== null && <p role="status" className="mt-3 rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
+          Maršrute keltas{neivertintasKeltas.length ? ` (${neivertintasKeltas.join(", ")})` : ""}:{" "}
+          {keltoIvertis ? <>įrašyta <strong>{formatCents(keltoIvertis.totalCents)}</strong> pagal Scandlines viešą tarifą.</> : <strong className="text-bad">kainos nėra – įrašykite lauke „Keltai (€)“.</strong>}
+          {" "}<button type="button" onClick={() => setDetaliai(true)} className="font-semibold underline">Keisti</button>
+        </p>}
+        {routeLookup && marsrutoPazeidimai.length > 0 && <p role="alert" className="mt-3 rounded-lg border border-warn bg-warn-soft p-3 text-sm text-ink">
+          Maršrute yra apribojimų.{" "}<button type="button" onClick={() => setDetaliai(true)} className="font-semibold underline">Žiūrėti</button>
+        </p>}
+
+      <div className="mt-4 flex flex-wrap gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti pelną</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+
+        {(error || saved || zurnaloIspejimas) && <div className="mt-3 space-y-2">
+        {error && <p role="alert" className="text-bad">{error}</p>}
+        {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
+        {zurnaloIspejimas && <p className="text-sm text-warn">{zurnaloIspejimas}</p>}
+        </div>}
+
+      {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
+          paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
+      {result && <section aria-label="Reiso rezultatai" className="mt-4 rounded-lg border border-line-strong bg-surface p-4">
+        {/* Pagrindinis klausimas – imti ar ne. Žemiausia kaina – savikaina; žemiau
+            jos tik su vadovo pritarimu, jei krovinys padengia kintamus kaštus. */}
+        {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${!verdiktas ? "border-line" : verdiktas.kind === "take" ? "border-good" : verdiktas.kind === "negotiate" ? "border-warn" : "border-bad"}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className={`text-xl font-semibold ${!verdiktas ? "" : verdiktas.kind === "take" ? "text-good" : verdiktas.kind === "negotiate" ? "text-warn" : "text-bad"}`}>
+              {!verdiktas ? "Tinkama krovinio kaina" : verdiktas.kind === "take" ? "Imti" : verdiktas.kind === "negotiate" ? `Derėtis iki ${sveikiEurai(verdiktas.targetPriceCents)}` : "Neimti"}
+            </h2>
+            {/* Fura uždirba paromis: įnašas per parą leidžia palyginti trumpą ir ilgą krovinį. */}
+            <p className="text-2xl font-semibold tabular-nums">
+              {!verdiktas
+                ? (prasomaKaina === null ? "—" : formatCents(prasomaKaina))
+                : <>{verdiktas.contributionPerDayCents === null ? "—" : formatCents(verdiktas.contributionPerDayCents)} <span className="text-sm font-normal text-muted">įnašas per parą</span></>}
+            </p>
+          </div>
+          {bePajamu
+            ? <>
+              {/* Kaina išdėstoma taip, kaip ją pateikia įmonė: baseline rate ir kuras atskirai. */}
+              <p className="mt-1 text-xs tabular-nums text-muted">
+                {kaina === null
+                  ? "Tikslinė marža – nuo 0 iki 99,9 %."
+                  : <>Baseline rate {formatCents(kaina.baselineRateCents)} + kuras {formatCents(kaina.fuelCents)} · {norimaMarza} % marža, pelnas {formatCents(kaina.profitCents)}</>}
+              </p>
+              {/* Žemiausia kaina – savikaina be antkainio; žemiau jos skaičiaus nesiūlome:
+                  tai sprendžiama pagal aplinkybes, vadovui pritarus. */}
+              <p className="mt-2 text-sm">Mažiausiai – savikaina <strong className="tabular-nums">{formatCents(result.totalCostCents)}</strong> (be antkainio). Žemiau – tik įvertinus aplinkybes, vadovui pritarus.</p>
+            </>
+            : verdiktas && <>
+              {/* Viena smulki eilutė – viskas, ko reikia sprendimui; pilnas pelnas antraeilis. */}
+              <p className="mt-1 text-sm tabular-nums text-muted">
+                Įnašas {formatCents(inasas.contributionCents)} · {skaicius(paros)} par. · tušti {skaicius(tusciKm)} km
+                {" "}· pilnas pelnas <span className={result.profitCents >= 0 ? "" : "text-bad"}>{formatCents(result.profitCents)}</span>
+              </p>
+              {verdiktas.kind !== "take" && verdiktas.increasePercent !== null && <p className={`mt-1 text-sm ${verdiktas.kind === "negotiate" ? "text-warn" : "text-bad"}`}>
+                Savikaina {formatCents(result.totalCostCents)} – reikia {verdiktas.increasePercent.toFixed(1).replace(".", ",")} % daugiau nei siūloma
+                {verdiktas.kind === "negotiate" ? ` (riba ${skaicius(verdiktas.bandPercent)} %).` : `, o derėtis verta iki ${skaicius(verdiktas.bandPercent)} %.`}
+              </p>}
+              {/* Įmonės taisyklė (#248): žemiau savikainos – tik vadovui pritarus, ir tik kai geriau už alternatyvą. */}
+              {verdiktas.approvalPossible && <p className="mt-1 text-sm text-muted">
+                Pigiau nei {sveikiEurai(verdiktas.targetPriceCents)} – tik vadovui pritarus: krovinys {formatCents(inasas.vsAlternativeCents)} geresnis už alternatyvą.
+              </p>}
+              <details className="mt-2 text-sm">
+                <summary className="cursor-pointer text-muted">Kaip suskaičiuota</summary>
+                <p className="mt-2 tabular-nums text-muted">
+                  Pajamos {formatCents(result.revenueCents)} − kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
+                  {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
+                  {" "}= <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.
+                  {" "}Kuras, AdBlue ir keliai – su tuščiais km.
+                </p>
+                <p className="mt-1 tabular-nums text-muted">
+                  Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
+                  {" "}· skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong>
+                  {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
+                </p>
+                <p className="mt-1 tabular-nums text-muted">
+                  Pilnas pelnas (su pastoviais furos kaštais) {formatCents(result.profitCents)} · marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)} %`}
+                  {/* Lėtas krovinys už km atrodo gerai, bet fura uždirba paromis (#179). */}
+                  {result.profitPerDayCents !== null && ` · ${formatCents(result.profitPerDayCents)} per parą`}
+                </p>
+              </details>
+            </>}
+        </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
+        {/* Pasiūlymų žurnalas (Phase 0, 5): ką nusprendė dispečeris prie Bramit verdikto.
+            `stopPropagation` – šie laukai ne reiso dalis ir rezultato nenuvalo. */}
+        {!tripId && verdiktas && <div className="mb-4 rounded-lg border border-line p-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label>Galutinė kaina, €<input type="text" inputMode="decimal" value={galutineKaina} onChange={(event) => { event.stopPropagation(); setGalutineKaina(event.target.value); }} placeholder="Neprivaloma" className={inputClass} /></label>
+            <label>Priežastis<select value={priezastis} onChange={(event) => { event.stopPropagation(); setPriezastis(event.target.value); }} className={inputClass}>
+              <option value="">—</option>
+              {QUOTE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+            </select></label>
+            {priezastis === "Kita" && <label>Kokia<input type="text" maxLength={500} value={priezastiesTekstas} onChange={(event) => { event.stopPropagation(); setPriezastiesTekstas(event.target.value); }} className={inputClass} /></label>}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {(["taken", "negotiating", "declined"] as const).map((decision) => (
+              <button key={decision} type="button" disabled={!zurnaloId} onClick={() => void saveDecision(decision)}
+                className={`rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${sprendimas === decision ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
+                {DECISION_LABELS[decision]}
+              </button>
+            ))}
+            <span className="text-muted">
+              {sprendimas !== "pending" ? `Žurnale: ${DECISION_LABELS[sprendimas]}. ` : zurnaloId ? "Įrašyta į žurnalą. " : ""}
+              <Link href="/pasiulymai" className="underline">Visi pasiūlymai</Link>
+            </span>
+          </div>
+          {sprendimoKlaida && <p role="alert" className="mt-2 text-bad">{sprendimoKlaida}</p>}
+        </div>}
+        {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
+            nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
+        {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
+          Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura – greičiausiai
+          nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
+          <Link href="/trucks?skiltis=kastai" className="font-semibold underline">Patikslinti kaštus</Link>
+        </p>}
+
+        {/* Įmonės riba (#181): be jos per pigus užsakymas priimamas, nes skaičius
+            tik parodomas, bet niekas jo nepažymi. */}
+        {!bePajamu && (() => {
+          const check = checkMargin({
+            marginPercent: result.marginPercent,
+            minMarginPercent: minMarza,
+            totalCostCents: result.totalCostCents,
+            revenueCents: result.revenueCents,
+          });
+          if (check.status !== "below") return null;
+          const uzKm = check.priceAtMinCents === null ? null : pricePerKm(check.priceAtMinCents, apmokamiKm);
+          return <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
+            Marža žemiau įmonės ribos {formatMinMargin(check.minMarginPercent)}.
+            {check.priceAtMinCents !== null && <>
+              {" "}Ribai pasiekti kaina turėtų būti bent <strong>{formatCents(check.priceAtMinCents)}</strong>
+              {uzKm !== null && ` (${uzKm.toFixed(2)} €/km)`}
+              {check.shortfallCents !== null && check.shortfallCents > 0 && <> – {formatCents(check.shortfallCents)} daugiau</>}.
+            </>}
+          </p>;
+        })()}
+        {bePajamu && kainaZemiauRibos && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
+          Tikslinė marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
+        </p>}
+
+        {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Kai pajamų
+            nėra, kaina jau parodyta antraštėje – antrą kartą jos nekartojame
+            (#159). Tuščio skyriaus su linija be turinio irgi nerodome. */}
+        {istorija && <div className="mt-4 border-t pt-4">
+          {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
+              kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
+              dabar prašoma daugiau, ar mažiau nei anksčiau (#109). */}
+          <div className="rounded-lg bg-page p-3 text-sm">
+            <p className="font-semibold">
+              {istorija.matchType === "route" ? "Ta pati kryptis anksčiau" : "Į tą pačią vietą anksčiau"}
+              <span className="ml-2 font-normal text-muted">
+                {istorija.tripCount} reis. · paskutinis {istorija.lastTripDate}
+              </span>
+            </p>
+            <p className="mt-1 tabular-nums">
+              Mediana <strong>{formatCents(istorija.medianRevenueCents)}</strong>
+              {istorija.medianPricePerKm !== null && <span> ({istorija.medianPricePerKm.toFixed(2)} €/km)</span>}
+              <span className="text-muted">
+                {" "}· nuo {formatCents(istorija.lowestRevenueCents)} iki {formatCents(istorija.highestRevenueCents)}
+              </span>
+              {istorija.medianMarginPercent !== null && <span className="text-muted"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
+            </p>
+            {/* Tik tada, kai tai ne ta pati kryptis: kitaip žmogus palaikytų
+                kitos krypties kainas šios krypties kaina. */}
+            {istorija.matchType !== "route" && <p className="mt-1 text-muted">
+              Šios krypties dar nebuvo – tai kitų reisų į tą pačią vietą kainos.
+            </p>}
+          </div>
+        </div>}
+      </section>}
+      </section>
+
+      {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
+          skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
+          `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
+      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
+        <summary className="cursor-pointer font-semibold">Visi kintamieji</summary>
+        <div className="mt-4 space-y-6">
+
+      {routeLookup && <Skiltis antraste="Maršrutas">
           {/* Laikas – išvykimo vietos laiko juosta, kaip jį grąžina PTV (ne UTC). */}
           {tvarkarastis && <p className="mt-1 text-sm text-ink tabular-nums">
             Atvykimas {tvarkarastis.endTime.replace("T", " ").slice(0, 16)} · {skaicius((hoursBetween(tvarkarastis.startTime, tvarkarastis.endTime) ?? 0) / 24)} par. kelio · vairavimas {durationText(tvarkarastis.drivingMinutes)}, poilsis {durationText(tvarkarastis.restMinutes + tvarkarastis.breakMinutes)}
@@ -1554,8 +1738,6 @@ export function TripForm({
           {pastabos.length > 0 && <ul role="status" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
             {pastabos.map((pastaba) => <li key={pastaba}>{pastaba}</li>)}
           </ul>}
-          {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
-        </div>}
         {neivertintasKeltas !== null && <div className="mt-4 rounded-lg border border-warn bg-warn-soft p-4">
           <h3 className="font-semibold">Kelto bilieto kaina</h3>
           <p className="mt-1 text-sm text-ink">
@@ -1714,18 +1896,11 @@ export function TripForm({
             })}
           </ul>}
         </div>}
-      </Skiltis>
-
-      {/* Viskas, ką „Skaičiuoti kainą“ užpildo pati, – čia ir taisoma. Uždaryta
-          skiltis tyliai blokuotų siuntimą dėl tuščio privalomo lauko, todėl
-          `onInvalidCapture` ją atidaro ir parodo, kurio lauko trūksta. */}
-      <details open={detaliai} onToggle={(event) => setDetaliai(event.currentTarget.open)} className="rounded-xl border p-4">
-        <summary className="cursor-pointer font-semibold">Pakeisti ranka</summary>
-        <div className="mt-4 space-y-6">
+      </Skiltis>}
 
       {/* Ką keisti reikia retai: numatytosios reikšmės tinka daugumai krovinių,
           o vieno ekrano pasiūlymui viršuje lieka tik penki laukai ir užsakovas. */}
-      <Skiltis numeris={2} antraste="Kaip vertinti">
+      <Skiltis antraste="Kaip vertinti">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis svarbus:
               20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
@@ -1748,7 +1923,7 @@ export function TripForm({
         </div>
       </Skiltis>
 
-      <Skiltis numeris={3} antraste="Kada ir kiek">
+      <Skiltis antraste="Kada ir kiek">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
           <label>Išvykimo laikas<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
@@ -1772,7 +1947,7 @@ export function TripForm({
         </div>
       </Skiltis>
 
-      <Skiltis numeris={4} antraste="Kiek išleis">
+      <Skiltis antraste="Kiek išleis">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} onChange={name === "fuel_l_per_100km" ? (event) => { kuroRanka.current = event.currentTarget.value.trim() !== ""; } : undefined} /></label>)}
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
@@ -1783,154 +1958,15 @@ export function TripForm({
         <p className="mt-3 text-sm text-muted">Vairuotojas, draudimas ir nusidėvėjimas – jau furos paros savikainoje.</p>
       </Skiltis>
 
-      <Skiltis numeris={5} antraste="Kiek gaus">
+      <Skiltis antraste="Kiek gaus">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Pati kaina – viršuje; čia tik kaip ji skaičiuojama. */}
           <label>Pajamų būdas<select className={inputClass} value={mode} onChange={e => setMode(e.target.value)}><option value="freight">Frachto kaina</option><option value="per_km">Įkainis už apmokamą km</option></select></label>
         </div>
       </Skiltis>
 
-      {/* Atkarpos reikalingos tik tada, kai kelių kaina skaičiuojama pagal
-          įkainius. Su PTV ten lieka viena „Nemokami" eilutė,
-          todėl skiltis suskleista ir nebeblaško. */}
-      <details className="rounded-xl border p-4">
-        <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis (kai keliai pagal įkainius)</summary>
-        <div className="mt-3 space-y-3">
-          {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
-          <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
-        </div>
-      </details>
-
-        </div>
-      </details>
-
-      <div className="flex gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti pelną</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
-
-      {error && <p role="alert" className="text-bad">{error}</p>}
-      {saved && <p role="status" className="text-good">{saved} <Link href="/trips" className="font-semibold underline">Rodyti reisus</Link></p>}
-      {zurnaloIspejimas && <p className="text-sm text-warn">{zurnaloIspejimas}</p>}
-
-      {/* Rezultatas iškart po mygtukais: anksčiau jis būdavo už jų, ir
-          paspaudus „Skaičiuoti" tekdavo slinkti žemyn pažiūrėti, kas išėjo. */}
-      {result && <section aria-label="Reiso rezultatai" className="rounded-lg border border-line-strong bg-surface p-4">
-        {/* Pagrindinis klausimas – imti ar ne. Žemiausia kaina – savikaina; žemiau
-            jos tik su vadovo pritarimu, jei krovinys padengia kintamus kaštus. */}
-        {inasas ? <div className={`mb-4 rounded-lg border-2 bg-page p-3 ${!verdiktas ? "border-line" : verdiktas.kind === "take" ? "border-good" : verdiktas.kind === "negotiate" ? "border-warn" : "border-bad"}`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className={`text-xl font-semibold ${!verdiktas ? "" : verdiktas.kind === "take" ? "text-good" : verdiktas.kind === "negotiate" ? "text-warn" : "text-bad"}`}>
-              {!verdiktas ? "Tinkama krovinio kaina" : verdiktas.kind === "take" ? "Imti" : verdiktas.kind === "negotiate" ? `Derėtis iki ${sveikiEurai(verdiktas.targetPriceCents)}` : "Neimti"}
-            </h2>
-            {/* Fura uždirba paromis: įnašas per parą leidžia palyginti trumpą ir ilgą krovinį. */}
-            <p className="text-2xl font-semibold tabular-nums">
-              {!verdiktas
-                ? (prasomaKaina === null ? "—" : formatCents(prasomaKaina))
-                : <>{verdiktas.contributionPerDayCents === null ? "—" : formatCents(verdiktas.contributionPerDayCents)} <span className="text-sm font-normal text-muted">įnašas per parą</span></>}
-            </p>
-          </div>
-          {bePajamu
-            ? <>
-              {/* Kaina išdėstoma taip, kaip ją pateikia įmonė: baseline rate ir kuras atskirai. */}
-              <p className="mt-1 text-xs tabular-nums text-muted">
-                {kaina === null
-                  ? "Tikslinė marža – nuo 0 iki 99,9 %."
-                  : <>Baseline rate {formatCents(kaina.baselineRateCents)} + kuras {formatCents(kaina.fuelCents)} · {norimaMarza} % marža, pelnas {formatCents(kaina.profitCents)}</>}
-              </p>
-              {/* Žemiausia kaina – savikaina be antkainio; žemiau jos skaičiaus nesiūlome:
-                  tai sprendžiama pagal aplinkybes, vadovui pritarus. */}
-              <p className="mt-2 text-sm">Mažiausiai – savikaina <strong className="tabular-nums">{formatCents(result.totalCostCents)}</strong> (be antkainio). Žemiau – tik įvertinus aplinkybes, vadovui pritarus.</p>
-            </>
-            : verdiktas && <>
-              {/* Viena smulki eilutė – viskas, ko reikia sprendimui; pilnas pelnas antraeilis. */}
-              <p className="mt-1 text-sm tabular-nums text-muted">
-                Įnašas {formatCents(inasas.contributionCents)} · {skaicius(paros)} par. · tušti {skaicius(tusciKm)} km
-                {" "}· pilnas pelnas <span className={result.profitCents >= 0 ? "" : "text-bad"}>{formatCents(result.profitCents)}</span>
-              </p>
-              {verdiktas.kind !== "take" && verdiktas.increasePercent !== null && <p className={`mt-1 text-sm ${verdiktas.kind === "negotiate" ? "text-warn" : "text-bad"}`}>
-                Savikaina {formatCents(result.totalCostCents)} – reikia {verdiktas.increasePercent.toFixed(1).replace(".", ",")} % daugiau nei siūloma
-                {verdiktas.kind === "negotiate" ? ` (riba ${skaicius(verdiktas.bandPercent)} %).` : `, o derėtis verta iki ${skaicius(verdiktas.bandPercent)} %.`}
-              </p>}
-              {/* Įmonės taisyklė (#248): žemiau savikainos – tik vadovui pritarus, ir tik kai geriau už alternatyvą. */}
-              {verdiktas.approvalPossible && <p className="mt-1 text-sm text-muted">
-                Pigiau nei {sveikiEurai(verdiktas.targetPriceCents)} – tik vadovui pritarus: krovinys {formatCents(inasas.vsAlternativeCents)} geresnis už alternatyvą.
-              </p>}
-              <details className="mt-2 text-sm">
-                <summary className="cursor-pointer text-muted">Kaip suskaičiuota</summary>
-                <p className="mt-2 tabular-nums text-muted">
-                  Pajamos {formatCents(result.revenueCents)} − kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
-                  {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
-                  {" "}= <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.
-                  {" "}Kuras, AdBlue ir keliai – su tuščiais km.
-                </p>
-                <p className="mt-1 tabular-nums text-muted">
-                  Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
-                  {" "}· skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong>
-                  {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
-                </p>
-                <p className="mt-1 tabular-nums text-muted">
-                  Pilnas pelnas (su pastoviais furos kaštais) {formatCents(result.profitCents)} · marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)} %`}
-                  {/* Lėtas krovinys už km atrodo gerai, bet fura uždirba paromis (#179). */}
-                  {result.profitPerDayCents !== null && ` · ${formatCents(result.profitPerDayCents)} per parą`}
-                </p>
-              </details>
-            </>}
-        </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
-        {/* Pasiūlymų žurnalas (Phase 0, 5): ką nusprendė dispečeris prie Bramit verdikto.
-            `stopPropagation` – šie laukai ne reiso dalis ir rezultato nenuvalo. */}
-        {!tripId && verdiktas && <div className="mb-4 rounded-lg border border-line p-3 text-sm">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label>Galutinė kaina, €<input type="text" inputMode="decimal" value={galutineKaina} onChange={(event) => { event.stopPropagation(); setGalutineKaina(event.target.value); }} placeholder="Neprivaloma" className={inputClass} /></label>
-            <label>Priežastis<select value={priezastis} onChange={(event) => { event.stopPropagation(); setPriezastis(event.target.value); }} className={inputClass}>
-              <option value="">—</option>
-              {QUOTE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
-            </select></label>
-            {priezastis === "Kita" && <label>Kokia<input type="text" maxLength={500} value={priezastiesTekstas} onChange={(event) => { event.stopPropagation(); setPriezastiesTekstas(event.target.value); }} className={inputClass} /></label>}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {(["taken", "negotiating", "declined"] as const).map((decision) => (
-              <button key={decision} type="button" disabled={!zurnaloId} onClick={() => void saveDecision(decision)}
-                className={`rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${sprendimas === decision ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
-                {DECISION_LABELS[decision]}
-              </button>
-            ))}
-            <span className="text-muted">
-              {sprendimas !== "pending" ? `Žurnale: ${DECISION_LABELS[sprendimas]}. ` : zurnaloId ? "Įrašyta į žurnalą. " : ""}
-              <Link href="/pasiulymai" className="underline">Visi pasiūlymai</Link>
-            </span>
-          </div>
-          {sprendimoKlaida && <p role="alert" className="mt-2 text-bad">{sprendimoKlaida}</p>}
-        </div>}
-        {/* Paros savikaina yra didžioji reiso kaštų dalis. Jei ji nukopijuota
-            nuo kitos furos, pelnas atrodo tikslus, o iš tikrųjų nėra (#111). */}
-        {nepatikslinta && <p className="mt-3 rounded-lg bg-warn-soft p-3 text-sm text-warn">
-          Furos {nepatikslinta} paros savikaina iki cento sutampa su kita fura – greičiausiai
-          nepatikslinta. Tol, kol taip, šis pelnas apytikslis.{" "}
-          <Link href="/trucks?skiltis=kastai" className="font-semibold underline">Patikslinti kaštus</Link>
-        </p>}
-
-        {/* Įmonės riba (#181): be jos per pigus užsakymas priimamas, nes skaičius
-            tik parodomas, bet niekas jo nepažymi. */}
-        {!bePajamu && (() => {
-          const check = checkMargin({
-            marginPercent: result.marginPercent,
-            minMarginPercent: minMarza,
-            totalCostCents: result.totalCostCents,
-            revenueCents: result.revenueCents,
-          });
-          if (check.status !== "below") return null;
-          const uzKm = check.priceAtMinCents === null ? null : pricePerKm(check.priceAtMinCents, apmokamiKm);
-          return <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
-            Marža žemiau įmonės ribos {formatMinMargin(check.minMarginPercent)}.
-            {check.priceAtMinCents !== null && <>
-              {" "}Ribai pasiekti kaina turėtų būti bent <strong>{formatCents(check.priceAtMinCents)}</strong>
-              {uzKm !== null && ` (${uzKm.toFixed(2)} €/km)`}
-              {check.shortfallCents !== null && check.shortfallCents > 0 && <> – {formatCents(check.shortfallCents)} daugiau</>}.
-            </>}
-          </p>;
-        })()}
-        {bePajamu && kainaZemiauRibos && <p role="alert" className="mt-3 rounded-lg bg-bad-soft p-3 text-sm text-bad">
-          Tikslinė marža {norimaMarza} % žemesnė už įmonės ribą {formatMinMargin(minMarza)}.
-        </p>}
-
+      {/* Kaštų išskaidymas – sprendimui nereikia, bet patikrinti kartais būtina. */}
+      {result && <Skiltis antraste="Kaštai">
         {/* Kaina trimis matais: viso, per parą ir už apmokamą km. Užsakovas
             klausia €/km, o fura kainuoja paromis – reikia matyti abu. */}
         <table className="mt-4 w-full text-sm tabular-nums">
@@ -1976,49 +2012,30 @@ export function TripForm({
             : <>Dienpinigiai fiksuoti – {formatCents(result.perDiemCents)} (furos paros suma × paros). Pagal šalis jie suskaičiuojami paspaudus „Skaičiuoti kainą“.</>}
           {dienpinigiuPastaba && <span className="block text-warn">{dienpinigiuPastaba}</span>}
         </p>}
+      </Skiltis>}
 
-        {/* Atvirkštinis klausimas: kaštai žinomi, reikia kainos. Kai pajamų
-            nėra, kaina jau parodyta antraštėje – antrą kartą jos nekartojame
-            (#159). Tuščio skyriaus su linija be turinio irgi nerodome. */}
-        {istorija && <div className="mt-4 border-t pt-4">
-          {/* Marža įrašoma iš galvos, o tikroji riba yra kita: kiek už tą
-              kryptį realiai moka. Istorija kainos nenustato, tik parodo, ar
-              dabar prašoma daugiau, ar mažiau nei anksčiau (#109). */}
-          <div className="rounded-lg bg-page p-3 text-sm">
-            <p className="font-semibold">
-              {istorija.matchType === "route" ? "Ta pati kryptis anksčiau" : "Į tą pačią vietą anksčiau"}
-              <span className="ml-2 font-normal text-muted">
-                {istorija.tripCount} reis. · paskutinis {istorija.lastTripDate}
-              </span>
-            </p>
-            <p className="mt-1 tabular-nums">
-              Mediana <strong>{formatCents(istorija.medianRevenueCents)}</strong>
-              {istorija.medianPricePerKm !== null && <span> ({istorija.medianPricePerKm.toFixed(2)} €/km)</span>}
-              <span className="text-muted">
-                {" "}· nuo {formatCents(istorija.lowestRevenueCents)} iki {formatCents(istorija.highestRevenueCents)}
-              </span>
-              {istorija.medianMarginPercent !== null && <span className="text-muted"> · marža {istorija.medianMarginPercent.toFixed(1)} %</span>}
-            </p>
-            {/* Tik tada, kai tai ne ta pati kryptis: kitaip žmogus palaikytų
-                kitos krypties kainas šios krypties kaina. */}
-            {istorija.matchType !== "route" && <p className="mt-1 text-muted">
-              Šios krypties dar nebuvo – tai kitų reisų į tą pačią vietą kainos.
-            </p>}
-          </div>
-        </div>}
-      </section>}
+      {/* Atkarpos reikalingos tik tada, kai kelių kaina skaičiuojama pagal
+          įkainius. Su PTV ten lieka viena „Nemokami" eilutė,
+          todėl skiltis suskleista ir nebeblaško. */}
+      <details className="rounded-xl border p-4">
+        <summary className="cursor-pointer font-semibold">Atkarpos pagal šalis (kai keliai pagal įkainius)</summary>
+        <div className="mt-3 space-y-3">
+          {legs.map(leg => <div key={leg.id} className="flex flex-wrap items-end gap-3"><label className="flex-1">Šalis<select required name={`country-${leg.id}`} defaultValue={leg.country} className={inputClass}><option value="">Pasirinkite šalį</option>{tariffs.map(t => <option key={t.country} value={t.country}>{t.country}</option>)}</select></label><label>Atstumas (km)<input name={`km-${leg.id}`} type="number" min="0" step="0.01" required defaultValue={leg.km} className={inputClass} /></label><button type="button" disabled={legs.length === 1} onClick={() => { setLegs(current => current.filter(l => l.id !== leg.id)); setResult(null); setSaved(""); }} className="p-3 underline disabled:opacity-40">Pašalinti</button></div>)}
+          <button type="button" className="underline" onClick={() => { setLegs(current => [...current, { id: nextId.current++, country: "", km: "" }]); setResult(null); setSaved(""); }}>Pridėti šalį</button>
+        </div>
+      </details>
+
+        </div>
+      </details>
     </fieldset>
   </form>;
 }
 
-/** Sunumeruota skiltis: vartotojas mato, kiek žingsnių liko. */
-function Skiltis({ numeris, antraste, children }: { numeris: number; antraste: string; children: React.ReactNode }) {
+/** Poskyris suskleistoje „Visi kintamieji“ dalyje. */
+function Skiltis({ antraste, children }: { antraste: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border p-4">
-      <h2 className="mb-3 flex items-center gap-2 font-semibold">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-raised text-sm">{numeris}</span>
-        {antraste}
-      </h2>
+      <h3 className="mb-3 font-semibold">{antraste}</h3>
       {children}
     </section>
   );

@@ -132,7 +132,7 @@ export function quoteNotes(input: QuoteNoteInput): string[] {
       + "Pertraukos ir poilsis neįskaičiuoti.",
     );
   } else {
-    notes.push("Parų nustatyti nepavyko – įrašykite jas ranka skiltyje „Pakeisti ranka“.");
+    notes.push("Parų nustatyti nepavyko – įrašykite jas ranka skiltyje „Visi kintamieji“.");
   }
   if (input.days !== null && input.serviceHours) {
     notes.push(`Į paras įskaičiuota ${String(input.serviceHours).replace(".", ",")} val. pakrovimui ir iškrovimui.`);

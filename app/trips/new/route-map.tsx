@@ -98,6 +98,10 @@ const TARGET_LAYERS: Record<DragTarget, [string, string]> = {
   route: ["route", "route-casing"],
   empty: ["empty-route", "empty-route-casing"],
 };
+const SHARED_TARGET_LAYERS: Record<DragTarget, string> = {
+  route: "shared-route-loaded",
+  empty: "shared-route-empty",
+};
 
 // Ctrl + ratukas (Mac – ⌘) keičia mastelį, o paprastas slinkimas slenka puslapį;
 // jutikliniame ekrane žemėlapį judina du pirštai, vienas – slenka puslapį.
@@ -360,11 +364,14 @@ function RouteMapView({
       });
       // Kur tuščias ir krovinio kelias sutampa – linija perskelta per pusę:
       // raudona ir juoda pusės greta, ant pilnos linijos.
-      const half = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width / 2]);
+      // Abi pusės truputį persidengia per vidurį. Be persidengimo jų apvalūs
+      // galai su pilna raudona linija susiliesdavo tik vienu pikseliu ir ties
+      // bendro ruožo pradžia atrodydavo nutrūkę.
+      const half = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width * 0.55]);
       // `side` – kurioje pusėje raudona (iš kur ateina tuščias kelias); juoda – priešingoje.
       const offset = (sign: 1 | -1) => [
         "interpolate", ["linear"], ["zoom"],
-        ...ROUTE_WIDTH.flatMap(([zoom, width]) => [zoom, ["*", ["get", "side"], (sign * width) / 4]]),
+        ...ROUTE_WIDTH.flatMap(([zoom, width]) => [zoom, ["*", ["get", "side"], sign * width * 0.225]]),
       ] as ExpressionSpecification;
       map.addSource("shared-route", { type: "geojson", data: EMPTY_COLLECTION });
       map.addLayer({
@@ -425,7 +432,9 @@ function RouteMapView({
       ];
       const [from, to] = anchorsAround(current.length, indices, at);
       preview.anchors = [current[from], current[to]];
-      for (const id of TARGET_LAYERS[target]) map.setPaintProperty(id, "line-opacity", 0.3);
+      for (const id of [...TARGET_LAYERS[target], SHARED_TARGET_LAYERS[target]]) {
+        map.setPaintProperty(id, "line-opacity", 0.3);
+      }
     }
 
     function movePreview(lngLat: LngLat) {
@@ -445,7 +454,11 @@ function RouteMapView({
       preview.next = null;
       preview.anchors = null;
       preview.source()?.setData(EMPTY_COLLECTION);
-      for (const id of [...TARGET_LAYERS.route, ...TARGET_LAYERS.empty]) map.setPaintProperty(id, "line-opacity", 1);
+      for (const id of [
+        ...TARGET_LAYERS.route,
+        ...TARGET_LAYERS.empty,
+        ...Object.values(SHARED_TARGET_LAYERS),
+      ]) map.setPaintProperty(id, "line-opacity", 1);
     }
 
     // Linijos tempimas veikia tik ant maršruto, o `preventDefault` sustabdo
@@ -504,8 +517,16 @@ function RouteMapView({
       });
     }
 
-    // Kuri linija po pele. Bendrame ruože – krovinio (juoda), kaip anksčiau.
+    // Kuri linija po pele. Bendrame ruože tikrinamos matomos pusės, todėl
+    // raudona pusė tempia tuščią maršrutą, o juoda – pakrautą. Platūs nematomi
+    // sluoksniai lieka atsarga ten, kur maršrutai nesutampa.
     const hitTarget = (point: { x: number; y: number }): DragTarget | null => {
+      const sharedLayers = Object.values(SHARED_TARGET_LAYERS).filter((id) => map.getLayer(id));
+      const sharedIds = map.queryRenderedFeatures([point.x, point.y], { layers: sharedLayers })
+        .map((feature) => feature.layer.id);
+      if (sharedIds.includes(SHARED_TARGET_LAYERS.empty) && callbacks.current.onAddEmptyVia) return "empty";
+      if (sharedIds.includes(SHARED_TARGET_LAYERS.route)) return "route";
+
       const layers = ["route-hit", "empty-route-hit"].filter((id) => map.getLayer(id));
       const ids = map.queryRenderedFeatures([point.x, point.y], { layers }).map((feature) => feature.layer.id);
       if (ids.includes("route-hit")) return "route";

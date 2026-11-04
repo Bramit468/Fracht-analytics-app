@@ -747,7 +747,11 @@ export function TripForm({
       // Adresas su tašku – kaip pasirinkus pasiūlymą: be taško kaina nepasileistų.
       const resolved = await Promise.all(places.map(async ({ type, place }) => {
         const query = placeQuery(place);
-        const found = await resolveAddress(query).catch(() => null);
+        // Be šalies toks pats miestas gali būti keliuose žemynuose. Tokiu atveju
+        // žmogus turi pasirinkti pasiūlymą, o ne gauti tyliai „patvirtintą“ spėjimą.
+        const found = place.country
+          ? await resolveAddress(query, place.country).catch(() => null)
+          : null;
         return { type, address: found?.formattedAddress || query, point: found ? `${found.latitude},${found.longitude}` : "" };
       }));
 

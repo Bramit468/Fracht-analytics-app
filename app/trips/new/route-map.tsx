@@ -115,6 +115,18 @@ interface Pointer {
   point: { x: number; y: number };
 }
 
+/** Smeigtukas: spalvotas lašas su balta raide (be MapLibre baltos galvutės). */
+function pinElement(color: string, letter: string, title: string): HTMLElement {
+  const element = document.createElement("div");
+  element.title = title;
+  element.style.cssText = "width:28px;height:36px;cursor:default";
+  element.innerHTML = `<svg width="28" height="36" viewBox="0 0 28 36" aria-hidden="true">`
+    + `<path d="M14 35C14 35 27 21.6 27 13.5A13 13 0 0 0 1 13.5C1 21.6 14 35 14 35Z" fill="${color}" stroke="#ffffff" stroke-width="1.5"/>`
+    + `<text x="14" y="18.5" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="13" font-weight="700">${letter}</text>`
+    + `</svg>`;
+  return element;
+}
+
 function lineFeature(coordinates: number[][]) {
   return { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates } };
 }
@@ -501,28 +513,15 @@ function RouteMapView({
 
     const markers: Marker[] = [];
 
+    // Raidės iš eilės: A – fura (jei žinoma), toliau pakrovimas, iškrovimas…
+    const letter = (index: number) => String.fromCharCode(65 + index + (truck ? 1 : 0));
+    const pin = (color: string, text: string, title: string, latitude: number, longitude: number) =>
+      new Marker({ element: pinElement(color, text, title), anchor: "bottom" }).setLngLat([longitude, latitude]).addTo(map);
+
+    if (truck) markers.push(pin(STOP_COLORS.truck, "A", truck.title, truck.latitude, truck.longitude));
     for (const [index, stop] of stops.entries()) {
       const color = index === 0 ? STOP_COLORS.first : index === stops.length - 1 ? STOP_COLORS.last : STOP_COLORS.middle;
-      const marker = new Marker({ color }).setLngLat([stop.longitude, stop.latitude]);
-      const element = marker.getElement();
-      const label = document.createElement("span");
-      label.textContent = stop.letter;
-      // Smeigtuko galvutės viduryje yra baltas skritulys, tad raidė tamsi.
-      label.style.cssText = "position:absolute;left:0;top:8px;width:27px;text-align:center;color:#111827;font:700 10px/11px sans-serif;pointer-events:none";
-      element.append(label);
-      element.title = stop.title;
-      markers.push(marker.addTo(map));
-    }
-
-    if (truck) {
-      const marker = new Marker({ color: STOP_COLORS.truck }).setLngLat([truck.longitude, truck.latitude]);
-      const element = marker.getElement();
-      const label = document.createElement("span");
-      label.textContent = truck.letter;
-      label.style.cssText = "position:absolute;left:0;top:8px;width:27px;text-align:center;color:#111827;font:700 10px/11px sans-serif;pointer-events:none";
-      element.append(label);
-      element.title = truck.title;
-      markers.push(marker.addTo(map));
+      markers.push(pin(color, letter(index), stop.title, stop.latitude, stop.longitude));
     }
 
     for (const violation of violations) {

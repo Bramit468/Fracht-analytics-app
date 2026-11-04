@@ -1268,7 +1268,7 @@ export function TripForm({
           truck: {
             latitude: emptyRun.from.latitude,
             longitude: emptyRun.from.longitude,
-            letter: "F",
+            letter: "A",
             title: emptyRun.start.source === "gps" ? `Fura dabar (${emptyRun.start.gpsTime.slice(0, 16)})` : `Fura bus: ${emptyRun.start.address}`,
           },
         }

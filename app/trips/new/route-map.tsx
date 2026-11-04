@@ -85,7 +85,8 @@ const zoomWidth = (stops: [number, number][], extra = 0) => [
 const ROUTE_WIDTH = [[3, 3], [8, 4.5], [12, 6.5], [16, 10]] as [number, number][];
 const SHARED_WIDTH = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width * 0.55]);
 const CASING_EXTRA = 3;
-const HOVER_EXTRA = 2;
+const HOVER_EXTRA = 3;
+const UNSELECTED_SHARED_OPACITY = 0.45;
 
 /** Mažiau nei tiek pikselių nuvilkta linija laikoma paprastu spustelėjimu, o ne taško pridėjimu. */
 const MIN_DRAG_PX = 5;
@@ -485,9 +486,25 @@ function RouteMapView({
       map.setPaintProperty(casingId, "line-width", zoomWidth(ROUTE_WIDTH, CASING_EXTRA + extra));
     }
 
+    function setSharedFocus(target: DragTarget | null) {
+      const loadedId = SHARED_TARGET_LAYERS.route;
+      const emptyId = SHARED_TARGET_LAYERS.empty;
+      if (!map.getLayer(loadedId) || !map.getLayer(emptyId)) return;
+
+      // Numatyta tvarka: raudona virš juodos. Juodos pusės pastorinimą anksčiau
+      // beveik visą uždengdavo raudona, todėl pasirinkta pusė laikinai keliama
+      // virš kitos. Peržiūros sluoksniai vis tiek lieka pačiame viršuje.
+      map.moveLayer(loadedId, emptyId);
+      if (target) map.moveLayer(SHARED_TARGET_LAYERS[target], "route-preview-casing");
+
+      map.setPaintProperty(loadedId, "line-opacity", target === "empty" ? UNSELECTED_SHARED_OPACITY : 1);
+      map.setPaintProperty(emptyId, "line-opacity", target === "route" ? UNSELECTED_SHARED_OPACITY : 1);
+    }
+
     function setHover(next: RouteHit | null) {
       if (hovered?.target === next?.target && hovered?.shared === next?.shared) return;
       if (hovered) setHitWidth(hovered, 0);
+      setSharedFocus(next?.shared ? next.target : null);
       hovered = next;
       if (hovered) setHitWidth(hovered, HOVER_EXTRA);
       canvas.style.cursor = hovered ? "grab" : "";

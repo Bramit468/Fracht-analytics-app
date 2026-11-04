@@ -477,13 +477,15 @@ function RouteMapView({
     let hovered: RouteHit | null = null;
 
     function setHitWidth(hit: RouteHit, extra: number) {
-      if (hit.shared) {
-        map.setPaintProperty(SHARED_TARGET_LAYERS[hit.target], "line-width", zoomWidth(SHARED_WIDTH, extra));
-        return;
-      }
+      // Paryškinamas visas pasirinktas maršrutas, ne vien bendro ruožo pusė
+      // po pele. Bendro ruožo sluoksnis pastorinamas papildomai, nes jis yra
+      // nupieštas virš pilnų raudonos ir juodos linijų.
       const [lineId, casingId] = TARGET_LAYERS[hit.target];
       map.setPaintProperty(lineId, "line-width", zoomWidth(ROUTE_WIDTH, extra));
       map.setPaintProperty(casingId, "line-width", zoomWidth(ROUTE_WIDTH, CASING_EXTRA + extra));
+      if (hit.shared) {
+        map.setPaintProperty(SHARED_TARGET_LAYERS[hit.target], "line-width", zoomWidth(SHARED_WIDTH, extra));
+      }
     }
 
     function setSharedFocus(target: DragTarget | null) {

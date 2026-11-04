@@ -113,6 +113,59 @@ export function simplifyRouteLine(
   return rounded.filter((_, index) => keep[index] === 1);
 }
 
+/** Kelio ruožai, kuriais važiuoja abi linijos (vienas kelias ar priešingos juostos). */
+export const SHARED_TOLERANCE_M = 30;
+
+/**
+ * Linijos `line` ruožai, einantys ne toliau kaip `tolerance` metrų nuo `other`.
+ *
+ * Žemėlapiui: kur tuščias ir krovinio kelias sutampa, linija perskeliama per
+ * pusę – abi spalvos matomos greta, o ne viena uždengia kitą. Ruožas laikomas
+ * bendru, kai abu jo galai yra prie kitos linijos.
+ */
+export function sharedSegments(
+  line: LineCoordinate[],
+  other: LineCoordinate[],
+  tolerance = SHARED_TOLERANCE_M,
+): LineCoordinate[][] {
+  if (line.length < 2 || other.length < 2) return [];
+  const scale = Math.cos((line[0][1] * Math.PI) / 180) * METRES_PER_DEGREE;
+  const toXY = ([lon, lat]: LineCoordinate) => [lon * scale, lat * METRES_PER_DEGREE] as const;
+  const segments = other.slice(1).map((end, index) => {
+    const [ax, ay] = toXY(other[index]);
+    const [bx, by] = toXY(end);
+    return { ax, ay, bx, by, minX: Math.min(ax, bx) - tolerance, maxX: Math.max(ax, bx) + tolerance, minY: Math.min(ay, by) - tolerance, maxY: Math.max(ay, by) + tolerance };
+  });
+
+  const near = (point: LineCoordinate): boolean => {
+    const [px, py] = toXY(point);
+    for (const s of segments) {
+      if (px < s.minX || px > s.maxX || py < s.minY || py > s.maxY) continue;
+      const dx = s.bx - s.ax;
+      const dy = s.by - s.ay;
+      const lengthSq = dx * dx + dy * dy;
+      const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - s.ax) * dx + (py - s.ay) * dy) / lengthSq));
+      if (Math.hypot(px - (s.ax + t * dx), py - (s.ay + t * dy)) <= tolerance) return true;
+    }
+    return false;
+  };
+
+  const flags = line.map(near);
+  const result: LineCoordinate[][] = [];
+  let current: LineCoordinate[] = [];
+  for (let i = 1; i < line.length; i++) {
+    if (flags[i - 1] && flags[i]) {
+      if (current.length === 0) current.push(line[i - 1]);
+      current.push(line[i]);
+    } else if (current.length > 0) {
+      result.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) result.push(current);
+  return result;
+}
+
 /** Kraštinės, kad žemėlapis iškart parodytų visą maršrutą. */
 export function routeBounds(points: LineCoordinate[]): [LineCoordinate, LineCoordinate] | null {
   if (points.length === 0) return null;

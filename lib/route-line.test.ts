@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRouteLine, routeBounds, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
+import { parseRouteLine, routeBounds, sharedSegments, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
+
+describe("sharedSegments", () => {
+  // Krovinio kelias rytų kryptimi palei 55° platumą.
+  const loaded: LineCoordinate[] = [[24.0, 55.0], [24.5, 55.0], [25.0, 55.0]];
+
+  it("tuščias kelias ateina iš šiaurės ir toliau eina tuo pačiu keliu – bendras tik sutampantis ruožas", () => {
+    const empty: LineCoordinate[] = [[24.2, 55.5], [24.2, 55.0002], [24.6, 55.0001], [24.9, 55.0]];
+    expect(sharedSegments(empty, loaded)).toEqual([[[24.2, 55.0002], [24.6, 55.0001], [24.9, 55.0]]]);
+  });
+
+  it("priešingos juostos (~20 m) – bendra; kitas kelias (~1 km) – ne", () => {
+    expect(sharedSegments([[24.1, 55.00018], [24.4, 55.00018]], loaded)).toHaveLength(1);
+    expect(sharedSegments([[24.1, 55.01], [24.4, 55.01]], loaded)).toEqual([]);
+  });
+
+  it("kelios atskiros sutapimo vietos – atskiri ruožai; per trumpos linijos – nieko", () => {
+    const empty: LineCoordinate[] = [[24.1, 55.0], [24.2, 55.0], [24.3, 55.2], [24.6, 55.0], [24.7, 55.0]];
+    expect(sharedSegments(empty, loaded)).toEqual([[[24.1, 55.0], [24.2, 55.0]], [[24.6, 55.0], [24.7, 55.0]]]);
+    expect(sharedSegments([[24.1, 55.0]], loaded)).toEqual([]);
+  });
+});
 
 /** Sutrumpinta tikro PTV atsakymo kopija: laukas ateina tekstu. */
 const POLYLINE = JSON.stringify({

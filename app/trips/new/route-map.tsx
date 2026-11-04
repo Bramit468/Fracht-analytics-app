@@ -14,7 +14,7 @@ import {
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import { routeBounds, type LineCoordinate } from "@/lib/route-line";
+import { routeBounds, sharedSegments, type LineCoordinate } from "@/lib/route-line";
 import { PTV_VECTOR_STYLE, ptvVectorProxyUrl, type PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
@@ -334,6 +334,26 @@ function RouteMapView({
         layout: round,
         paint: { "line-color": "#000000", "line-width": 24, "line-opacity": 0 },
       });
+      // Kur tuščias ir krovinio kelias sutampa – linija perskelta per pusę:
+      // raudona ir juoda pusės greta, ant pilnos linijos.
+      const half = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width / 2]);
+      const offset = (sign: 1 | -1) => zoomWidth(ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, (sign * width) / 4]));
+      map.addSource("shared-route", { type: "geojson", data: EMPTY_COLLECTION });
+      map.addLayer({
+        id: "shared-route-loaded",
+        type: "line",
+        source: "shared-route",
+        layout: round,
+        paint: { "line-color": ROUTE_COLOR, "line-width": zoomWidth(half), "line-offset": offset(-1) },
+      });
+      map.addLayer({
+        id: "shared-route-empty",
+        type: "line",
+        source: "shared-route",
+        layout: round,
+        paint: { "line-color": EMPTY_COLOR, "line-width": zoomWidth(half), "line-offset": offset(1) },
+      });
+
       // Tempiamas ruožas: vietinis vaizdas be užklausos.
       map.addSource("route-preview", { type: "geojson", data: EMPTY_COLLECTION });
       map.addLayer({
@@ -499,6 +519,16 @@ function RouteMapView({
     const bounds = routeBounds([...latest.current.line, ...emptyLine]);
     if (bounds) map.fitBounds(bounds, { padding: { top: 56, left: 48, right: 56, bottom: 40 }, maxZoom: 13, duration: 0 });
   }, [ready, emptyLine]);
+
+  // Bendri ruožai perskaičiuojami pasikeitus bet kuriai linijai.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const shared = sharedSegments(emptyLine, line);
+    (map.getSource("shared-route") as GeoJSONSource | undefined)?.setData(shared.length > 0
+      ? { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: shared } }
+      : EMPTY_COLLECTION);
+  }, [ready, line, emptyLine]);
 
   // Skaičiavimas baigėsi (net nesėkmingai): peržiūra, kuri laukė rezultato, nuimama.
   useEffect(() => {

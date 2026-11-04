@@ -14,7 +14,8 @@ import {
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import { routeBounds, sharedRuns, type LineCoordinate } from "@/lib/route-line";
+import { sharedRouteTarget } from "@/lib/route-hit-test";
+import { routeBounds, sharedRuns, type LineCoordinate, type SharedRun } from "@/lib/route-line";
 import { PTV_VECTOR_STYLE, ptvVectorProxyUrl, type PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
@@ -83,7 +84,6 @@ const zoomWidth = (stops: [number, number][], extra = 0) => [
 ] as ExpressionSpecification;
 const ROUTE_WIDTH = [[3, 3], [8, 4.5], [12, 6.5], [16, 10]] as [number, number][];
 const CASING_EXTRA = 3;
-const HOVER_EXTRA = 2;
 
 /** Mažiau nei tiek pikselių nuvilkta linija laikoma paprastu spustelėjimu, o ne taško pridėjimu. */
 const MIN_DRAG_PX = 5;
@@ -212,6 +212,7 @@ function RouteMapView({
   const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia, onAddEmptyVia, onMoveEmptyVia, onRemoveEmptyVia });
   const latest = useRef({ line, stops, via, emptyLine, emptyVia });
   const emptyLineRef = useRef(emptyLine);
+  const sharedRunsRef = useRef<SharedRun[]>([]);
 
   useEffect(() => {
     callbacks.current = { onAddVia, onMoveVia, onRemoveVia, onAddEmptyVia, onMoveEmptyVia, onRemoveEmptyVia };
@@ -466,12 +467,6 @@ function RouteMapView({
     // Taškas pridedamas tik paleidus, tad PTV užklausa viena, o ne po kiekvieno judesio.
     let dragging = false;
     const canvas = map.getCanvas();
-    const lineWidth = (extra: number) => zoomWidth(ROUTE_WIDTH, extra);
-    const setWidth = (target: DragTarget, extra: number) => {
-      const [lineId, casingId] = TARGET_LAYERS[target];
-      map.setPaintProperty(lineId, "line-width", lineWidth(extra));
-      map.setPaintProperty(casingId, "line-width", lineWidth(CASING_EXTRA + extra));
-    };
 
     function beginDrag(kind: "mouse" | "touch", start: Pointer, target: DragTarget) {
       dragging = true;
@@ -493,7 +488,6 @@ function RouteMapView({
         map.off(moveEvent, move);
         dragging = false;
         canvas.style.cursor = "";
-        setWidth(target, 0);
         // Paskutinė žinoma vieta: `touchend` pats koordinačių dažnai neturi.
         // Peržiūra paliekama, kol ateis tikras maršrutas: nuvalius ji sušoktų
         // atgal į seną kelią. Ją nuvalo kitas linijos atnaujinimas.
@@ -503,29 +497,15 @@ function RouteMapView({
       });
     }
 
-    for (const target of ["route", "empty"] as const) {
-      const hitId = target === "empty" ? "empty-route-hit" : "route-hit";
-      map.on("mouseenter", hitId, () => {
-        if (dragging) return;
-        canvas.style.cursor = "grab";
-        setWidth(target, HOVER_EXTRA);
-      });
-      map.on("mouseleave", hitId, () => {
-        if (dragging) return;
-        canvas.style.cursor = "";
-        setWidth(target, 0);
-      });
-    }
-
-    // Kuri linija po pele. Bendrame ruože tikrinamos matomos pusės, todėl
-    // raudona pusė tempia tuščią maršrutą, o juoda – pakrautą. Platūs nematomi
-    // sluoksniai lieka atsarga ten, kur maršrutai nesutampa.
+    // Kuri linija po pele. MapLibre pats `line-offset` pusių hit-test'e
+    // neatskiria, todėl bendras ruožas tikrinamas ekrano koordinatėmis.
     const hitTarget = (point: { x: number; y: number }): DragTarget | null => {
-      const sharedLayers = Object.values(SHARED_TARGET_LAYERS).filter((id) => map.getLayer(id));
-      const sharedIds = map.queryRenderedFeatures([point.x, point.y], { layers: sharedLayers })
-        .map((feature) => feature.layer.id);
-      if (sharedIds.includes(SHARED_TARGET_LAYERS.empty) && callbacks.current.onAddEmptyVia) return "empty";
-      if (sharedIds.includes(SHARED_TARGET_LAYERS.route)) return "route";
+      const shared = sharedRouteTarget(point, sharedRunsRef.current, (coordinate) => {
+        const projected = map.project(coordinate);
+        return { x: projected.x, y: projected.y };
+      });
+      if (shared === "empty" && callbacks.current.onAddEmptyVia) return "empty";
+      if (shared === "route") return "route";
 
       const layers = ["route-hit", "empty-route-hit"].filter((id) => map.getLayer(id));
       const ids = map.queryRenderedFeatures([point.x, point.y], { layers }).map((feature) => feature.layer.id);
@@ -533,6 +513,12 @@ function RouteMapView({
       if (ids.includes("empty-route-hit") && callbacks.current.onAddEmptyVia) return "empty";
       return null;
     };
+    map.on("mousemove", (event) => {
+      if (!dragging) canvas.style.cursor = hitTarget(event.point) ? "grab" : "";
+    });
+    map.on("mouseout", () => {
+      if (!dragging) canvas.style.cursor = "";
+    });
     map.on("mousedown", (event) => {
       const target = hitTarget(event.point);
       if (!target) return;
@@ -597,9 +583,11 @@ function RouteMapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
+    const runs = sharedRuns(emptyLine, line);
+    sharedRunsRef.current = runs;
     (map.getSource("shared-route") as GeoJSONSource | undefined)?.setData({
       type: "FeatureCollection",
-      features: sharedRuns(emptyLine, line).map((run) => ({
+      features: runs.map((run) => ({
         type: "Feature" as const,
         properties: { side: run.side },
         geometry: { type: "LineString" as const, coordinates: run.coordinates },

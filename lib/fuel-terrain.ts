@@ -54,6 +54,44 @@ export function knownLoadFuel(ptvLitresPer100Km: number | null, loadTonnes: numb
 }
 
 /**
+ * Viso reiso kuras tik iš PTV, be istorijos vidurkių (vartotojo sprendimas,
+ * 2026-11-04): krovinio km – PTV su krovinio svoriu, tušti km – PTV kelias iki
+ * pakrovimo su 0 kg. Laukui „Kuras l/100“ – viena norma, svertinė pagal km,
+ * todėl formulė ir išsaugoti reisai nesikeičia.
+ *
+ * Be krovinio svorio PTV laiko furą pilną – tada pasakoma pastaboje.
+ * Be tuščio kelio normos (tušti km įrašyti ranka) jiems imama krovinio norma.
+ */
+export function ptvTripFuel(input: {
+  paidKm: number;
+  emptyKm: number;
+  loadedL100: number | null;
+  emptyL100: number | null;
+  loadTonnes: number | null;
+}): TerrainFuel | null {
+  const { paidKm, emptyKm, loadedL100, loadTonnes } = input;
+  if (loadedL100 === null || !(loadedL100 > 0)) return null;
+  const emptyKnown = input.emptyL100 !== null && input.emptyL100 > 0;
+  const emptyL100 = emptyKnown ? input.emptyL100! : loadedL100;
+  const paid = Math.max(0, paidKm);
+  const empty = Math.max(0, emptyKm);
+  const total = paid + empty;
+  const value = total > 0
+    ? Math.round(((paid * loadedL100 + empty * emptyL100) / total) * 100) / 100
+    : Math.round(loadedL100 * 100) / 100;
+  const lt = (number: number, digits = 1) => number.toFixed(digits).replace(".", ",");
+  const km = (number: number) => Math.round(number).toLocaleString("lt-LT").replace(/\s/g, " ");
+  const load = loadTonnes === null ? "krovinio svoris nežinomas – PTV laiko furą pilną" : `${lt(loadTonnes)} t`;
+  let note = `Kuras: ${lt(value)} l/100 – PTV: su kroviniu (${load}) ${lt(loadedL100)} l/100 × ${km(paid)} km`;
+  if (empty > 0) {
+    note += emptyKnown
+      ? `, tuščia ${lt(emptyL100)} l/100 × ${km(empty)} km`
+      : `, tušti ${km(empty)} km – ta pati norma (tuščio kelio PTV nėra)`;
+  }
+  return { litresPer100Km: value, note: `${note}.` };
+}
+
+/**
  * Furos norma, pakoreguota maršrutui. Be furos vidurkio – PTV su parko
  * kalibracija. `null`, kai PTV įverčio nėra: lieka furos vidurkis kaip buvo.
  */

@@ -257,6 +257,8 @@ export function TripForm({
   const [furaBus, setFuraBus] = useState({ address: "", point: "" });
   /** Tuščių km eilutė pagrindinėje skiltyje; `gps` – vieta gali keistis. */
   const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean; unknown: boolean } | null>(null);
+  /** Tuščias kelias iki pakrovimo žemėlapyje (raudonas) ir furos vieta. */
+  const [tuscioKelias, setTuscioKelias] = useState<{ line: LineCoordinate[]; truck: MapStop } | null>(null);
   const skaiciuota = useRef(false);
   /** Įklijuotas krovinio pasiūlymas (Phase 0, 4): tekstas ir ką iš jo užpildė. */
   const [pasiulymoTekstas, setPasiulymoTekstas] = useState("");
@@ -630,6 +632,8 @@ export function TripForm({
     setStops(next);
     setResult(null);
     setSaved("");
+    // Kitas pakrovimas – senas tuščias kelias nebetinka (naujas – paspaudus „Skaičiuoti“).
+    setTuscioKelias(null);
     markDaysStale();
 
     const via = resetVia ? [] : tarpiniai;
@@ -1258,6 +1262,17 @@ export function TripForm({
       const quoted = quoteDays(picked.days, sustojimuVal + tusciuVal);
       // Be istorijos vidurkių (vartotojo sprendimas, 2026-11-04): vieta nežinoma – 0 ir prašoma įrašyti.
       const emptyKm = rankaTusti ?? (emptyRun ? emptyRun.km : 0);
+      setTuscioKelias(emptyRun && rankaTusti === null && emptyRun.line.length >= 2
+        ? {
+          line: emptyRun.line,
+          truck: {
+            latitude: emptyRun.from.latitude,
+            longitude: emptyRun.from.longitude,
+            letter: "F",
+            title: emptyRun.start.source === "gps" ? `Fura dabar (${emptyRun.start.gpsTime.slice(0, 16)})` : `Fura bus: ${emptyRun.start.address}`,
+          },
+        }
+        : null);
       if (write) {
         setTusciInfo(rankaTusti !== null
           ? { text: `Tušti km iki pakrovimo: ${String(rankaTusti).replace(".", ",")} km – įrašyta ranka.`, gps: false, unknown: false }
@@ -1871,6 +1886,8 @@ export function TripForm({
         {routeLookup && marsrutoLinija.length >= 2 && <div className="mt-3">
           <RouteMap
             line={marsrutoLinija}
+            emptyLine={tuscioKelias?.line}
+            truck={tuscioKelias?.truck ?? null}
             stops={marsrutoSustojimai}
             violations={marsrutoPazeidimai}
             via={tarpiniai}

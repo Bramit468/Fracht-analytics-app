@@ -4,6 +4,7 @@ import { emptyRunStart, type EmptyRunStart, type TruckGps, type TruckTrip } from
 import { todayInVilnius } from "@/lib/local-date";
 import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
+import { parseRouteLine, simplifyRouteLine, type LineCoordinate } from "@/lib/route-line";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { liveTrucks, parseSnapshots } from "@/lib/telematics";
 import { canUseTelematics } from "@/lib/telematics-access";
@@ -13,7 +14,18 @@ import { addDays } from "@/lib/trip-progress";
 import { geocode, pickedPoint, ptvJson } from "./route-core";
 
 export type EmptyRunResult =
-  | { ok: true; start: EmptyRunStart; km: number; tollCents: number; travelMinutes: number; /** PTV kuras tuščiai furai (0 kg), l/100. */ fuelL100: number | null }
+  | {
+    ok: true;
+    start: EmptyRunStart;
+    km: number;
+    tollCents: number;
+    travelMinutes: number;
+    /** PTV kuras tuščiai furai (0 kg), l/100. */
+    fuelL100: number | null;
+    /** Tuščio kelio linija žemėlapiui ir jo pradžia (kur fura yra ar bus). */
+    line: LineCoordinate[];
+    from: { latitude: number; longitude: number };
+  }
   | { ok: false; reason: string };
 
 /** Kiek dienų atgal ieškoti reiso, kurio iškrovime fura gali būti. */
@@ -110,6 +122,8 @@ export async function emptyRunToLoading(
       tollCents: estimate.tollCents,
       travelMinutes: estimate.travelMinutes,
       fuelL100: routeEmissions(payload, estimate.km)?.litresPer100Km ?? null,
+      line: simplifyRouteLine(parseRouteLine((payload as { polyline?: unknown }).polyline)),
+      from: { latitude: from.latitude, longitude: from.longitude },
     };
   } catch (cause) {
     console.error("Tušti km iki pakrovimo", cause);

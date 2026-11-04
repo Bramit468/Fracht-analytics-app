@@ -73,8 +73,9 @@ const SATELLITE_LAYERS: { id: string; path: string; attribution?: string }[] = [
   { id: "sat-labels", path: "Reference/World_Boundaries_and_Places" },
 ];
 
-/** Maršruto linija: ryški tamsiai mėlyna su balta apvadą, kad matytųsi virš bet kurio kelio. */
-const ROUTE_COLOR = "#1d4ed8";
+/** Krovinio kelias – juodas, tuščias kelias iki pakrovimo – raudonas; abu su balta apvadą. */
+const ROUTE_COLOR = "#111827";
+const EMPTY_COLOR = "#dc2626";
 const PREVIEW_COLOR = "#7c3aed";
 const zoomWidth = (stops: [number, number][], extra = 0) => [
   "interpolate", ["linear"], ["zoom"],
@@ -88,6 +89,7 @@ const HOVER_EXTRA = 2;
 const MIN_DRAG_PX = 5;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: "FeatureCollection", features: [] };
+const NO_LINE: LineCoordinate[] = [];
 
 // Ctrl + ratukas (Mac – ⌘) keičia mastelį, o paprastas slinkimas slenka puslapį;
 // jutikliniame ekrane žemėlapį judina du pirštai, vienas – slenka puslapį.
@@ -105,7 +107,8 @@ export interface MapStop {
   title: string;
 }
 
-const STOP_COLORS = { first: "#16a34a", last: "#dc2626", middle: "#475569" } as const;
+// Krovinio taškai juodi kaip jo kelias; furos vieta – raudona kaip tuščias kelias.
+const STOP_COLORS = { first: "#111827", last: "#111827", middle: "#475569", truck: EMPTY_COLOR } as const;
 
 interface Pointer {
   lngLat: LngLat;
@@ -130,6 +133,8 @@ function lineFeature(coordinates: number[][]) {
  */
 function RouteMapView({
   line,
+  emptyLine = NO_LINE,
+  truck = null,
   stops = [],
   violations = [],
   via = [],
@@ -140,6 +145,10 @@ function RouteMapView({
   onRemoveVia,
 }: {
   line: LineCoordinate[];
+  /** Tuščias kelias nuo furos vietos iki pakrovimo – raudonas. */
+  emptyLine?: LineCoordinate[];
+  /** Kur fura yra ar bus prieš krovinį. */
+  truck?: MapStop | null;
   /** Sustojimai: žymekliai su raidėmis A, B, C… */
   stops?: MapStop[];
   violations?: RouteViolation[];
@@ -169,6 +178,7 @@ function RouteMapView({
   // įvykiai visada matytų naujausią reikšmę, o pats žemėlapis nebūtų kuriamas iš naujo.
   const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia });
   const latest = useRef({ line, stops, via });
+  const emptyLineRef = useRef(emptyLine);
 
   useEffect(() => {
     callbacks.current = { onAddVia, onMoveVia, onRemoveVia };
@@ -273,6 +283,22 @@ function RouteMapView({
       }
 
       const round = { "line-cap": "round", "line-join": "round" } as const;
+      // Tuščias kelias – po krovinio keliu: kur jie sutampa, matosi krovinio.
+      map.addSource("empty-route", { type: "geojson", data: EMPTY_COLLECTION });
+      map.addLayer({
+        id: "empty-route-casing",
+        type: "line",
+        source: "empty-route",
+        layout: round,
+        paint: { "line-color": "#ffffff", "line-width": zoomWidth(ROUTE_WIDTH, CASING_EXTRA) },
+      });
+      map.addLayer({
+        id: "empty-route",
+        type: "line",
+        source: "empty-route",
+        layout: round,
+        paint: { "line-color": EMPTY_COLOR, "line-width": zoomWidth(ROUTE_WIDTH) },
+      });
       map.addSource("route", { type: "geojson", data: EMPTY_COLLECTION });
       map.addLayer({
         id: "route-casing",
@@ -441,7 +467,7 @@ function RouteMapView({
     markerHooks.current?.endPreview();
 
     if (hasFitted.current && viaCount.current > 0) return;
-    const bounds = routeBounds(line);
+    const bounds = routeBounds([...line, ...emptyLineRef.current]);
     if (bounds) {
       // Viršuje paliekama vietos mygtukui „Padidinti“; `maxZoom` – kad trumpas
       // reisas neatsidurtų ties pavieniais namais.
@@ -449,6 +475,18 @@ function RouteMapView({
       hasFitted.current = true;
     }
   }, [ready, line]);
+
+  // Tuščias kelias ateina su kaina, vėliau nei krovinio kelias: vaizdas
+  // praplečiamas, kad matytųsi ir furos vieta (jei žmogus netempė taškų).
+  useEffect(() => {
+    emptyLineRef.current = emptyLine;
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    (map.getSource("empty-route") as GeoJSONSource | undefined)?.setData(emptyLine.length >= 2 ? lineFeature(emptyLine) : EMPTY_COLLECTION);
+    if (emptyLine.length < 2 || viaCount.current > 0) return;
+    const bounds = routeBounds([...latest.current.line, ...emptyLine]);
+    if (bounds) map.fitBounds(bounds, { padding: { top: 56, left: 48, right: 56, bottom: 40 }, maxZoom: 13, duration: 0 });
+  }, [ready, emptyLine]);
 
   // Skaičiavimas baigėsi (net nesėkmingai): peržiūra, kuri laukė rezultato, nuimama.
   useEffect(() => {
@@ -476,6 +514,17 @@ function RouteMapView({
       markers.push(marker.addTo(map));
     }
 
+    if (truck) {
+      const marker = new Marker({ color: STOP_COLORS.truck }).setLngLat([truck.longitude, truck.latitude]);
+      const element = marker.getElement();
+      const label = document.createElement("span");
+      label.textContent = truck.letter;
+      label.style.cssText = "position:absolute;left:0;top:8px;width:27px;text-align:center;color:#111827;font:700 10px/11px sans-serif;pointer-events:none";
+      element.append(label);
+      element.title = truck.title;
+      markers.push(marker.addTo(map));
+    }
+
     for (const violation of violations) {
       if (violation.latitude === undefined || violation.longitude === undefined) continue;
       markers.push(
@@ -487,7 +536,7 @@ function RouteMapView({
     }
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [ready, stops, violations]);
+  }, [ready, stops, violations, truck]);
 
   // Tarpiniai taškai: paprasti apskritimai su balta apvadą, kad skirtųsi nuo
   // sustojimų smeigtukų. Tempiami, o dukart spustelėjus – pašalinami.

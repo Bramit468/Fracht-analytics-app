@@ -1586,8 +1586,8 @@ export function TripForm({
       <section aria-label="Skaičiuoklė" className="rounded-xl border p-4">
         {/* Pasiūlymas iš biržos ar laiško: įklijavus laukai užsipildo patys.
             `stopPropagation` – tekstas ne formos laukas ir rezultato nenuvalo. */}
-        {!tripId && routeLookup && <div className="mb-4 rounded-lg bg-accent p-4 text-accent-ink">
-          <label className="block font-semibold">Įklijuoti pasiūlymą
+        {!tripId && routeLookup && <div className="mb-4 rounded-lg border border-line-strong bg-raised p-4">
+          <label className="block font-semibold text-ink">Įklijuoti pasiūlymą
             <textarea
               value={pasiulymoTekstas}
               rows={2}
@@ -1609,13 +1609,13 @@ export function TripForm({
                 setPasiulymoTekstas(pasted);
                 void applyOffer(pasted);
               }}
-              className={`${inputClass} border-accent font-normal text-ink focus:outline-none focus:ring-2 focus:ring-accent-ink/50`}
+              className={`${inputClass} border-line-strong font-normal text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15`}
             />
           </label>
-          {(pasiulymasSkaitomas || pasiulymoBusena?.summary) && <p role="status" className="mt-2 text-sm">
+          {(pasiulymasSkaitomas || pasiulymoBusena?.summary) && <p role="status" className="mt-2 text-sm text-muted">
             {pasiulymasSkaitomas ? "Skaitoma…" : pasiulymoBusena?.summary}
           </p>}
-          {pasiulymoBusena?.warnings.map((warning) => <p key={warning} className="mt-1 text-sm text-warn-soft">{warning}</p>)}
+          {pasiulymoBusena?.warnings.map((warning) => <p key={warning} className="mt-1 text-sm text-warn">{warning}</p>)}
         </div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { setFurosId(event.target.value); normuPildymas.current = prefillRates(event.target.value); if (quoteReady(stops)) scheduleQuote(); }} className={`${inputClass} ${raudona("truck_id")}`}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>

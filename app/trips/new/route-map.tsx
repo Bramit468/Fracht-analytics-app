@@ -14,7 +14,7 @@ import {
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import { routeBounds, sharedSegments, type LineCoordinate } from "@/lib/route-line";
+import { routeBounds, sharedSegments, sharedSide, type LineCoordinate } from "@/lib/route-line";
 import { PTV_VECTOR_STYLE, ptvVectorProxyUrl, type PtvMapLayer } from "@/lib/ptv-map-tile";
 import type { RouteViolation } from "@/lib/ptv-route";
 import { anchorsAround, nearestLineIndex, type ViaPoint } from "@/lib/via-points";
@@ -90,6 +90,14 @@ const MIN_DRAG_PX = 5;
 
 const EMPTY_COLLECTION: FeatureCollection = { type: "FeatureCollection", features: [] };
 const NO_LINE: LineCoordinate[] = [];
+const NO_VIA: ViaPoint[] = [];
+
+/** Kuri linija tempiama: krovinio (juoda) ar tuščia (raudona). */
+type DragTarget = "route" | "empty";
+const TARGET_LAYERS: Record<DragTarget, [string, string]> = {
+  route: ["route", "route-casing"],
+  empty: ["empty-route", "empty-route-casing"],
+};
 
 // Ctrl + ratukas (Mac – ⌘) keičia mastelį, o paprastas slinkimas slenka puslapį;
 // jutikliniame ekrane žemėlapį judina du pirštai, vienas – slenka puslapį.
@@ -155,10 +163,19 @@ function RouteMapView({
   onAddVia,
   onMoveVia,
   onRemoveVia,
+  emptyVia = NO_VIA,
+  onAddEmptyVia,
+  onMoveEmptyVia,
+  onRemoveEmptyVia,
 }: {
   line: LineCoordinate[];
-  /** Tuščias kelias nuo furos vietos iki pakrovimo – raudonas. */
+  /** Tuščias kelias nuo furos vietos iki pakrovimo – raudonas, tempiamas kaip ir krovinio. */
   emptyLine?: LineCoordinate[];
+  /** Tuščio kelio tarpiniai taškai. */
+  emptyVia?: ViaPoint[];
+  onAddEmptyVia?: (point: ViaPoint) => boolean | void;
+  onMoveEmptyVia?: (index: number, point: ViaPoint) => void;
+  onRemoveEmptyVia?: (index: number) => void;
   /** Kur fura yra ar bus prieš krovinį. */
   truck?: MapStop | null;
   /** Sustojimai: žymekliai su raidėmis A, B, C… */
@@ -188,18 +205,18 @@ function RouteMapView({
   const viaCount = useRef(via.length);
   // Atgaliniai iškvietimai ir naujausi duomenys laikomi `ref`, kad žemėlapio
   // įvykiai visada matytų naujausią reikšmę, o pats žemėlapis nebūtų kuriamas iš naujo.
-  const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia });
-  const latest = useRef({ line, stops, via });
+  const callbacks = useRef({ onAddVia, onMoveVia, onRemoveVia, onAddEmptyVia, onMoveEmptyVia, onRemoveEmptyVia });
+  const latest = useRef({ line, stops, via, emptyLine, emptyVia });
   const emptyLineRef = useRef(emptyLine);
 
   useEffect(() => {
-    callbacks.current = { onAddVia, onMoveVia, onRemoveVia };
-    latest.current = { line, stops, via };
+    callbacks.current = { onAddVia, onMoveVia, onRemoveVia, onAddEmptyVia, onMoveEmptyVia, onRemoveEmptyVia };
+    latest.current = { line, stops, via, emptyLine, emptyVia };
     viaCount.current = via.length;
-  }, [onAddVia, onMoveVia, onRemoveVia, line, stops, via]);
+  }, [onAddVia, onMoveVia, onRemoveVia, onAddEmptyVia, onMoveEmptyVia, onRemoveEmptyVia, line, stops, via, emptyLine, emptyVia]);
 
   const markerHooks = useRef<{
-    startPreview: (at: number, excludeVia: number | null) => void;
+    startPreview: (at: number, excludeVia: number | null, target?: DragTarget) => void;
     movePreview: (lngLat: LngLat) => void;
     endPreview: () => void;
   } | null>(null);
@@ -334,10 +351,21 @@ function RouteMapView({
         layout: round,
         paint: { "line-color": "#000000", "line-width": 24, "line-opacity": 0 },
       });
+      map.addLayer({
+        id: "empty-route-hit",
+        type: "line",
+        source: "empty-route",
+        layout: round,
+        paint: { "line-color": "#000000", "line-width": 24, "line-opacity": 0 },
+      });
       // Kur tuščias ir krovinio kelias sutampa – linija perskelta per pusę:
       // raudona ir juoda pusės greta, ant pilnos linijos.
       const half = ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, width / 2]);
-      const offset = (sign: 1 | -1) => zoomWidth(ROUTE_WIDTH.map(([zoom, width]): [number, number] => [zoom, (sign * width) / 4]));
+      // `side` – kurioje pusėje raudona (iš kur ateina tuščias kelias); juoda – priešingoje.
+      const offset = (sign: 1 | -1) => [
+        "interpolate", ["linear"], ["zoom"],
+        ...ROUTE_WIDTH.flatMap(([zoom, width]) => [zoom, ["*", ["get", "side"], (sign * width) / 4]]),
+      ] as ExpressionSpecification;
       map.addSource("shared-route", { type: "geojson", data: EMPTY_COLLECTION });
       map.addLayer({
         id: "shared-route-loaded",
@@ -386,15 +414,18 @@ function RouteMapView({
       anchors: null as [LineCoordinate, LineCoordinate] | null,
     };
 
-    function startPreview(at: number, excludeVia: number | null) {
-      const { line: current, stops: currentStops, via: currentVia } = latest.current;
+    function startPreview(at: number, excludeVia: number | null, target: DragTarget = "route") {
+      const { line: routeLine, stops: currentStops, via: routeVia, emptyLine: emptyCurrent, emptyVia: emptyPoints } = latest.current;
+      // Tuščio kelio galai – furos vieta ir pakrovimas, t. y. pati linijos pradžia ir pabaiga.
+      const current = target === "empty" ? emptyCurrent : routeLine;
+      const points = target === "empty" ? emptyPoints : routeVia;
       const indices = [
-        ...currentStops.map((stop) => nearestLineIndex(current, stop)),
-        ...currentVia.flatMap((point, index) => (index === excludeVia ? [] : [nearestLineIndex(current, point)])),
+        ...(target === "empty" ? [] : currentStops.map((stop) => nearestLineIndex(current, stop))),
+        ...points.flatMap((point, index) => (index === excludeVia ? [] : [nearestLineIndex(current, point)])),
       ];
       const [from, to] = anchorsAround(current.length, indices, at);
       preview.anchors = [current[from], current[to]];
-      for (const id of ["route", "route-casing"]) map.setPaintProperty(id, "line-opacity", 0.3);
+      for (const id of TARGET_LAYERS[target]) map.setPaintProperty(id, "line-opacity", 0.3);
     }
 
     function movePreview(lngLat: LngLat) {
@@ -414,7 +445,7 @@ function RouteMapView({
       preview.next = null;
       preview.anchors = null;
       preview.source()?.setData(EMPTY_COLLECTION);
-      for (const id of ["route", "route-casing"]) map.setPaintProperty(id, "line-opacity", 1);
+      for (const id of [...TARGET_LAYERS.route, ...TARGET_LAYERS.empty]) map.setPaintProperty(id, "line-opacity", 1);
     }
 
     // Linijos tempimas veikia tik ant maršruto, o `preventDefault` sustabdo
@@ -423,13 +454,19 @@ function RouteMapView({
     let dragging = false;
     const canvas = map.getCanvas();
     const lineWidth = (extra: number) => zoomWidth(ROUTE_WIDTH, extra);
+    const setWidth = (target: DragTarget, extra: number) => {
+      const [lineId, casingId] = TARGET_LAYERS[target];
+      map.setPaintProperty(lineId, "line-width", lineWidth(extra));
+      map.setPaintProperty(casingId, "line-width", lineWidth(CASING_EXTRA + extra));
+    };
 
-    function beginDrag(kind: "mouse" | "touch", start: Pointer) {
+    function beginDrag(kind: "mouse" | "touch", start: Pointer, target: DragTarget) {
       dragging = true;
       canvas.style.cursor = "grabbing";
       let last = start.lngLat;
       let moved = false;
-      startPreview(nearestLineIndex(latest.current.line, { latitude: start.lngLat.lat, longitude: start.lngLat.lng }), null);
+      const current = target === "empty" ? latest.current.emptyLine : latest.current.line;
+      startPreview(nearestLineIndex(current, { latitude: start.lngLat.lat, longitude: start.lngLat.lng }), null, target);
 
       const move = (event: Pointer) => {
         last = event.lngLat;
@@ -443,39 +480,51 @@ function RouteMapView({
         map.off(moveEvent, move);
         dragging = false;
         canvas.style.cursor = "";
-        map.setPaintProperty("route", "line-width", lineWidth(0));
-        map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA));
+        setWidth(target, 0);
         // Paskutinė žinoma vieta: `touchend` pats koordinačių dažnai neturi.
         // Peržiūra paliekama, kol ateis tikras maršrutas: nuvalius ji sušoktų
-        // atgal į seną kelią. Ją nuvalo kitas `line` atnaujinimas.
-        const accepted = moved
-          ? callbacks.current.onAddVia?.({ latitude: last.lat, longitude: last.lng })
-          : false;
+        // atgal į seną kelią. Ją nuvalo kitas linijos atnaujinimas.
+        const add = target === "empty" ? callbacks.current.onAddEmptyVia : callbacks.current.onAddVia;
+        const accepted = moved ? add?.({ latitude: last.lat, longitude: last.lng }) : false;
         if (accepted === false || accepted === undefined) endPreview();
       });
     }
 
-    map.on("mouseenter", "route-hit", () => {
-      if (dragging) return;
-      canvas.style.cursor = "grab";
-      map.setPaintProperty("route", "line-width", lineWidth(HOVER_EXTRA));
-      map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA + HOVER_EXTRA));
-    });
-    map.on("mouseleave", "route-hit", () => {
-      if (dragging) return;
-      canvas.style.cursor = "";
-      map.setPaintProperty("route", "line-width", lineWidth(0));
-      map.setPaintProperty("route-casing", "line-width", lineWidth(CASING_EXTRA));
-    });
-    map.on("mousedown", "route-hit", (event) => {
+    for (const target of ["route", "empty"] as const) {
+      const hitId = target === "empty" ? "empty-route-hit" : "route-hit";
+      map.on("mouseenter", hitId, () => {
+        if (dragging) return;
+        canvas.style.cursor = "grab";
+        setWidth(target, HOVER_EXTRA);
+      });
+      map.on("mouseleave", hitId, () => {
+        if (dragging) return;
+        canvas.style.cursor = "";
+        setWidth(target, 0);
+      });
+    }
+
+    // Kuri linija po pele. Bendrame ruože – krovinio (juoda), kaip anksčiau.
+    const hitTarget = (point: { x: number; y: number }): DragTarget | null => {
+      const layers = ["route-hit", "empty-route-hit"].filter((id) => map.getLayer(id));
+      const ids = map.queryRenderedFeatures([point.x, point.y], { layers }).map((feature) => feature.layer.id);
+      if (ids.includes("route-hit")) return "route";
+      if (ids.includes("empty-route-hit") && callbacks.current.onAddEmptyVia) return "empty";
+      return null;
+    };
+    map.on("mousedown", (event) => {
+      const target = hitTarget(event.point);
+      if (!target) return;
       event.preventDefault();
-      beginDrag("mouse", event);
+      beginDrag("mouse", event, target);
     });
-    map.on("touchstart", "route-hit", (event) => {
+    map.on("touchstart", (event) => {
       // Du pirštai yra mastelio keitimas, o ne taško tempimas.
       if (event.points.length !== 1) return;
+      const target = hitTarget(event.points[0]);
+      if (!target) return;
       event.preventDefault();
-      beginDrag("touch", { lngLat: event.lngLat, point: event.points[0] });
+      beginDrag("touch", { lngLat: event.lngLat, point: event.points[0] }, target);
     });
 
     return () => {
@@ -515,7 +564,10 @@ function RouteMapView({
     const map = mapRef.current;
     if (!ready || !map) return;
     (map.getSource("empty-route") as GeoJSONSource | undefined)?.setData(emptyLine.length >= 2 ? lineFeature(emptyLine) : EMPTY_COLLECTION);
-    if (emptyLine.length < 2 || viaCount.current > 0) return;
+    // Naujas tuščias kelias atėjo: tempimo peržiūra nebereikalinga.
+    markerHooks.current?.endPreview();
+    // Tempiant taškus žmogus jau priartinęs – vaizdas nešokinėja.
+    if (emptyLine.length < 2 || viaCount.current > 0 || latest.current.emptyVia.length > 0) return;
     const bounds = routeBounds([...latest.current.line, ...emptyLine]);
     if (bounds) map.fitBounds(bounds, { padding: { top: 56, left: 48, right: 56, bottom: 40 }, maxZoom: 13, duration: 0 });
   }, [ready, emptyLine]);
@@ -524,10 +576,14 @@ function RouteMapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    const shared = sharedSegments(emptyLine, line);
-    (map.getSource("shared-route") as GeoJSONSource | undefined)?.setData(shared.length > 0
-      ? { type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: shared } }
-      : EMPTY_COLLECTION);
+    (map.getSource("shared-route") as GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: sharedSegments(emptyLine, line).map((segment) => ({
+        type: "Feature" as const,
+        properties: { side: sharedSide(emptyLine, segment) },
+        geometry: { type: "LineString" as const, coordinates: segment },
+      })),
+    });
   }, [ready, line, emptyLine]);
 
   // Skaičiavimas baigėsi (net nesėkmingai): peržiūra, kuri laukė rezultato, nuimama.
@@ -569,46 +625,56 @@ function RouteMapView({
 
   // Tarpiniai taškai: paprasti apskritimai su balta apvadą, kad skirtųsi nuo
   // sustojimų smeigtukų. Tempiami, o dukart spustelėjus – pašalinami.
+  // Krovinio kelio – violetiniai, tuščio kelio – raudoni.
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
 
     const markers: Marker[] = [];
+    const groups: { target: DragTarget; points: ViaPoint[]; color: string }[] = [
+      { target: "route", points: via, color: PREVIEW_COLOR },
+      { target: "empty", points: emptyVia, color: EMPTY_COLOR },
+    ];
 
-    for (const [index, point] of via.entries()) {
-      // Išorinis 32 px elementas – tai, ką pagriebia pelė ar pirštas; matomas tik 14 px taškas.
-      const element = document.createElement("div");
-      element.style.cssText = "width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none";
-      const dot = document.createElement("div");
-      dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${PREVIEW_COLOR};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)`;
-      element.append(dot);
-      // `mousedown`/`touchstart` čia stabdyti negalima: MapLibre žymeklio tempimą
-      // pradeda žemėlapio lygyje ir pats sustabdo stumdymą. Dvigubas spustelėjimas
-      // sustabdomas, kad po žymekliu nepriartėtų žemėlapis.
-      element.addEventListener("dblclick", (event) => {
-        event.stopPropagation();
-        callbacks.current.onRemoveVia?.(index);
-      });
-      element.title = "Tarpinis taškas. Tempkite arba spustelėkite du kartus, kad pašalintumėte.";
+    for (const { target, points, color } of groups) {
+      const onMove = () => target === "empty" ? callbacks.current.onMoveEmptyVia : callbacks.current.onMoveVia;
+      const onRemove = () => target === "empty" ? callbacks.current.onRemoveEmptyVia : callbacks.current.onRemoveVia;
+      for (const [index, point] of points.entries()) {
+        // Išorinis 32 px elementas – tai, ką pagriebia pelė ar pirštas; matomas tik 14 px taškas.
+        const element = document.createElement("div");
+        element.style.cssText = "width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none";
+        const dot = document.createElement("div");
+        dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)`;
+        element.append(dot);
+        // `mousedown`/`touchstart` čia stabdyti negalima: MapLibre žymeklio tempimą
+        // pradeda žemėlapio lygyje ir pats sustabdo stumdymą. Dvigubas spustelėjimas
+        // sustabdomas, kad po žymekliu nepriartėtų žemėlapis.
+        element.addEventListener("dblclick", (event) => {
+          event.stopPropagation();
+          onRemove()?.(index);
+        });
+        element.title = "Tarpinis taškas. Tempkite arba spustelėkite du kartus, kad pašalintumėte.";
 
-      const marker = new Marker({ element, draggable: Boolean(callbacks.current.onMoveVia) })
-        .setLngLat([point.longitude, point.latitude])
-        .addTo(map);
+        const marker = new Marker({ element, draggable: Boolean(onMove()) })
+          .setLngLat([point.longitude, point.latitude])
+          .addTo(map);
 
-      marker.on("dragstart", () => {
-        const { lng, lat } = marker.getLngLat();
-        markerHooks.current?.startPreview(nearestLineIndex(latest.current.line, { latitude: lat, longitude: lng }), index);
-      });
-      marker.on("drag", () => markerHooks.current?.movePreview(marker.getLngLat()));
-      marker.on("dragend", () => {
-        const { lng, lat } = marker.getLngLat();
-        callbacks.current.onMoveVia?.(index, { latitude: lat, longitude: lng });
-      });
-      markers.push(marker);
+        marker.on("dragstart", () => {
+          const { lng, lat } = marker.getLngLat();
+          const current = target === "empty" ? latest.current.emptyLine : latest.current.line;
+          markerHooks.current?.startPreview(nearestLineIndex(current, { latitude: lat, longitude: lng }), index, target);
+        });
+        marker.on("drag", () => markerHooks.current?.movePreview(marker.getLngLat()));
+        marker.on("dragend", () => {
+          const { lng, lat } = marker.getLngLat();
+          onMove()?.(index, { latitude: lat, longitude: lng });
+        });
+        markers.push(marker);
+      }
     }
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [ready, via]);
+  }, [ready, via, emptyVia]);
 
   useEffect(() => {
     basemapRef.current = basemap;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRouteLine, routeBounds, sharedSegments, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
+import { parseRouteLine, routeBounds, sharedSegments, sharedSide, SIMPLIFY_TOLERANCE_M, simplifyRouteLine, type LineCoordinate } from "./route-line";
 
 describe("sharedSegments", () => {
   // Krovinio kelias rytų kryptimi palei 55° platumą.
@@ -14,6 +14,18 @@ describe("sharedSegments", () => {
   it("priešingos juostos (~20 m) – bendra; kitas kelias (~1 km) – ne", () => {
     expect(sharedSegments([[24.1, 55.00018], [24.4, 55.00018]], loaded)).toHaveLength(1);
     expect(sharedSegments([[24.1, 55.01], [24.4, 55.01]], loaded)).toEqual([]);
+  });
+
+  it("raudona pusė – toje pusėje, iš kurios ateina linija", () => {
+    // Ateina iš šiaurės, toliau į rytus: šiaurė – kairėje (-1).
+    const fromNorth: LineCoordinate[] = [[24.2, 55.5], [24.2, 55.0], [24.6, 55.0]];
+    expect(sharedSide(fromNorth, sharedSegments(fromNorth, loaded)[0])).toBe(-1);
+    // Ateina iš pietų – dešinėje (1).
+    const fromSouth: LineCoordinate[] = [[24.2, 54.5], [24.2, 55.0], [24.6, 55.0]];
+    expect(sharedSide(fromSouth, sharedSegments(fromSouth, loaded)[0])).toBe(1);
+    // Prasideda ant kelio, nueina į šiaurę – kairėje.
+    const leavesNorth: LineCoordinate[] = [[24.2, 55.0], [24.6, 55.0], [24.6, 55.5]];
+    expect(sharedSide(leavesNorth, sharedSegments(leavesNorth, loaded)[0])).toBe(-1);
   });
 
   it("kelios atskiros sutapimo vietos – atskiri ruožai; per trumpos linijos – nieko", () => {

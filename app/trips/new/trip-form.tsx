@@ -1726,25 +1726,6 @@ export function TripForm({
               {verdiktas.approvalPossible && <p className="mt-1 text-sm text-muted">
                 Pigiau nei {sveikiEurai(verdiktas.targetPriceCents)} – tik vadovui pritarus: krovinys {formatCents(inasas.vsAlternativeCents)} geresnis už alternatyvą.
               </p>}
-              <details className="mt-2 text-sm">
-                <summary className="cursor-pointer text-muted">Kaip suskaičiuota</summary>
-                <p className="mt-2 tabular-nums text-muted">
-                  Pajamos {formatCents(result.revenueCents)} − kuras {formatCents(result.fuelCents)} − AdBlue {formatCents(result.adblueCents)} − keliai {formatCents(result.roadCents)}
-                  {" "}− dienpinigiai {formatCents(inasas.perDiemExtraCents)} už {skaicius(inasas.extraDays)} papildomas par. iš {skaicius(paros)}
-                  {" "}= <strong className="text-ink">{formatCents(inasas.contributionCents)}</strong> įnašas.
-                  {" "}Kuras, AdBlue ir keliai – su tuščiais km.
-                </p>
-                <p className="mt-1 tabular-nums text-muted">
-                  Alternatyva: {formatCents(alternatyva!.contributionCents)} per {skaicius(alternatyva!.days)} par.
-                  {" "}· skirtumas <strong className="text-ink">{formatCents(inasas.vsAlternativeCents)}</strong>
-                  {" "}· įmonės riba {formatCents(alternatyva!.thresholdCents)}
-                </p>
-                <p className="mt-1 tabular-nums text-muted">
-                  Pilnas pelnas (su pastoviais furos kaštais) {formatCents(result.profitCents)} · marža {result.marginPercent === null ? "—" : `${result.marginPercent.toFixed(1)} %`}
-                  {/* Lėtas krovinys už km atrodo gerai, bet fura uždirba paromis (#179). */}
-                  {result.profitPerDayCents !== null && ` · ${formatCents(result.profitPerDayCents)} per parą`}
-                </p>
-              </details>
             </>}
         </div> : <p role="alert" className="mb-4 text-sm text-bad">Alternatyvos laukai neteisingi: paros – neneigiamas skaičius, sumos – eurais.</p>}
         {/* Pasiūlymų žurnalas (Phase 0, 5): ką nusprendė dispečeris prie Bramit verdikto.

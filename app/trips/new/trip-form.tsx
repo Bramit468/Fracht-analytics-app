@@ -361,6 +361,7 @@ export function TripForm({
   /** Pradėtas furos normų pildymas; greita kaina jo laukia, kad neperrašytų. */
   const normuPildymas = useRef<Promise<void>>(Promise.resolve());
   const skaiciuotiMygtukas = useRef<HTMLButtonElement>(null);
+  const tyliPatikra = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -463,6 +464,11 @@ export function TripForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- vienkartinis paleidimas po įkėlimo
   }, [loading]);
 
+  // Atidarytas reisas ar kopija – rezultatas iškart, be mygtuko.
+  useEffect(() => {
+    if (!loading) scheduleRecalc(0);
+  }, [loading]);
+
   // Istorija kraunama atskirai ir formos nesulaiko: be jos skaičiuoklė veikia
   // kaip anksčiau, o laukti dėl patarimo nereikėtų (#109).
   useEffect(() => {
@@ -527,12 +533,39 @@ export function TripForm({
     quoteTimer.current = setTimeout(() => void clickWhenEnabled(kainosMygtukas.current), delay);
   }
 
-  /** Pakeista kaina: tik formulė, be PTV. Nebaigtas rašyti skaičius laukia. */
-  function schedulePriceRecalc(value: string) {
+  /**
+   * Mygtuko „Skaičiuoti“ nėra: bet kuris pakeistas laukas perskaičiuoja formulę
+   * (be PTV). Kol trūksta privalomo lauko – rezultato nerodome, bet ir
+   * neiššokame su klaida: žmogus dar pildo.
+   */
+  function scheduleRecalc(delay = 300) {
     clearTimeout(priceTimer.current);
-    if (!skaiciuota.current || kainaVyksta.current) return;
-    if (mode === "freight" && value.trim() !== "" && parseEuroToCents(value) === null) return;
-    priceTimer.current = setTimeout(() => formRef.current?.requestSubmit(skaiciuotiMygtukas.current), 250);
+    // Kaina su PTV pati baigia perskaičiavimu – antro nereikia.
+    if (kainaVyksta.current) return;
+    priceTimer.current = setTimeout(() => {
+      const form = formRef.current;
+      if (!form || kainaVyksta.current) return;
+      tyliPatikra.current = true;
+      const valid = form.checkValidity();
+      tyliPatikra.current = false;
+      if (valid) form.requestSubmit(skaiciuotiMygtukas.current);
+      else setResult(null);
+    }, delay);
+  }
+
+  /** Pakeista kaina: nebaigtas rašyti skaičius laukia. */
+  function schedulePriceRecalc(value: string) {
+    if (mode === "freight" && value.trim() !== "" && parseEuroToCents(value) === null) {
+      clearTimeout(priceTimer.current);
+      return;
+    }
+    scheduleRecalc();
+  }
+
+  /** Laukai, nuo kurių priklauso PTV maršrutas ar paros: kaina iš naujo. */
+  function requote() {
+    if (quoteReady(stops)) scheduleQuote(700);
+    else scheduleRecalc();
   }
 
   /**
@@ -543,7 +576,9 @@ export function TripForm({
     const ordered = orderViaPoints(points, marsrutoLinija);
     setTarpiniai(ordered);
     markDaysStale();
-    scheduleRoute(ordered, stops);
+    // Mygtuko nebėra: kitas kelias – kitos paros ir kaina, todėl visa kaina iš naujo.
+    if (quoteReady(stops)) scheduleQuote(600);
+    else scheduleRoute(ordered, stops);
   }
 
   /** Žemėlapio veiksmai: pridėti, perkelti ir pašalinti tarpinį tašką (#85). */
@@ -1472,11 +1507,12 @@ export function TripForm({
   return <form
     ref={formRef}
     onSubmit={submit}
-    onChange={() => { setResult(null); setSaved(""); }}
+    onChange={() => { setSaved(""); scheduleRecalc(); }}
     onInvalidCapture={() => {
       // Tuščias privalomas laukas uždarytoje skiltyje blokuotų siuntimą be
       // jokio ženklo: atidarome ją ir iš naujo parodome, kurio lauko trūksta.
-      if (detaliai) return;
+      // Automatinė patikra (`scheduleRecalc`) – tyli: žmogus dar pildo.
+      if (detaliai || tyliPatikra.current) return;
       flushSync(() => setDetaliai(true));
       formRef.current?.reportValidity();
     }}
@@ -1540,14 +1576,17 @@ export function TripForm({
           <label>{mode === "freight" ? "Kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} placeholder={mode === "freight" ? "Tuščia – parodys tinkamą kainą" : undefined} onChange={(event) => { event.stopPropagation(); setSaved(""); schedulePriceRecalc(event.currentTarget.value); }} className={inputClass} /></label>
         </div>
         {routeLookup && <div className="mt-3">
-          <div className="flex flex-wrap items-center gap-4">
-            <button ref={kainosMygtukas} type="button" disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} className="rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">
-              {kainaSkaiciuojama ? "Skaičiuojama…" : "Skaičiuoti kainą"}
-            </button>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={vengtiKeltu} onChange={(event) => setVengtiKeltu(event.target.checked)} />
+          {/* Mygtukas paslėptas: kaina skaičiuojama pati, kai užpildyta fura,
+              data ir adresai. Per jį eina visos apsaugos nuo lenktynių (#189). */}
+          <button ref={kainosMygtukas} type="button" hidden disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} />
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={vengtiKeltu} onChange={(event) => { event.stopPropagation(); setVengtiKeltu(event.target.checked); requote(); }} />
               Vengti keltų
             </label>
+            {kainaSkaiciuojama
+              ? <span role="status" className="text-muted">Skaičiuojama…</span>
+              : !result && !tripId && <span className="text-muted">Užpildykite furą, datą ir abu adresus – kaina susiskaičiuos pati.</span>}
           </div>
           {marsrutas && <p role="status" className="mt-3 text-sm text-ink">{marsrutas}</p>}
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
@@ -1562,7 +1601,8 @@ export function TripForm({
           Maršrute yra apribojimų.{" "}<button type="button" onClick={() => setDetaliai(true)} className="font-semibold underline">Žiūrėti</button>
         </p>}
 
-      <div className="mt-4 flex flex-wrap gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" className="rounded-lg border p-3">Skaičiuoti pelną</button><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
+      {/* Paslėptas: per jį formulę perskaičiuoja `scheduleRecalc`; Enter lauke taip pat. */}
+      <div className="mt-4 flex flex-wrap gap-3"><button ref={skaiciuotiMygtukas} type="submit" value="calculate" hidden /><button type="submit" value="save" disabled={!!saved} className="rounded-lg bg-accent p-3 text-accent-ink disabled:opacity-50">{saving ? "Saugoma…" : tripId ? "Išsaugoti pakeitimus" : "Išsaugoti reisą"}</button></div>
 
         {(error || saved || zurnaloIspejimas) && <div className="mt-3 space-y-2">
         {error && <p role="alert" className="text-bad">{error}</p>}
@@ -1904,7 +1944,7 @@ export function TripForm({
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Krovinio svorio niekas kitas žinoti negali, o kurui jis svarbus:
               20 t ir 5 t skiriasi trečdaliu kuro (#86). */}
-          {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => setKrovinioSvoris(event.target.value)} placeholder="20" className={inputClass} /></label>}
+          {routeLookup && <label>Krovinio svoris, t<input type="text" inputMode="decimal" value={krovinioSvoris} onChange={(event) => { event.stopPropagation(); setKrovinioSvoris(event.target.value); requote(); }} placeholder="20" className={inputClass} /></label>}
           {/* Marža kainos skaičiavimui, ne formos laukas: `stopPropagation`,
               kad jos keitimas nenuvalytų jau parodyto rezultato. */}
           <label>Tikslinė marža (%)<input type="number" step="0.5" min="0" value={norimaMarza} onChange={(event) => { event.stopPropagation(); setNorimaMarza(event.target.value); }} className={inputClass} /></label>
@@ -1913,10 +1953,10 @@ export function TripForm({
             <span className="mt-1 block text-xs text-muted">Kiek parų fura užimtų, jei šio krovinio neimtume. 0 – stovėtų.</span></label>
           <label>Alternatyva: įnašas (€)<input type="text" inputMode="decimal" value={altInasas} onChange={(event) => { event.stopPropagation(); setAltInasas(event.target.value); }} className={inputClass} />
             <span className="mt-1 block text-xs text-muted">Grįžimas tuščiam – su minusu: kuras + keliai.</span></label>
-          {routeLookup && <label>Pakrovimas / iškrovimas, val. vienam<input type="text" inputMode="decimal" value={krovimoVal} onChange={(event) => { event.stopPropagation(); setKrovimoVal(event.target.value); }} className={inputClass} /></label>}
+          {routeLookup && <label>Pakrovimas / iškrovimas, val. vienam<input type="text" inputMode="decimal" value={krovimoVal} onChange={(event) => { event.stopPropagation(); setKrovimoVal(event.target.value); requote(); }} className={inputClass} /></label>}
           {/* Du vairuotojai sutrumpina reisą parą ar dvi – o paros yra didžioji kaštų dalis. */}
           {routeLookup && <label>Vairavimas
-            <select value={scenarijus} onChange={(event) => setScenarijus(event.target.value as DriverScenario)} className={inputClass}>
+            <select value={scenarijus} onChange={(event) => { event.stopPropagation(); setScenarijus(event.target.value as DriverScenario); requote(); }} className={inputClass}>
               {DRIVER_SCENARIOS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
             </select>
           </label>}
@@ -1926,9 +1966,9 @@ export function TripForm({
       <Skiltis antraste="Kada ir kiek">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label>Reiso nr.<input name="trip_number" type="text" defaultValue={defaults.trip_number ?? ""} className={inputClass} /></label>
-          <label>Išvykimo laikas<input name="departure_time" type="time" defaultValue="08:00" className={inputClass} /></label>
+          <label>Išvykimo laikas<input name="departure_time" type="time" defaultValue="08:00" onChange={(event) => { event.stopPropagation(); requote(); }} className={inputClass} /></label>
           {/* Jei vairuotojas jau vairavo, pirmas poilsis ateina anksčiau – keičia paras. */}
-          {routeLookup && <label>Vairuotojas jau vairavo, val.<input type="text" inputMode="decimal" value={jauVairavo} onChange={(event) => setJauVairavo(event.target.value)} placeholder="0" className={inputClass} /></label>}
+          {routeLookup && <label>Vairuotojas jau vairavo, val.<input type="text" inputMode="decimal" value={jauVairavo} onChange={(event) => { event.stopPropagation(); setJauVairavo(event.target.value); requote(); }} placeholder="0" className={inputClass} /></label>}
           {apimtiesFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min={name === "days" ? 0.001 : 0} max={name === "days" ? 2147483647 : undefined} step={step} required className={inputClass} defaultValue={defaults[name] ?? (name === "empty_km" ? "0" : undefined)} onChange={name === "days" ? () => setDienuSaltinis(null) : name === "empty_km" ? (event) => {
             const value = event.currentTarget.value.trim();
             const km = Number(value);
@@ -1941,7 +1981,7 @@ export function TripForm({
           } : undefined} />
             {name === "days" && dienuSaltinis && <span className="mt-1 block text-sm text-muted">
               {dienuSaltinis.source === "schedule" ? "Iš PTV vairavimo laiko plano." : "Apytiksliai pagal kelio valandas – plano nėra."}
-              {dienuSaltinis.stale && <strong className="text-warn"> Maršrutas pakeistas – paspauskite „Skaičiuoti kainą“ iš naujo.</strong>}
+              {dienuSaltinis.stale && <strong className="text-warn"> Maršrutas pakeistas – paros gali nebeatitikti, patikrinkite.</strong>}
             </span>}
           </label>)}
         </div>
@@ -2009,7 +2049,7 @@ export function TripForm({
           {skaiciuotiDienpinigiai
             ? <>Iš jų dienpinigiai pagal šalis <strong className="text-ink">{formatCents(result.perDiemCents)}</strong> ({String(dienpinigiuProc).replace(".", ",")} % normos):{" "}
               {skaiciuotiDienpinigiai.map((day, index) => `${index + 1} d. ${day.countries.join("/")} ${formatCents(day.cents)}`).join(" · ")}</>
-            : <>Dienpinigiai fiksuoti – {formatCents(result.perDiemCents)} (furos paros suma × paros). Pagal šalis jie suskaičiuojami paspaudus „Skaičiuoti kainą“.</>}
+            : <>Dienpinigiai fiksuoti – {formatCents(result.perDiemCents)} (furos paros suma × paros). Pagal šalis jie suskaičiuojami, kai kaina skaičiuojama su maršrutu.</>}
           {dienpinigiuPastaba && <span className="block text-warn">{dienpinigiuPastaba}</span>}
         </p>}
       </Skiltis>}

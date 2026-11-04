@@ -48,7 +48,7 @@ import {
   type QuoteDraft,
   type QuoteSource,
 } from "../../../lib/quotes";
-import { MAX_OFFER_TEXT, mergeOffer, needsAi, offerSummary, offerWarnings, parseOffer, placeQuery, type OfferFields, type OfferPlace } from "../../../lib/offer-parse";
+import { MAX_OFFER_TEXT, mergeOffer, needsAi, offerSummary, offerWarnings, parseOffer, placeCountryCode, placeQuery, type OfferFields, type OfferPlace } from "../../../lib/offer-parse";
 import { routeFuelPrice, type RouteFuelPrice } from "../../../lib/fuel-prices";
 import type { CountryKm } from "../../../lib/ptv-route";
 import { rateFill } from "@/lib/telematics-costs";
@@ -747,7 +747,8 @@ export function TripForm({
       // Adresas su tašku – kaip pasirinkus pasiūlymą: be taško kaina nepasileistų.
       const resolved = await Promise.all(places.map(async ({ type, place }) => {
         const query = placeQuery(place);
-        const found = await resolveAddress(query).catch(() => null);
+        // Tik pasiūlymo šalyje: kitaip „Bremen“ tapdavo Ohajumi, „Zaragoza“ – Kosta Rika.
+        const found = await resolveAddress(query, placeCountryCode(place)).catch(() => null);
         return { type, address: found?.formattedAddress || query, point: found ? `${found.latitude},${found.longitude}` : "" };
       }));
 

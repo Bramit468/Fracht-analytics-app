@@ -416,6 +416,30 @@ export function firstPlace(payload: unknown): GeocodedPlace | null {
 }
 
 /**
+ * Pirmas taškas toje šalyje (ISO2). Kitoje šalyje rastas vienvardis miestas
+ * (Bremen, Ohajas) – ne spėjimas, o `null`: tada žmogus renkasi iš sąrašo.
+ * Be šalies – kaip `firstPlace`.
+ */
+export function firstPlaceIn(payload: unknown, country: string | null): GeocodedPlace | null {
+  if (!country) return firstPlace(payload);
+  if (typeof payload !== "object" || payload === null) return null;
+  const locations = (payload as { locations?: unknown }).locations;
+  if (!Array.isArray(locations)) return null;
+  const codeOf = (row: unknown) => {
+    const code = (row as { address?: { countryCode?: unknown } } | null)?.address?.countryCode;
+    return typeof code === "string" ? code.toUpperCase() : null;
+  };
+  // Jei PTV šalies kodų neatsiuntė visai – patikrinti nėra kuo, lieka pirmas.
+  if (!locations.some((row) => codeOf(row) !== null)) return firstPlace(payload);
+  for (const row of locations) {
+    if (codeOf(row) !== country.toUpperCase()) continue;
+    const place = toPlace(row);
+    if (place && place.formattedAddress !== "") return place;
+  }
+  return null;
+}
+
+/**
  * PTV maršruto atsakymas į įvertį.
  *
  * Mokesčiai imami iš `convertedPrice` — PTV pats perskaičiuoja zlotus, kronas

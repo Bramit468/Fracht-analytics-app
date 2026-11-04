@@ -98,7 +98,9 @@ describe("skaitytuvai", () => {
     expect(parsePlace("Breda (NL), ZIP 4815")).toEqual({ country: "NL", postalCode: "4815", city: "Breda" });
     expect(parsePlace("Hamburg, Germany")).toEqual({ country: "DE", postalCode: null, city: "Hamburg" });
     expect(parsePlace("8.2 LDM")).toBeNull();
-    expect(placeQuery({ country: "LT", postalCode: "49400", city: "Kaunas" })).toBe("49400 Kaunas, LT");
+    expect(placeQuery({ country: "LT", postalCode: "49400", city: "Kaunas" })).toBe("49400 Kaunas, Lithuania");
+    // Su „DE“ PTV rado Bremeną Ohajuje (2026-11-04).
+    expect(placeQuery({ country: "DE", postalCode: null, city: "Bremen" })).toBe("Bremen, Germany");
   });
 });
 

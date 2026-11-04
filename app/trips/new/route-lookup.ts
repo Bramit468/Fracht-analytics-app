@@ -3,7 +3,7 @@
 import { MIN_ADDRESS_QUERY } from "@/lib/address-suggest";
 import { parseRouteLine, simplifyRouteLine, type LineCoordinate } from "@/lib/route-line";
 import {
-  firstPlace,
+  firstPlaceIn,
   routeEstimate,
   routeFill,
   routeRequestUrl,
@@ -43,6 +43,8 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
  */
 export async function resolveAddress(
   searchText: string,
+  /** ISO2: imamas tik tos šalies rezultatas (pasiūlymas pasako šalį). */
+  country: string | null = null,
 ): Promise<Pick<GeocodedPlace, "latitude" | "longitude" | "formattedAddress"> | null> {
   if (searchText.trim().length < MIN_ADDRESS_QUERY) return null;
 
@@ -55,7 +57,8 @@ export async function resolveAddress(
 
   try {
     const url = `${PTV_GEOCODING_URL}?searchText=${encodeURIComponent(searchText)}&language=lt`;
-    return firstPlace(await ptvJson(url, key));
+    const code = typeof country === "string" && /^[A-Za-z]{2}$/.test(country) ? country.toUpperCase() : null;
+    return firstPlaceIn(await ptvJson(url, key), code);
   } catch {
     return null;
   }

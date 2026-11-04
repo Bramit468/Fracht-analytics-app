@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   firstPlace,
+  firstPlaceIn,
   placeLabel,
   placeSuggestions,
   ptvQuotaExceeded,
@@ -402,6 +403,27 @@ describe("placeLabel pašto kodui", () => {
       locationType: "POSTAL_CODE",
       address: { countryName: "Prancūzija", countryCode: "FR", postalCode: "51100", city: "Reims" },
     })).toBe("FR-51100 Reims");
+  });
+});
+
+describe("firstPlaceIn", () => {
+  const location = (countryCode: string, city: string, latitude: number) => ({
+    formattedAddress: city,
+    locationType: "LOCALITY",
+    referencePosition: { latitude, longitude: 8.8 },
+    address: { countryName: countryCode, countryCode, city },
+  });
+
+  it("vienvardis miestas kitoje šalyje praleidžiamas (Bremen, Ohajas – 2026-11-04)", () => {
+    const payload = { locations: [location("US", "Bremen", 39.7), location("DE", "Bremen", 53.08)] };
+    expect(firstPlaceIn(payload, "DE")?.latitude).toBe(53.08);
+    expect(firstPlaceIn({ locations: [location("CR", "Zaragoza", 9.9)] }, "ES")).toBeNull();
+  });
+
+  it("be šalies ar be PTV šalies kodų – pirmas", () => {
+    const payload = { locations: [location("US", "Bremen", 39.7)] };
+    expect(firstPlaceIn(payload, null)?.latitude).toBe(39.7);
+    expect(firstPlaceIn({ locations: [{ ...location("", "Bremen", 39.7), address: { city: "Bremen" } }] }, "DE")?.latitude).toBe(39.7);
   });
 });
 

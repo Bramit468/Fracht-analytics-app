@@ -546,9 +546,27 @@ export function validateAiOffer(raw: unknown, text: string, today: string): Offe
   return fields;
 }
 
-/** Vieta geokodavimui: „49400 Kaunas, LT“. */
+/**
+ * Šalis geokodavimui pilnu pavadinimu: su „DE“ ar „ES“ PTV rado Bremeną Ohajuje
+ * ir Saragosą Kosta Rikoje (2026-11-04) – dvi raidės jam nėra šalis.
+ */
+const COUNTRY_QUERY_NAMES: Record<string, string> = {
+  AT: "Austria", BE: "Belgium", BG: "Bulgaria", BY: "Belarus", CH: "Switzerland", CZ: "Czechia", DE: "Germany",
+  DK: "Denmark", EE: "Estonia", ES: "Spain", FI: "Finland", FR: "France", GB: "United Kingdom", GR: "Greece",
+  HR: "Croatia", HU: "Hungary", IE: "Ireland", IT: "Italy", LT: "Lithuania", LU: "Luxembourg", LV: "Latvia",
+  NL: "Netherlands", NO: "Norway", PL: "Poland", PT: "Portugal", RO: "Romania", RS: "Serbia", SE: "Sweden",
+  SI: "Slovenia", SK: "Slovakia", UA: "Ukraine", UK: "United Kingdom",
+};
+
+/** Vieta geokodavimui: „49400 Kaunas, Lithuania“. */
 export function placeQuery(place: OfferPlace): string {
-  return [[place.postalCode, place.city].filter(Boolean).join(" "), place.country].filter(Boolean).join(", ");
+  const country = place.country ? COUNTRY_QUERY_NAMES[place.country] ?? place.country : null;
+  return [[place.postalCode, place.city].filter(Boolean).join(" "), country].filter(Boolean).join(", ");
+}
+
+/** PTV šalies kodas (ISO2) – „UK“ pasiūlymuose yra „GB“. */
+export function placeCountryCode(place: OfferPlace): string | null {
+  return place.country === "UK" ? "GB" : place.country;
 }
 
 function shortDate(iso: string): string {

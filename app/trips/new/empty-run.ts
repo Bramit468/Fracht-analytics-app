@@ -2,6 +2,7 @@
 
 import { emptyRunStart, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
 import { todayInVilnius } from "@/lib/local-date";
+import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { liveTrucks, parseSnapshots } from "@/lib/telematics";
@@ -12,7 +13,7 @@ import { addDays } from "@/lib/trip-progress";
 import { geocode, pickedPoint, ptvJson } from "./route-core";
 
 export type EmptyRunResult =
-  | { ok: true; start: EmptyRunStart; km: number; tollCents: number; travelMinutes: number }
+  | { ok: true; start: EmptyRunStart; km: number; tollCents: number; travelMinutes: number; /** PTV kuras tuščiai furai (0 kg), l/100. */ fuelL100: number | null }
   | { ok: false; reason: string };
 
 /** Kiek dienų atgal ieškoti reiso, kurio iškrovime fura gali būti. */
@@ -97,8 +98,9 @@ export async function emptyRunToLoading(
     const to = pickedPoint(loading.point, loading.address) ?? await geocode(loading.address, key);
     if (!from || !to) return { ok: false, reason: "Nepavyko rasti pradžios ar pakrovimo vietos." };
 
-    // Tuščia fura: be krovinio svorio ir be išvykimo laiko – tipinis eismas.
-    const estimate = routeEstimate(await ptvJson(routeRequestUrl(from, to, false, routeTiming() ?? undefined), key));
+    // Tuščia fura: 0 kg krovinio (PTV kuras tuščiai furai) ir be išvykimo laiko – tipinis eismas.
+    const payload = await ptvJson(routeRequestUrl(from, to, false, routeTiming() ?? undefined, { loadWeightKg: 0 }), key);
+    const estimate = routeEstimate(payload);
     if (!estimate) return { ok: false, reason: "Nepavyko suskaičiuoti kelio iki pakrovimo." };
 
     return {
@@ -107,6 +109,7 @@ export async function emptyRunToLoading(
       km: Math.round(estimate.km * 100) / 100,
       tollCents: estimate.tollCents,
       travelMinutes: estimate.travelMinutes,
+      fuelL100: routeEmissions(payload, estimate.km)?.litresPer100Km ?? null,
     };
   } catch (cause) {
     console.error("Tušti km iki pakrovimo", cause);

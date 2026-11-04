@@ -1,6 +1,6 @@
 "use server";
 
-import { emptyRunStart, GPS_VALID_DAYS, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
+import { emptyRunStart, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
 import { todayInVilnius } from "@/lib/local-date";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -47,18 +47,22 @@ async function truckGps(plate: string, today: string): Promise<TruckGps | null> 
  */
 export async function emptyRunToLoading(
   truckId: string,
-  quoteDate: string,
+  quoteDateInput: string,
   loading: { address: string; point: string },
+  /** Dispečerio įrašyta vieta, kur fura tuo metu bus – nustelbia viską. */
+  manualStart: { address: string; point: string } | null = null,
 ): Promise<EmptyRunResult> {
   const key = process.env.PTV_API_KEY?.trim();
   if (!key) return { ok: false, reason: "Maršrutų skaičiavimas neįjungtas." };
+  const today = todayInVilnius();
+  // Be datos – šiandien: GPS vieta tinka, o forma įspėja, kad ji gali keistis.
+  const quoteDate = quoteDateInput || today;
   if (!truckId || !/^\d{4}-\d{2}-\d{2}$/.test(quoteDate)) return { ok: false, reason: "Nėra furos ar datos." };
 
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return { ok: false, reason: "Prisijunkite iš naujo." };
 
-  const today = todayInVilnius();
   const [truckResult, tripResult, allowed] = await Promise.all([
     supabase.from("trucks").select("plate").eq("id", truckId).maybeSingle(),
     supabase
@@ -79,12 +83,12 @@ export async function emptyRunToLoading(
     stops: row.stops,
   }));
 
-  // GPS prašoma tik tada, kai jos reikia: nesibaigęs reisas ją nustelbia.
-  let start = emptyRunStart(trips, quoteDate, today, null);
-  // Vėlesniam kroviniui GPS vis tiek netinka – Telematikos neklausiame.
-  const gpsUseful = quoteDate <= addDays(today, GPS_VALID_DAYS);
-  if (!start && allowed && gpsUseful) start = emptyRunStart(trips, quoteDate, today, await truckGps(truckResult.data.plate, today));
-  if (!start) return { ok: false, reason: gpsUseful ? "Furos vieta nežinoma." : "Krovinys vėliau nei rytoj – dabartinė vieta netinka." };
+  // GPS prašoma tik tada, kai jos reikia: įrašyta vieta ar nesibaigęs reisas ją nustelbia.
+  let start: EmptyRunStart | null = manualStart && (manualStart.address.trim() || manualStart.point)
+    ? { source: "manual", address: manualStart.address.trim(), point: manualStart.point }
+    : emptyRunStart(trips, quoteDate, today, null);
+  if (!start && allowed) start = emptyRunStart(trips, quoteDate, today, await truckGps(truckResult.data.plate, today));
+  if (!start) return { ok: false, reason: "Furos vieta nežinoma." };
 
   try {
     const from: Pick<GeocodedPlace, "latitude" | "longitude"> | null = start.source === "gps"

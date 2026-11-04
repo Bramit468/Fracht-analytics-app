@@ -102,6 +102,13 @@ function sideOf(label: string): "loading" | "unloading" | null {
   return null;
 }
 
+/** Eilutė – vien pavadinimas („Siūloma kaina“, „Paletės“): be skaitmenų, trumpa, su žinomu žodžiu. */
+function isLabelLine(lower: string): boolean {
+  if (/\d/.test(lower) || lower.includes(",") || lower.split(/\s+/).length > 3) return false;
+  return sideOf(lower) !== null
+    || [PRICE_WORDS, WEIGHT_WORDS, PALLET_WORDS, LDM_WORDS].some((words) => hasWord(lower, words));
+}
+
 /**
  * Skaičius su tūkstančių ar dešimtainiu skirtuku: „1,450“, „1.250,00“, „1 430“,
  * „12.5“, „22.000“. Vienas skirtukas su trimis skaitmenimis po jo – tūkstančiai.
@@ -354,10 +361,20 @@ export function parseOffer(raw: string, today: string): ParsedOffer {
   };
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  // Pavadinimas atskiroje eilutėje („Siūloma kaina“ ⏎ „2 050 €“) galioja kitai
+  // eilutei. Be to „Paletės ⏎ 33 EUR“ buvo paimta kaip kaina 33 € (2026-11-04).
+  let carried: string | null = null;
   for (const line of lines) {
     // Pavadinimas be skaitmenų: „Loading 06.11.2026 at 09:00“ dvitaškis yra laike.
-    const labelled = line.match(/^([^:\d]{1,48}):\s*(.+)$/);
-    const label = (labelled ? labelled[1] : line).toLowerCase();
+    const own = line.match(/^([^:\d]{1,48}):\s*(.+)$/);
+    const lower = line.toLowerCase();
+    if (!own && isLabelLine(lower)) {
+      carried = lower;
+      continue;
+    }
+    const labelled = own ?? (carried !== null ? [line, carried, line] as const : null);
+    carried = null;
+    const label = (own ? own[1] : labelled ? `${labelled[1]} ${line}` : line).toLowerCase();
     const value = labelled ? labelled[2] : line;
     let used = false;
 

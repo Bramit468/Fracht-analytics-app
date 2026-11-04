@@ -63,6 +63,16 @@ describe("skaitytuvai", () => {
     expect(findMoney("Pallets: 24 EUR pallets")).toEqual([]);
   });
 
+  it("pavadinimas atskiroje eilutėje: „Paletės ⏎ 33 EUR“ – ne kaina (2026-11-04)", () => {
+    const text = "🇱🇹 Vilnius, Lietuva\n\n🇩🇪 Hamburg, Vokietija\n\nPakrovimas\n\n2026-11-06, 08:00–12:00\n\nIškrovimas\n\n2026-11-09, 08:00–14:00\n\n\nAtstumas\n\n~1 300 km\n\nKrovinys\n\nAutomobilių detalės\n\nSvoris\n\n18 500 kg\n\nPriekaba\n\nTentas (13,6 m)\n\nPaletės\n\n33 EUR\n\n\nSiūloma kaina\n2 050 €";
+    const { fields } = parseOffer(text, TODAY);
+    expect(fields.priceCents).toBe(205000);
+    expect(fields.pallets).toBe(33);
+    expect(fields.weightKg).toBe(18500);
+    expect(fields.loadingDate).toBe("2026-11-06");
+    expect(fields.unloadingDate).toBe("2026-11-09");
+  });
+
   it("svoris kilogramais, ne vilkiko masė", () => {
     expect(findWeightsKg("Weight: 12.5 t")).toEqual([12500]);
     expect(findWeightsKg("Svoris: 21 000 kg")).toEqual([21000]);

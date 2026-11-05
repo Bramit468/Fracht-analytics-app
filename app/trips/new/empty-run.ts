@@ -1,8 +1,6 @@
 "use server";
 
-import { emptyRunStart, plannedUnloading, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
-import { plateKey } from "@/lib/telematics-costs";
-import { parseOrderLegs, placeCity, placeQuery as orderPlaceQuery } from "@/lib/telematics-orders";
+import { emptyRunStart, type EmptyRunStart, type TruckGps } from "@/lib/empty-run";
 import { todayInVilnius } from "@/lib/local-date";
 import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
@@ -34,8 +32,6 @@ export type EmptyRunResult =
   }
   | { ok: false; reason: string };
 
-/** Kiek dienų atgal ieškoti reiso, kurio iškrovime fura gali būti. */
-const REISU_LANGAS_DIENU = 60;
 /** Senesnė GPS vieta – parduota ar išjungta fura, ne jos buvimo vieta. */
 const VIETA_GALIOJA_DIENU = 7;
 
@@ -56,33 +52,19 @@ async function truckGps(plate: string, today: string): Promise<TruckGps | null> 
   }
 }
 
-/** Telematikos nebaigto užsakymo iškrovimas iki krovinio dienos – kur fura bus. */
-async function truckPlannedUnloading(plate: string, quoteDate: string): Promise<EmptyRunStart | null> {
-  if (!process.env.TELEMATIKA_TRIPS_URL) return null;
-  try {
-    const leg = plannedUnloading(parseOrderLegs(await fetchTelematics("trips")), plateKey, plate, vilniusNow(new Date()), quoteDate);
-    return leg
-      ? { source: "order", address: orderPlaceQuery(leg.endPlace), point: "", city: placeCity(leg.endPlace), end: leg.end }
-      : null;
-  } catch (cause) {
-    console.error("Užsakymų iškrovimai tuštiems km", cause);
-    return null;
-  }
-}
-
 /**
- * Tušti km iki pakrovimo nuo ten, kur fura bus (Phase 0, 3 punktas).
+ * Tušti km iki pakrovimo (Phase 0, 3 punktas): nuo įrašytos vietos, o jos
+ * nesant – nuo dabartinės furos GPS vietos. Kitų šaltinių nėra (2026-11-05).
  *
  * Serveryje, nes reikia ir PTV rakto, ir Telematikos nuorodos. Telematika
- * tikrinama kaip kitur – tik savai įmonei; be jos dar lieka nesibaigusio reiso
- * iškrovimas. Nepavykus forma grįžta prie istorijos, todėl klaida čia tik
- * paaiškinama, o ne metama.
+ * tikrinama kaip kitur – tik savai įmonei. Nepavykus klaida tik paaiškinama,
+ * o ne metama.
  */
 export async function emptyRunToLoading(
   truckId: string,
   quoteDateInput: string,
   loading: { address: string; point: string },
-  /** Dispečerio įrašyta vieta, kur fura tuo metu bus – nustelbia viską. */
+  /** Dispečerio įrašyta vieta, kur fura tuo metu bus. */
   manualStart: { address: string; point: string } | null = null,
   /** Tarpiniai taškai, nutempti ant raudonos linijos žemėlapyje. */
   viaInput: ViaPoint[] = [],
@@ -100,7 +82,7 @@ export async function emptyRunToLoading(
   const key = process.env.PTV_API_KEY?.trim();
   if (!key) return { ok: false, reason: "Maršrutų skaičiavimas neįjungtas." };
   const today = todayInVilnius();
-  // Be datos – šiandien: GPS vieta tinka, o forma įspėja, kad ji gali keistis.
+  // Data čia nebereikalinga (pradžia nuo jos nepriklauso), bet tikrinama, kad būtų tvarkinga.
   const quoteDate = quoteDateInput || today;
   if (!truckId || !/^\d{4}-\d{2}-\d{2}$/.test(quoteDate)) return { ok: false, reason: "Nėra furos ar datos." };
 
@@ -108,33 +90,16 @@ export async function emptyRunToLoading(
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return { ok: false, reason: "Prisijunkite iš naujo." };
 
-  const [truckResult, tripResult, allowed] = await Promise.all([
+  const [truckResult, allowed] = await Promise.all([
     supabase.from("trucks").select("plate").eq("id", truckId).maybeSingle(),
-    supabase
-      .from("trips")
-      .select("trip_number,trip_date,days,destination,stops")
-      .eq("truck_id", truckId)
-      .lte("trip_date", quoteDate)
-      .gte("trip_date", addDays(quoteDate, -REISU_LANGAS_DIENU)),
     canUseTelematics(supabase),
   ]);
   if (!truckResult.data) return { ok: false, reason: "Fura nerasta." };
 
-  const trips: TruckTrip[] = (tripResult.data ?? []).map((row) => ({
-    tripNumber: String(row.trip_number ?? ""),
-    tripDate: String(row.trip_date),
-    days: Number(row.days),
-    destination: String(row.destination ?? ""),
-    stops: row.stops,
-  }));
-
-  // GPS prašoma tik tada, kai jos reikia: įrašyta vieta ar nesibaigęs reisas ją nustelbia.
-  let start: EmptyRunStart | null = manualStart && (manualStart.address.trim() || manualStart.point)
-    ? { source: "manual", address: manualStart.address.trim(), point: manualStart.point }
-    : emptyRunStart(trips, quoteDate, today, null);
-  // Telematikos užsakymas pasako, kur fura bus; tik jo nesant – kur ji dabar.
-  if (!start && allowed) start = await truckPlannedUnloading(truckResult.data.plate, quoteDate);
-  if (!start && allowed) start = emptyRunStart(trips, quoteDate, today, await truckGps(truckResult.data.plate, today));
+  // GPS prašoma tik tada, kai vieta neįrašyta.
+  const manual = manualStart && (manualStart.address.trim() || manualStart.point) ? manualStart : null;
+  const gps = !manual && allowed ? await truckGps(truckResult.data.plate, today) : null;
+  const start = emptyRunStart(manual, gps);
   if (!start) return { ok: false, reason: "Furos vieta nežinoma." };
 
   try {

@@ -78,6 +78,43 @@ export function contractFare(ptvNames: readonly string[], rates: readonly FerryR
   return { totalCents: lines.reduce((sum, line) => sum + line.cents, 0), lines };
 }
 
+/** Tuščio kelio iki pakrovimo keltas: kiek pridėti ir iš kur kaina. */
+export interface EmptyLegFerry {
+  /** `null` – kaina nežinoma, žmogus turi įrašyti. */
+  cents: number | null;
+  source: "ptv" | "contract" | "public" | "unknown";
+  text: string;
+}
+
+/**
+ * Tuščia fura irgi plaukia keltu (pvz. Lolandas → Rødby–Puttgarden), o bilietas
+ * anksčiau nebuvo skaičiuojamas visai (2026-11-05). Tvarka kaip krovinio kelyje:
+ * PTV kaina, įmonės sutartinė, viešas tarifas tuščiai furai; kitaip – nežinoma.
+ * `null`, kai tuščiame kelyje kelto nėra.
+ */
+export function emptyLegFerry(input: {
+  ferryNames: readonly string[];
+  ptvCents: number;
+  contract: ContractFare | null;
+  publicFareCents: number | null;
+  formatCents: (cents: number) => string;
+}): EmptyLegFerry | null {
+  const { ferryNames, ptvCents, contract, publicFareCents, formatCents } = input;
+  if (ferryNames.length === 0 && ptvCents <= 0) return null;
+  const names = ferryNames.length > 0 ? ferryNames.join(", ") : "keltas";
+  const head = `Tuščiame kelyje iki pakrovimo – keltas ${names}`;
+  if (ptvCents > 0) return { cents: ptvCents, source: "ptv", text: `${head}: pridėta ${formatCents(ptvCents)} (PTV kaina).` };
+  if (contract) return { cents: contract.totalCents, source: "contract", text: `${head}: pridėta ${formatCents(contract.totalCents)} (jūsų sutartinė kaina).` };
+  if (publicFareCents !== null) {
+    return { cents: publicFareCents, source: "public", text: `${head}: pridėta ${formatCents(publicFareCents)} (Scandlines viešas tarifas tuščiai furai).` };
+  }
+  return {
+    cents: null,
+    source: "unknown",
+    text: `${head}: bilieto kainos nėra – pridėkite ją lauke „Keltai (€)“ arba įveskite sutartinę Įmonė → „Keltų kainos“.`,
+  };
+}
+
 export function parseFerryRate(label: string, price: string, note: string):
   { ok: true; value: Pick<FerryRate, "label" | "price_cents" | "note"> } | { ok: false; error: string } {
   const cleanLabel = label.trim().replace(/\s+/g, " ");

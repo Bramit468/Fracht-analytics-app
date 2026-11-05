@@ -161,11 +161,7 @@ function emptyRoadOnMap(run: Extract<EmptyRunResult, { ok: true }>): { line: Lin
   if (run.line.length < 2) return null;
   const [longitude, latitude] = run.line[0];
   const start = run.start;
-  const title = start.source === "gps"
-    ? `Fura dabar (${start.gpsTime.slice(0, 16)})`
-    : start.source === "order"
-      ? `Fura bus: ${start.city} (${start.end.slice(5, 16)}, Telematikos užsakymas)`
-      : `Fura bus: ${start.address}`;
+  const title = start.source === "gps" ? `Fura dabar (GPS, ${start.gpsTime.slice(0, 16)})` : `Fura bus: ${start.address}`;
   return { line: run.line, truck: { latitude, longitude, letter: "A", title } };
 }
 
@@ -1707,6 +1703,8 @@ export function TripForm({
           </p>}
           {/* Tušti km nuo dabartinės GPS vietos – vietai keičiantis, kur fura bus. */}
           {!tripId && (tusciInfo?.gps || tusciInfo?.unknown || furaBus.address) && <div className="text-sm">
+            {/* Visada matosi, nuo ko skaičiuota: įrašyta vieta ar GPS. */}
+            {tusciInfo && !tusciInfo.unknown && <p className="mb-1 text-ink">{tusciInfo.text}</p>}
             <p className={tusciInfo?.failed ? "text-bad" : "text-warn"}>{tusciInfo?.failed
               ? "Tuščių km gauti nepavyko – perkraukite puslapį (F5) ir spauskite „Skaičiuoti“."
               : tusciInfo?.unknown

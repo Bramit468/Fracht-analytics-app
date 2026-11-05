@@ -28,7 +28,7 @@ import { copyForNewTrip, tripDefaults } from "../../../lib/trip-copy";
 import { routeHistory, type RouteHistory } from "../../../lib/route-history";
 import { emptyKmTollCents, hoursBetween, pickDays, quoteDays, serviceHours, SERVICE_HOURS_PER_STOP, type DaysSource } from "../../../lib/quick-quote";
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
-import { emptyRunToLoading } from "./empty-run";
+import { emptyRunToLoading, type EmptyRunResult } from "./empty-run";
 import { emptyRunShort } from "../../../lib/empty-run";
 import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import { ptvTripFuel } from "../../../lib/fuel-terrain";
@@ -151,6 +151,22 @@ async function clickWhenEnabled(button: HTMLButtonElement | null) {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+}
+
+/**
+ * Tuščias kelias žemėlapiui: linija ir taškas A iš to paties PTV atsakymo.
+ * A – pačioje linijos pradžioje (nuo ten skaičiuoti km), kad niekada neatsiskirtų.
+ */
+function emptyRoadOnMap(run: Extract<EmptyRunResult, { ok: true }>): { line: LineCoordinate[]; truck: MapStop } | null {
+  if (run.line.length < 2) return null;
+  const [longitude, latitude] = run.line[0];
+  const start = run.start;
+  const title = start.source === "gps"
+    ? `Fura dabar (${start.gpsTime.slice(0, 16)})`
+    : start.source === "order"
+      ? `Fura bus: ${start.city} (${start.end.slice(5, 16)}, Telematikos užsakymas)`
+      : `Fura bus: ${start.address}`;
+  return { line: run.line, truck: { latitude, longitude, letter: "A", title } };
 }
 
 function durationText(minutes: number): string {
@@ -646,7 +662,9 @@ export function TripForm({
       ordered,
     ).catch(() => null);
     if (!run?.ok || run.line.length < 2) return;
-    setTuscioKelias((current) => current && { ...current, line: run.line });
+    // Linija ir taškas A – visada iš to paties atsakymo: tarp užklausų pradžia
+    // gali pasikeisti (GPS ↔ užsakymo iškrovimas), o senas A liktų kitur (2026-11-05).
+    setTuscioKelias(emptyRoadOnMap(run));
     setTusciInfo({ text: emptyRunShort(run.start, run.km), gps: run.start.source === "gps", unknown: false });
   }
 
@@ -1318,17 +1336,7 @@ export function TripForm({
       const quoted = quoteDays(picked.days, sustojimuVal + tusciuVal);
       // Be istorijos vidurkių (vartotojo sprendimas, 2026-11-04): vieta nežinoma – 0 ir prašoma įrašyti.
       const emptyKm = rankaTusti ?? (emptyRun ? emptyRun.km : 0);
-      setTuscioKelias(emptyRun && rankaTusti === null && emptyRun.line.length >= 2
-        ? {
-          line: emptyRun.line,
-          truck: {
-            latitude: emptyRun.from.latitude,
-            longitude: emptyRun.from.longitude,
-            letter: "A",
-            title: emptyRun.start.source === "gps" ? `Fura dabar (${emptyRun.start.gpsTime.slice(0, 16)})` : `Fura bus: ${emptyRun.start.address}`,
-          },
-        }
-        : null);
+      setTuscioKelias(emptyRun && rankaTusti === null ? emptyRoadOnMap(emptyRun) : null);
       if (write) {
         setTusciInfo(rankaTusti !== null
           ? { text: `Tušti km iki pakrovimo: ${String(rankaTusti).replace(".", ",")} km – įrašyta ranka.`, gps: false, unknown: false }

@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { contractFare, ferryMatches, ferryPorts, parseFerryRate, type FerryRate } from "./ferry-rates";
+import { contractFare, emptyLegFerry, ferryMatches, ferryPorts, parseFerryRate, type FerryRate } from "./ferry-rates";
+
+describe("tuščio kelio keltas", () => {
+  const eur = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+  const base = { ferryNames: ["Rødby-Puttgarden"], ptvCents: 0, contract: null, publicFareCents: null, formatCents: eur };
+
+  it("be kelto – nieko", () => {
+    expect(emptyLegFerry({ ...base, ferryNames: [] })).toBeNull();
+  });
+
+  it("tvarka: PTV, sutartinė, viešas tarifas", () => {
+    expect(emptyLegFerry({ ...base, ptvCents: 12000, contract: { totalCents: 9000, lines: [] }, publicFareCents: 8000 })).toMatchObject({ cents: 12000, source: "ptv" });
+    expect(emptyLegFerry({ ...base, contract: { totalCents: 9000, lines: [] }, publicFareCents: 8000 })).toMatchObject({ cents: 9000, source: "contract" });
+    expect(emptyLegFerry({ ...base, publicFareCents: 8000 })?.text).toBe("Tuščiame kelyje iki pakrovimo – keltas Rødby-Puttgarden: pridėta 80,00 € (Scandlines viešas tarifas tuščiai furai).");
+  });
+
+  it("kainos nėra – pasakoma, ne nulis", () => {
+    expect(emptyLegFerry(base)).toMatchObject({ cents: null, source: "unknown" });
+  });
+});
 
 const rate = (label: string, price_cents: number): FerryRate => ({ id: label, label, price_cents, note: null, updated_at: "" });
 

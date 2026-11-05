@@ -30,7 +30,7 @@ import { emptyKmTollCents, hoursBetween, pickDays, quoteDays, serviceHours, SERV
 import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading, type EmptyRunResult } from "./empty-run";
 import { emptyRunShort } from "../../../lib/empty-run";
-import { contractFare, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
+import { contractFare, emptyLegFerry, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
 import { ptvTripFuel } from "../../../lib/fuel-terrain";
 import {
   buildQuoteDraft,
@@ -272,7 +272,14 @@ export function TripForm({
   /** Kur fura bus prieš krovinį – įrašo dispečeris, kai GPS vieta pasikeis. */
   const [furaBus, setFuraBus] = useState({ address: "", point: "" });
   /** Tuščių km eilutė pagrindinėje skiltyje; `gps` – vieta gali keistis. */
-  const [tusciInfo, setTusciInfo] = useState<{ text: string; gps: boolean; unknown: boolean; failed?: boolean } | null>(null);
+  const [tusciInfo, setTusciInfo] = useState<{
+    text: string;
+    gps: boolean;
+    unknown: boolean;
+    failed?: boolean;
+    /** Keltas tuščiame kelyje: ar pridėtas ir kiek (`unknown` – kainos nėra). */
+    ferry?: { text: string; unknown: boolean };
+  } | null>(null);
   /** Tuščias kelias iki pakrovimo žemėlapyje (raudonas) ir furos vieta. */
   const [tuscioKelias, setTuscioKelias] = useState<{ line: LineCoordinate[]; truck: MapStop } | null>(null);
   /** Tarpiniai taškai, nutempti ant raudonos (tuščio kelio) linijos. */
@@ -660,6 +667,7 @@ export function TripForm({
       { address: stops[0].address, point: stops[0].point },
       furaBus.address.trim() || furaBus.point ? furaBus : null,
       ordered,
+      vengtiKeltu,
     ).catch(() => null);
     if (!run?.ok || run.line.length < 2) return;
     // Linija ir taškas A – visada iš to paties atsakymo: tarp užklausų pradžia
@@ -1317,6 +1325,7 @@ export function TripForm({
             { address: stops[0].address, point: stops[0].point },
             furaBus.address.trim() || furaBus.point ? furaBus : null,
             tusciVia,
+            vengtiKeltu,
           ).catch((cause: unknown) => {
             // Dažniausiai – atidarytas puslapis iš senesnės versijos (po atnaujinimo
             // serverio veiksmas nebesutampa). Tyliai praryjus dingdavo tušti km.
@@ -1381,6 +1390,21 @@ export function TripForm({
           const bridges = form.elements.namedItem("bridges_cents");
           const routeCents = bridges instanceof HTMLInputElement ? parseEuroToCents(bridges.value) : null;
           if (bridges instanceof HTMLInputElement && routeCents !== null) bridges.value = centsToInput(routeCents + emptyTollCents);
+          // Tuščio kelio keltas (Lolandas → Rødby–Puttgarden): bilietas pridedamas prie
+          // krovinio keltų; kainos nežinant – pasakoma pagrindinėje skiltyje.
+          const tuscioKeltas = emptyRun && rankaTusti === null
+            ? emptyLegFerry({
+              ferryNames: emptyRun.ferryNames,
+              ptvCents: emptyRun.ferriesCents,
+              contract: contractFare(emptyRun.ferryNames, keltuKainos),
+              publicFareCents: estimateScandlinesFreightFare(emptyRun.ferryNames, Number(keltoIlgis), "empty", ferryDate())?.totalCents ?? null,
+              formatCents,
+            })
+            : null;
+          const ferries = form.elements.namedItem("ferries_cents");
+          const ferriesCents = ferries instanceof HTMLInputElement ? parseEuroToCents(ferries.value) ?? 0 : 0;
+          if (ferries instanceof HTMLInputElement && tuscioKeltas?.cents) ferries.value = centsToInput(ferriesCents + tuscioKeltas.cents);
+          setTusciInfo((current) => current && { ...current, ferry: tuscioKeltas ? { text: tuscioKeltas.text, unknown: tuscioKeltas.cents === null } : undefined });
           // Atkarpų suma privalo sutapti su apmokamais ir tuščiais km, o tuščių
           // dabar yra. `flushSync`, nes skaičiavimas skaito DOM iškart po to.
           flushSync(() => {
@@ -1677,6 +1701,10 @@ export function TripForm({
           {/* Mygtukas paslėptas: kaina skaičiuojama pati, kai užpildyta fura,
               data ir adresai. Per jį eina visos apsaugos nuo lenktynių (#189). */}
           <button ref={kainosMygtukas} type="button" hidden disabled={kainaSkaiciuojama} onClick={() => void calculateQuote()} />
+          {/* Tuščio kelio keltas keičia kainą – visada matomas. */}
+          {!tripId && tusciInfo?.ferry && <p role={tusciInfo.ferry.unknown ? "alert" : "status"} className={`mb-2 text-sm ${tusciInfo.ferry.unknown ? "text-bad" : "text-muted"}`}>
+            {tusciInfo.ferry.text}
+          </p>}
           {/* Tušti km nuo dabartinės GPS vietos – vietai keičiantis, kur fura bus. */}
           {!tripId && (tusciInfo?.gps || tusciInfo?.unknown || furaBus.address) && <div className="text-sm">
             <p className={tusciInfo?.failed ? "text-bad" : "text-warn"}>{tusciInfo?.failed

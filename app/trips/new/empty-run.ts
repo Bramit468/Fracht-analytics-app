@@ -25,6 +25,9 @@ export type EmptyRunResult =
     travelMinutes: number;
     /** PTV kuras tuščiai furai (0 kg), l/100. */
     fuelL100: number | null;
+    /** Keltai tuščiame kelyje ir PTV jų kaina (dažniausiai 0 – nežinoma). `tollCents` jos neturi. */
+    ferryNames: string[];
+    ferriesCents: number;
     /** Tuščio kelio linija žemėlapiui ir jo pradžia (kur fura yra ar bus). */
     line: LineCoordinate[];
     from: { latitude: number; longitude: number };
@@ -83,6 +86,8 @@ export async function emptyRunToLoading(
   manualStart: { address: string; point: string } | null = null,
   /** Tarpiniai taškai, nutempti ant raudonos linijos žemėlapyje. */
   viaInput: ViaPoint[] = [],
+  /** „Vengti keltų“ – galioja ir tuščiam keliui. */
+  avoidFerries = false,
 ): Promise<EmptyRunResult> {
   // Iš kliento – tikrinama: tik skaičiai, tik žemėje, ne daugiau nei leidžia forma.
   const via = Array.isArray(viaInput)
@@ -140,7 +145,7 @@ export async function emptyRunToLoading(
     if (!from || !to) return { ok: false, reason: "Nepavyko rasti pradžios ar pakrovimo vietos." };
 
     // Tuščia fura: 0 kg krovinio (PTV kuras tuščiai furai) ir be išvykimo laiko – tipinis eismas.
-    const payload = await ptvJson(routeRequestUrl(from, to, false, routeTiming() ?? undefined, { loadWeightKg: 0 }, via), key);
+    const payload = await ptvJson(routeRequestUrl(from, to, avoidFerries === true, routeTiming() ?? undefined, { loadWeightKg: 0 }, via), key);
     const estimate = routeEstimate(payload);
     if (!estimate) return { ok: false, reason: "Nepavyko suskaičiuoti kelio iki pakrovimo." };
 
@@ -148,7 +153,10 @@ export async function emptyRunToLoading(
       ok: true,
       start,
       km: Math.round(estimate.km * 100) / 100,
-      tollCents: estimate.tollCents,
+      // Kelto kaina – atskirai (`ferriesCents`), kad forma ją įrašytų į „Keltai“, ne į kelius.
+      tollCents: Math.max(0, estimate.tollCents - estimate.ferriesCents),
+      ferryNames: estimate.ferryDetected ? (estimate.ferryNames.length > 0 ? estimate.ferryNames : ["be pavadinimo"]) : [],
+      ferriesCents: estimate.ferriesCents,
       travelMinutes: estimate.travelMinutes,
       fuelL100: routeEmissions(payload, estimate.km)?.litresPer100Km ?? null,
       line: simplifyRouteLine(parseRouteLine((payload as { polyline?: unknown }).polyline)),

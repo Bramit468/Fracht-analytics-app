@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emptyRunNote, emptyRunShort, emptyRunStart, type TruckTrip } from "./empty-run";
+import { emptyRunNote, emptyRunShort, emptyRunStart, plannedUnloading, type PlannedLeg, type TruckTrip } from "./empty-run";
 
 const gps = { latitude: 54.9, longitude: 23.9, gpsTime: "2026-10-31 09:12:00" };
 
@@ -65,6 +65,32 @@ describe("emptyRunStart", () => {
   });
 });
 
+describe("plannedUnloading", () => {
+  const key = (plate: string) => plate.replace(/\s+/g, "").toUpperCase();
+  const leg = (over: Partial<PlannedLeg>): PlannedLeg => ({
+    plate: "OBC 884",
+    end: "2026-11-04 04:00:00",
+    endPlace: "Marine Harvest Boulogne, FRA, Boulogne-sur-Mer, 62200, Rue Léon CALON 3",
+    endType: "Unloading",
+    external: false,
+    ...over,
+  });
+
+  it("nebaigtas iškrovimas iki krovinio dienos – vėliausias", () => {
+    const legs = [leg({ end: "2026-11-02 08:00:00" }), leg({}), leg({ end: "2026-11-03 10:00:00" })];
+    expect(plannedUnloading(legs, key, "OBC884", "2026-11-01 20:00:00", "2026-11-05")?.end).toBe("2026-11-04 04:00:00");
+  });
+
+  it("jau pasibaigęs, po krovinio dienos, kitos furos, ne iškrovimas, išorinis vežėjas – netinka", () => {
+    const now = "2026-11-01 20:00:00";
+    expect(plannedUnloading([leg({ end: "2026-11-01 10:00:00" })], key, "OBC 884", now, "2026-11-05")).toBeNull();
+    expect(plannedUnloading([leg({})], key, "OBC 884", now, "2026-11-03")).toBeNull();
+    expect(plannedUnloading([leg({ plate: "LOV 141" })], key, "OBC 884", now, "2026-11-05")).toBeNull();
+    expect(plannedUnloading([leg({ endType: "Loading" })], key, "OBC 884", now, "2026-11-05")).toBeNull();
+    expect(plannedUnloading([leg({ external: true })], key, "OBC 884", now, "2026-11-05")).toBeNull();
+  });
+});
+
 describe("emptyRunNote", () => {
   it("pasako šaltinį ir pridėtas valandas", () => {
     expect(emptyRunNote({ source: "trip", tripNumber: "R-7", address: "Oslo", point: "" }, 98.456, 1.84, true)).toBe(
@@ -77,5 +103,7 @@ describe("emptyRunNote", () => {
   it("trumpa eilutė pagrindinei skilčiai", () => {
     expect(emptyRunShort({ source: "gps", ...gps }, 1234.4)).toBe("Tušti km iki pakrovimo: 1 234 km nuo furos vietos dabar (Telematika, 2026-10-31 09:12).");
     expect(emptyRunShort({ source: "manual", address: "Kaunas", point: "" }, 86.4)).toBe("Tušti km iki pakrovimo: 86 km nuo Kaunas.");
+    expect(emptyRunShort({ source: "order", address: "", point: "", city: "Boulogne-sur-Mer, FRA", end: "2026-11-04 04:00:00" }, 1200))
+      .toBe("Tušti km iki pakrovimo: 1 200 km nuo užsakymo iškrovimo Boulogne-sur-Mer, FRA (11-04 04:00, Telematika).");
   });
 });

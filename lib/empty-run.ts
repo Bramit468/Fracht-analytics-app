@@ -7,6 +7,7 @@
  *
  * - dispečeris įrašė, kur fura tuo metu bus – nuo ten;
  * - fura dar vykdo (ar vykdys) kitą reisą – nuo to reiso iškrovimo;
+ * - Telematikoje yra jos nebaigtas užsakymas – nuo jo iškrovimo (plano 3 p.);
  * - kitaip – nuo jos GPS vietos dabar (bet kuriai datai: forma primena, kad
  *   vietai keičiantis reikia įrašyti, kur fura bus, arba skaičiuoti prieš reisą);
  * - be GPS – lieka istorija.
@@ -34,7 +35,42 @@ export interface TruckGps {
 export type EmptyRunStart =
   | { source: "trip"; tripNumber: string; address: string; /** „55.7,24.3“ arba tuščia. */ point: string }
   | { source: "gps"; latitude: number; longitude: number; gpsTime: string }
-  | { source: "manual"; address: string; point: string };
+  | { source: "manual"; address: string; point: string }
+  /** Telematikos nebaigto užsakymo iškrovimas; `end` – „2026-11-04 04:00:00“, Lietuvos laikas. */
+  | { source: "order"; address: string; point: string; city: string; end: string };
+
+/** Telematikos užsakymo atkarpa (iš `parseOrderLegs`) – tik tai, ko reikia čia. */
+export interface PlannedLeg {
+  plate: string | null;
+  end: string;
+  endPlace: string;
+  endType: string | null;
+  external: boolean;
+}
+
+/**
+ * Kur fura bus prieš krovinį pagal Telematikos užsakymus: vėliausias jos dar
+ * nepasibaigęs iškrovimas, ne vėlesnis už krovinio dieną. 2026-11-01 tokį
+ * turėjo 13 furų iš 22 (1–3 dienos į priekį). Po krovinio datos besibaigiantis
+ * užsakymas netinka – tada fura dar nelaisva, o kur ji bus, nežinoma.
+ */
+export function plannedUnloading(
+  legs: PlannedLeg[],
+  plateKeyOf: (plate: string) => string,
+  plate: string,
+  now: string,
+  quoteDate: string,
+): PlannedLeg | null {
+  const key = plateKeyOf(plate);
+  let best: PlannedLeg | null = null;
+  for (const leg of legs) {
+    if (leg.external || !leg.plate || plateKeyOf(leg.plate) !== key) continue;
+    if ((leg.endType ?? "").toLowerCase() !== "unloading" || !leg.endPlace.trim()) continue;
+    if (leg.end < now || leg.end.slice(0, 10) > quoteDate) continue;
+    if (!best || leg.end > best.end) best = leg;
+  }
+  return best;
+}
 
 /** Paskutinė reiso diena imtinai, kaip `isOnTheRoad`: prasidėjusi para yra kelyje. */
 function lastDay(trip: TruckTrip): string {
@@ -84,7 +120,9 @@ export function emptyRunShort(start: EmptyRunStart, km: number): string {
     ? `nuo reiso ${start.tripNumber} iškrovimo (${start.address})`
     : start.source === "manual"
       ? `nuo ${start.address}`
-      : `nuo furos vietos dabar (Telematika, ${start.gpsTime.slice(0, 16)})`;
+      : start.source === "order"
+        ? `nuo užsakymo iškrovimo ${start.city} (${start.end.slice(5, 16)}, Telematika)`
+        : `nuo furos vietos dabar (Telematika, ${start.gpsTime.slice(0, 16)})`;
   return `Tušti km iki pakrovimo: ${kmText} km ${from}.`;
 }
 
@@ -97,6 +135,8 @@ export function emptyRunNote(start: EmptyRunStart, km: number, hours: number, ap
     ? `nuo reiso ${start.tripNumber} iškrovimo (${start.address})`
     : start.source === "manual"
       ? `nuo įrašytos furos vietos (${start.address})`
-      : `nuo furos GPS vietos (${start.gpsTime})`;
+      : start.source === "order"
+        ? `nuo Telematikos užsakymo iškrovimo (${start.city}, ${start.end.slice(0, 16)})`
+        : `nuo furos GPS vietos (${start.gpsTime})`;
   return `Tušti km: ${verb} ${kmText} – PTV kelias ${from} iki pakrovimo. Į paras pridėta ${hoursText} val. važiavimo.`;
 }

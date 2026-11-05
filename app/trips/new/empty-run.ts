@@ -1,6 +1,8 @@
 "use server";
 
-import { emptyRunStart, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
+import { emptyRunStart, plannedUnloading, type EmptyRunStart, type TruckGps, type TruckTrip } from "@/lib/empty-run";
+import { plateKey } from "@/lib/telematics-costs";
+import { parseOrderLegs, placeCity, placeQuery as orderPlaceQuery } from "@/lib/telematics-orders";
 import { todayInVilnius } from "@/lib/local-date";
 import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
@@ -47,6 +49,20 @@ async function truckGps(plate: string, today: string): Promise<TruckGps | null> 
     return truck ? { latitude: truck.latitude, longitude: truck.longitude, gpsTime: truck.gpsTime } : null;
   } catch (cause) {
     console.error("Furos vieta tuštiems km", cause);
+    return null;
+  }
+}
+
+/** Telematikos nebaigto užsakymo iškrovimas iki krovinio dienos – kur fura bus. */
+async function truckPlannedUnloading(plate: string, quoteDate: string): Promise<EmptyRunStart | null> {
+  if (!process.env.TELEMATIKA_TRIPS_URL) return null;
+  try {
+    const leg = plannedUnloading(parseOrderLegs(await fetchTelematics("trips")), plateKey, plate, vilniusNow(new Date()), quoteDate);
+    return leg
+      ? { source: "order", address: orderPlaceQuery(leg.endPlace), point: "", city: placeCity(leg.endPlace), end: leg.end }
+      : null;
+  } catch (cause) {
+    console.error("Užsakymų iškrovimai tuštiems km", cause);
     return null;
   }
 }
@@ -111,6 +127,8 @@ export async function emptyRunToLoading(
   let start: EmptyRunStart | null = manualStart && (manualStart.address.trim() || manualStart.point)
     ? { source: "manual", address: manualStart.address.trim(), point: manualStart.point }
     : emptyRunStart(trips, quoteDate, today, null);
+  // Telematikos užsakymas pasako, kur fura bus; tik jo nesant – kur ji dabar.
+  if (!start && allowed) start = await truckPlannedUnloading(truckResult.data.plate, quoteDate);
   if (!start && allowed) start = emptyRunStart(trips, quoteDate, today, await truckGps(truckResult.data.plate, today));
   if (!start) return { ok: false, reason: "Furos vieta nežinoma." };
 

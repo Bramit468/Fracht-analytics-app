@@ -31,7 +31,7 @@ import { fetchFuelPrices, fetchTelematicsFill } from "./telematics";
 import { emptyRunToLoading, type EmptyRunResult } from "./empty-run";
 import { emptyRunShort } from "../../../lib/empty-run";
 import { contractFare, emptyLegFerry, listFerryRates, type FerryRate } from "../../../lib/ferry-rates";
-import { ptvTripFuel } from "../../../lib/fuel-terrain";
+import { ADBLUE_SHARE_OF_FUEL, adblueFromFuel, ptvTripFuel } from "../../../lib/fuel-terrain";
 import {
   buildQuoteDraft,
   decisionPatch,
@@ -251,6 +251,8 @@ export function TripForm({
   const tusciKmRanka = useRef<number | null>(null);
   /** Kuro normą žmogus pakeitė ranka – maršruto profilis jos neliečia. */
   const kuroRanka = useRef(false);
+  /** AdBlue norma įrašyta ranka – „Skaičiuoti“ jos neperrašo. */
+  const adblueRanka = useRef(false);
   /**
    * Vieno ekrano pasiūlymas: kaina skaičiuojama pati, kai užpildyti fura, data
    * ir abu adresai, o pakeista kaina perskaičiuojama be PTV – tik kai laukai
@@ -1089,10 +1091,13 @@ export function TripForm({
       }
       // Furos vidurkis lieka tik be PTV; su maršrutu jį pakeičia PTV norma.
       kuroRanka.current = false;
+      adblueRanka.current = false;
 
       setNormos(
         rates.length > 0
-          ? `Kuro ir AdBlue normos – ${plate} paskutinių 30 d. faktas. Galite taisyti.`
+          ? routeLookup
+            ? `Paspaudus „Skaičiuoti“: kuras – pagal PTV (maršrutas, svoris, tušti km su 0 kg), AdBlue – ${String(ADBLUE_SHARE_OF_FUEL * 100).replace(".", ",")} % nuo kuro. Kol nespausta – ${plate} paskutinių 30 d. faktas. Įrašyti ranka nebeperrašomi.`
+            : `Kuro ir AdBlue normos – ${plate} paskutinių 30 d. faktas. Galite taisyti.`
           : "",
       );
       setResult(null);
@@ -1369,6 +1374,11 @@ export function TripForm({
             loadTonnes: loadKnown ? tonnes : null,
           });
           if (ptvFuel) fuelField.value = String(ptvFuel.litresPer100Km);
+          // AdBlue – dalis nuo PTV kuro: seka kalnus, svorį ir kelius kaip kuras.
+          const adblueField = form.elements.namedItem("adblue_l_per_100km");
+          if (ptvFuel && !adblueRanka.current && adblueField instanceof HTMLInputElement) {
+            adblueField.value = String(adblueFromFuel(ptvFuel.litresPer100Km));
+          }
         }
       }
 
@@ -2117,7 +2127,11 @@ export function TripForm({
 
       <Skiltis antraste="Kiek išleis">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} onChange={name === "fuel_l_per_100km" ? (event) => { kuroRanka.current = event.currentTarget.value.trim() !== ""; } : undefined} /></label>)}
+          {kastuFields.map(([name, label, step]) => <label key={name}>{label}<input name={name} type="number" min="0" step={step} required className={inputClass} defaultValue={defaults[name] ?? (name.startsWith("adblue") ? "0" : undefined)} onChange={name === "fuel_l_per_100km"
+            ? (event) => { kuroRanka.current = event.currentTarget.value.trim() !== ""; }
+            : name === "adblue_l_per_100km"
+              ? (event) => { adblueRanka.current = event.currentTarget.value.trim() !== ""; }
+              : undefined} /></label>)}
           {extras.map(([name, label]) => <label key={name}>{label}<input name={name} type="text" inputMode="decimal" required defaultValue={defaults[name] ?? "0"} className={inputClass} /></label>)}
         </div>
         {normos && <p role="status" className="mt-2 text-sm text-muted">{normos}</p>}

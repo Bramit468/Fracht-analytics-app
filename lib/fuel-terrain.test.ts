@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { knownLoadFuel, ptvTripFuel, terrainAdjustedFuel, terrainFactor } from "./fuel-terrain";
+import { adblueFromFuel, knownLoadFuel, ptvTripFuel, terrainAdjustedFuel, terrainFactor } from "./fuel-terrain";
 
 describe("žinomas krovinio svoris", () => {
   it("PTV su svoriu – be pataisų (per mažai duomenų koeficientui)", () => {
@@ -9,6 +9,14 @@ describe("žinomas krovinio svoris", () => {
       note: "Kuras: 25,7 l/100 – PTV pagal maršrutą (nuolydžiai, keliai) ir 0,0 t krovinį.",
     });
     expect(knownLoadFuel(null, 10)).toBeNull();
+  });
+});
+
+describe("AdBlue nuo kuro", () => {
+  it("6,92 % kuro; be kuro – 0", () => {
+    expect(adblueFromFuel(30)).toBe(2.08);
+    expect(adblueFromFuel(25.73)).toBe(1.78);
+    expect(adblueFromFuel(0)).toBe(0);
   });
 });
 

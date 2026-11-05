@@ -54,6 +54,20 @@ export function knownLoadFuel(ptvLitresPer100Km: number | null, loadTonnes: numb
 }
 
 /**
+ * AdBlue kaip dalis nuo kuro. PTV AdBlue neduoda (patikrinta 2026-11-05: tik
+ * kuras, CO2e ir energija), o AdBlue sunaudojimas seka kurą – kalnuose daugiau.
+ * 6,92 % – Mitrenos parkas 2026-08…10 (Telematikos AdBlue pirkimai ÷ sudegintas
+ * kuras). Tikslumu beveik toks pat kaip furos 30 d. faktas (26,8 % ir 24,2 %
+ * mėnesio paklaida – pirkimai bakais), bet seka maršrutą (vartotojo sprendimas).
+ */
+export const ADBLUE_SHARE_OF_FUEL = 0.0692;
+
+export function adblueFromFuel(fuelLitresPer100Km: number): number {
+  if (!(fuelLitresPer100Km > 0)) return 0;
+  return Math.round(fuelLitresPer100Km * ADBLUE_SHARE_OF_FUEL * 100) / 100;
+}
+
+/**
  * Viso reiso kuras tik iš PTV, be istorijos vidurkių (vartotojo sprendimas,
  * 2026-11-04): krovinio km – PTV su krovinio svoriu, tušti km – PTV kelias iki
  * pakrovimo su 0 kg. Laukui „Kuras l/100“ – viena norma, svertinė pagal km,

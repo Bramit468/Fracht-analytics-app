@@ -1,6 +1,8 @@
 "use server";
 
-import { emptyRunStart, type EmptyRunStart, type TruckGps } from "@/lib/empty-run";
+import { emptyRunStart, plannedUnloading, type EmptyRunStart, type TruckGps } from "@/lib/empty-run";
+import { plateKey } from "@/lib/telematics-costs";
+import { parseOrderLegs, placeCity, placeQuery } from "@/lib/telematics-orders";
 import { todayInVilnius } from "@/lib/local-date";
 import { routeEmissions } from "@/lib/ptv-emissions";
 import { routeEstimate, routeRequestUrl, routeTiming, type GeocodedPlace } from "@/lib/ptv-route";
@@ -52,9 +54,21 @@ async function truckGps(plate: string, today: string): Promise<TruckGps | null> 
   }
 }
 
+/** Telematikoje suplanuotas, dar neįvykęs furos iškrovimas – kur ji bus laisva. */
+async function truckPlannedUnloading(plate: string, quoteDate: string): Promise<Extract<EmptyRunStart, { source: "order" }> | null> {
+  if (!process.env.TELEMATIKA_TRIPS_URL) return null;
+  try {
+    const leg = plannedUnloading(parseOrderLegs(await fetchTelematics("trips")), plateKey, plate, vilniusNow(new Date()), quoteDate);
+    return leg ? { source: "order", address: placeQuery(leg.endPlace), point: "", city: placeCity(leg.endPlace), end: leg.end } : null;
+  } catch (cause) {
+    console.error("Suplanuoti iškrovimai tuštiems km", cause);
+    return null;
+  }
+}
+
 /**
- * Tušti km iki pakrovimo (Phase 0, 3 punktas): nuo įrašytos vietos, o jos
- * nesant – nuo dabartinės furos GPS vietos. Kitų šaltinių nėra (2026-11-05).
+ * Tušti km iki pakrovimo (Phase 0, 3 punktas): nuo Telematikoje suplanuoto
+ * iškrovimo, o jo nesant – nuo GPS vietos (2026-11-19).
  *
  * Serveryje, nes reikia ir PTV rakto, ir Telematikos nuorodos. Telematika
  * tikrinama kaip kitur – tik savai įmonei. Nepavykus klaida tik paaiškinama,
@@ -64,8 +78,6 @@ export async function emptyRunToLoading(
   truckId: string,
   quoteDateInput: string,
   loading: { address: string; point: string },
-  /** Dispečerio įrašyta vieta, kur fura tuo metu bus. */
-  manualStart: { address: string; point: string } | null = null,
   /** Tarpiniai taškai, nutempti ant raudonos linijos žemėlapyje. */
   viaInput: ViaPoint[] = [],
   /** „Vengti keltų“ – galioja ir tuščiam keliui. */
@@ -82,9 +94,9 @@ export async function emptyRunToLoading(
   const key = process.env.PTV_API_KEY?.trim();
   if (!key) return { ok: false, reason: "Maršrutų skaičiavimas neįjungtas." };
   const today = todayInVilnius();
-  // Data čia nebereikalinga (pradžia nuo jos nepriklauso), bet tikrinama, kad būtų tvarkinga.
-  const quoteDate = quoteDateInput || today;
-  if (!truckId || !/^\d{4}-\d{2}-\d{2}$/.test(quoteDate)) return { ok: false, reason: "Nėra furos ar datos." };
+  // Data riboja suplanuotą iškrovimą; be jos – paskutinis suplanuotas.
+  const quoteDate = quoteDateInput || "";
+  if (!truckId || (quoteDate && !/^\d{4}-\d{2}-\d{2}$/.test(quoteDate))) return { ok: false, reason: "Nėra furos ar datos." };
 
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
@@ -96,10 +108,10 @@ export async function emptyRunToLoading(
   ]);
   if (!truckResult.data) return { ok: false, reason: "Fura nerasta." };
 
-  // GPS prašoma tik tada, kai vieta neįrašyta.
-  const manual = manualStart && (manualStart.address.trim() || manualStart.point) ? manualStart : null;
-  const gps = !manual && allowed ? await truckGps(truckResult.data.plate, today) : null;
-  const start = emptyRunStart(manual, gps);
+  // GPS prašoma tik tada, kai suplanuoto iškrovimo nėra.
+  const order = allowed ? await truckPlannedUnloading(truckResult.data.plate, quoteDate) : null;
+  const gps = !order && allowed ? await truckGps(truckResult.data.plate, today) : null;
+  const start = emptyRunStart(order, gps);
   if (!start) return { ok: false, reason: "Furos vieta nežinoma." };
 
   try {

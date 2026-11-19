@@ -11,9 +11,11 @@ import { copiedTruckIds } from "@/lib/truck-costs-bulk";
 import { documentAlerts, documentAlertText } from "@/lib/truck-profile";
 import { parseTruckTab, TRUCK_TABS, truckTabHref, type TruckTab } from "@/lib/truck-tabs";
 import { trucksMissingWeights } from "@/lib/truck-weights-bulk";
+import { parseMonth, type MonthCostRow } from "@/lib/truck-month-costs";
 import type { Truck } from "@/types/truck";
 
 import { CostTable } from "./cost-table";
+import { MonthCostTable } from "./month-cost-table";
 import { NewTruckPanel } from "./new-truck-panel";
 import { TruckRowActions } from "./truck-row-actions";
 import { WeightTable } from "./weight-table";
@@ -33,7 +35,9 @@ export default async function TrucksPage({
   // o ne vieną kartą build metu.
   await connection();
 
-  const tab = parseTruckTab((await searchParams).skiltis);
+  const params = await searchParams;
+  const tab = parseTruckTab(params.skiltis);
+  const month = parseMonth(params.menuo, todayInVilnius());
 
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
@@ -43,6 +47,10 @@ export default async function TrucksPage({
     .overrideTypes<Truck[], { merge: false }>();
   const trucks = data ?? [];
   const copied = copiedTruckIds(trucks);
+  // Tik savo skiltyje: kol 0029 nepaleista, lentelės nėra – tada tiesiog tuščia.
+  const monthCosts = tab === "faktiniai"
+    ? ((await supabase.from("truck_month_costs").select("*").eq("month", month)).data ?? []) as MonthCostRow[]
+    : [];
 
   return (
     <Page>
@@ -64,7 +72,7 @@ export default async function TrucksPage({
         <p className="text-sm text-muted">Furų dar nėra. Spauskite „Pridėti furą“.</p>
       ) : (
         <>
-          {copied.size > 0 && tab !== "svoriai" && (
+          {copied.size > 0 && tab !== "svoriai" && tab !== "faktiniai" && (
             <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
               Furų, kurių kaštai iki cento sutampa su kita fura: {copied.size} iš {trucks.length}.
               Tokie skaičiai būna nukopijuoti – net dvi vienodos furos skiriasi bent lizingo likučiu
@@ -86,6 +94,17 @@ export default async function TrucksPage({
                 mygtuku.
               </p>
               <CostTable trucks={trucks} copied={[...copied]} />
+            </section>
+          )}
+
+          {tab === "faktiniai" && (
+            <section className="flex flex-col gap-3">
+              <p className="text-sm text-muted">
+                Kas iš tikrųjų sumokėta per mėnesį, eurais – su savaitgaliais ir prastovomis. Kuro,
+                AdBlue ir kelių rinkliavų čia neveskite: jie jau įskaičiuoti reisuose. Tuščias laukas
+                – 0 €; visus furos laukus ištrynus, mėnuo jai laikomas neįvestu.
+              </p>
+              <MonthCostTable trucks={trucks.map(({ id, plate }) => ({ id, plate }))} month={month} saved={monthCosts} />
             </section>
           )}
 

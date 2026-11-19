@@ -1681,6 +1681,8 @@ export function TripForm({
         </div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label>Fura<select name="truck_id" required defaultValue={defaults.truck_id ?? ""} onChange={(event) => { setFurosId(event.target.value); setTusciVia([]); setTuscioKelias(null); normuPildymas.current = prefillRates(event.target.value); }} className={`${inputClass} ${raudona("truck_id")}`}><option value="">Pasirinkite furą</option>{trucks.map(t => <option key={t.id} value={t.id}>{t.plate}</option>)}</select></label>
+          <AddressField name="origin" label="Iš" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("origin")}`} />
+          <AddressField name="destination" label="Į" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
           <label>Data<input name="trip_date" type="date" defaultValue={defaults.trip_date ?? ""} className={inputClass} /></label>
           {/* Užsakovas renkamas iš sąrašo arba įrašomas naujas – jis sukuriamas
               išsaugant reisą (#183). Kol migracija 0014 nepaleista, lauko nėra. */}
@@ -1697,8 +1699,6 @@ export function TripForm({
               {customers.map((customer) => <option key={customer.id} value={customer.name} />)}
             </datalist>
           </label>}
-          <AddressField name="origin" label="Iš" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("origin")}`} />
-          <AddressField name="destination" label="Į" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
           {/* Kaina – viršuje: be jos nėra ir verdikto. Keičiant ją PTV nekviečiamas,
               perskaičiuojama tik formulė (`stopPropagation` – nenuvalyti rezultato). */}
           <label>{mode === "freight" ? "Kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} placeholder={mode === "freight" ? "Tuščia – parodys tinkamą kainą" : undefined} onChange={(event) => { event.stopPropagation(); requote(); }} className={inputClass} /></label>
@@ -1716,14 +1716,17 @@ export function TripForm({
             {tusciInfo.ferry.text}
           </p>}
           {/* Tušti km nuo GPS ar suplanuoto iškrovimo – vietai keičiantis, kur fura bus. */}
-          {!tripId && (tusciInfo?.gps || tusciInfo?.unknown || furaBus.address) && <div className="text-sm">
+          {/* Laukas „Kur tuo metu bus fura“ – visada, ir prieš skaičiavimą: vietą
+              žmogus dažnai žino iš anksto (anksčiau jis atsirasdavo tik po „Skaičiuoti“). */}
+          {!tripId && <div className="text-sm">
             {/* Visada matosi, nuo ko skaičiuota: įrašyta vieta ar GPS. */}
             {tusciInfo && !tusciInfo.unknown && <p className="mb-1 text-ink">{tusciInfo.text}</p>}
-            <p className={tusciInfo?.failed ? "text-bad" : "text-warn"}>{tusciInfo?.failed
+            {(tusciInfo?.gps || tusciInfo?.unknown || tusciInfo?.failed) && <p className={tusciInfo.failed ? "text-bad" : "text-warn"}>{tusciInfo.failed
               ? "Tuščių km gauti nepavyko – perkraukite puslapį (F5) ir spauskite „Skaičiuoti“."
-              : tusciInfo?.unknown
+              : tusciInfo.unknown
               ? "Furos vieta nežinoma – tušti km neįskaičiuoti. Įveskite, kur tuo metu bus fura."
-              : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>
+              : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>}
+            {!tusciInfo && <p className="text-muted">Neįrašius – tušti km skaičiuojami nuo suplanuoto iškrovimo (Telematika), o jo nesant – nuo dabartinės furos vietos (GPS).</p>}
             <div className="mt-2 max-w-md">
               <AddressField
                 label="Kur tuo metu bus fura"

@@ -1712,14 +1712,17 @@ export function TripForm({
             {tusciInfo.ferry.text}
           </p>}
           {/* Tušti km nuo dabartinės GPS vietos – vietai keičiantis, kur fura bus. */}
-          {!tripId && (tusciInfo?.gps || tusciInfo?.unknown || furaBus.address) && <div className="text-sm">
+          {/* Laukas „Kur tuo metu bus fura“ – visada, ir prieš skaičiavimą: vietą
+              žmogus dažnai žino iš anksto (anksčiau jis atsirasdavo tik po „Skaičiuoti“). */}
+          {!tripId && <div className="text-sm">
             {/* Visada matosi, nuo ko skaičiuota: įrašyta vieta ar GPS. */}
             {tusciInfo && !tusciInfo.unknown && <p className="mb-1 text-ink">{tusciInfo.text}</p>}
-            <p className={tusciInfo?.failed ? "text-bad" : "text-warn"}>{tusciInfo?.failed
+            {(tusciInfo?.gps || tusciInfo?.unknown || tusciInfo?.failed) && <p className={tusciInfo.failed ? "text-bad" : "text-warn"}>{tusciInfo.failed
               ? "Tuščių km gauti nepavyko – perkraukite puslapį (F5) ir spauskite „Skaičiuoti“."
-              : tusciInfo?.unknown
+              : tusciInfo.unknown
               ? "Furos vieta nežinoma – tušti km neįskaičiuoti. Įveskite, kur tuo metu bus fura."
-              : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>
+              : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>}
+            {!tusciInfo && <p className="text-muted">Neįrašius – tušti km skaičiuojami nuo dabartinės furos vietos (GPS).</p>}
             <div className="mt-2 max-w-md">
               <AddressField
                 label="Kur tuo metu bus fura"

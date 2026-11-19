@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { perDiemNormCents } from "./per-diem-norms";
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, carriedEmptyKm, editedByHand, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, carriedEmptyKm, editedByHand, idleDaysBeforeLoading, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -132,19 +132,54 @@ const ORDERS = [
   { OrderId: "3", OrderNo: "N3", TripClient: "X", OrderPrice: 0, AdditionalPaymentsEur: 0 },
 ];
 
-function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number } = {}) {
+function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number; now?: string } = {}) {
   return buildOrderTrips({
     orders: parseOrders(ORDERS),
     legs: parseOrderLegs(legs),
     trucks: TRUCKS,
     daily: extra.daily ?? [],
     supplies: extra.supplies ?? [],
-    now: "2026-10-23 12:00:00",
+    now: extra.now ?? "2026-10-23 12:00:00",
     perDiemPercent: extra.perDiemPercent ?? null,
   });
 }
 
+describe("idleDaysBeforeLoading", () => {
+  const km = (days: Record<string, number>) => (date: string) => days[date];
+
+  it("savaitgalis – visada, darbo diena – tik stovint (< 50 km), pakrovimo diena – niekada", () => {
+    // 2026-10-23 penktadienis, 10-26 pirmadienis (MHE 763: S 182 km, bet savaitgalis).
+    expect(idleDaysBeforeLoading("2026-10-23", "2026-10-26", km({ "2026-10-23": 511, "2026-10-24": 0, "2026-10-25": 182 }))).toEqual(["2026-10-24", "2026-10-25"]);
+    expect(idleDaysBeforeLoading("2026-10-20", "2026-10-22", km({ "2026-10-20": 12, "2026-10-21": 300 }))).toEqual(["2026-10-20"]);
+    expect(idleDaysBeforeLoading("2026-10-24", "2026-10-24", km({}))).toEqual([]);
+  });
+
+  it("be paros ridos darbo diena paliekama", () => {
+    expect(idleDaysBeforeLoading("2026-10-20", "2026-10-22", km({}))).toEqual([]);
+  });
+});
+
 describe("buildOrderTrips", () => {
+  it("prastova prieš pakrovimą kroviniui laiko neneša (MHE 763, 10-23)", () => {
+    const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+    const { trips } = build([
+      leg("1", "2026-10-23 08:00:00", "2026-10-26 12:46:00", 689, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+      leg("1", "2026-10-26 12:46:00", "2026-10-27 08:00:00", 436),
+    ], { now: "2026-11-01 00:00:00", daily: [day("2026-10-23", 511), day("2026-10-24", 0), day("2026-10-25", 182), day("2026-10-26", 487), day("2026-10-27", 323)] });
+    // 96 h − 48 h (šeštadienis, sekmadienis) = 2 paros; km ir kuras lieka.
+    expect(trips[0].trip).toMatchObject({ days: 2, trip_date: "2026-10-23", paid_km: 436 });
+    expect(trips[0].notes).toContain("Neskaičiuota prastova prieš pakrovimą: 2026-10-24, 2026-10-25 (2 d.).");
+  });
+
+  it("stovėjimas nuo pat iškrovimo – reiso data pasislenka", () => {
+    const { trips } = build([
+      leg("1", "2026-10-24 08:00:00", "2026-10-26 08:00:00", 300, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+      leg("1", "2026-10-26 08:00:00", "2026-10-26 20:00:00", 436),
+    ], { now: "2026-11-01 00:00:00" });
+    // Š–S (40 h) išmesta; lieka pirmadienio 00–08 privažiavimas + 12 h krovinio = 20 h.
+    expect(trips[0].trip).toMatchObject({ days: 0.833, trip_date: "2026-10-26" });
+  });
+
   it("užsakymas tampa reisu: kaina su priemokomis, km, paros, sustojimai", () => {
     const { trips } = build([
       leg("1", "2026-10-21 09:00:00", "2026-10-21 21:00:00", 476, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),

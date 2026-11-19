@@ -125,7 +125,7 @@ export async function updatePaymentTerms(client: SupabaseClient, id: string, day
 }
 
 /** Postgres/PostgREST kodas, kai lentelės nėra – migracija 0014 nepaleista. */
-function isMissingTable(error: { code?: string } | null): boolean {
+export function isMissingTable(error: { code?: string } | null): boolean {
   return error?.code === "PGRST205" || error?.code === "42P01";
 }
 

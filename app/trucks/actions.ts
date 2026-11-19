@@ -17,6 +17,8 @@ import {
   type BulkCostValues,
 } from "@/lib/truck-costs-bulk";
 import { parseBulkWeights, readBulkWeightValues } from "@/lib/truck-weights-bulk";
+import { isMissingTable } from "@/lib/customers";
+import { MONTH_COST_FIELDS, monthCostFieldName, parseMonthCosts, type MonthCostField } from "@/lib/truck-month-costs";
 import type { Truck } from "@/types/truck";
 
 export interface SaveTruckState {
@@ -343,4 +345,56 @@ export async function deleteTruck(
   refresh();
 
   return { status: "idle" };
+}
+
+export interface SaveMonthCostsState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  errors?: Record<string, Partial<Record<MonthCostField, string>>>;
+  /** Įvestos reikšmės grąžinamos, kad klaidos atveju lentelė neišsivalytų. */
+  values?: Record<string, Partial<Record<MonthCostField, string>>>;
+}
+
+/** Faktiniai mėnesio kaštai – visoms furoms vienu mygtuku (migracija 0029). */
+export async function saveTruckMonthCosts(
+  _previous: SaveMonthCostsState,
+  formData: FormData,
+): Promise<SaveMonthCostsState> {
+  const month = String(formData.get("month") ?? "");
+  if (!/^\d{4}-\d{2}-01$/.test(month)) return { status: "error", message: "Nenurodytas mėnuo." };
+
+  const supabase = await createServerSupabaseClient();
+  const { data: trucks, error: readError } = await supabase.from("trucks").select("id");
+  if (readError) {
+    console.error("Nepavyko nuskaityti furų prieš faktinių kaštų įrašymą", readError);
+    return { status: "error", message: "Nepavyko nuskaityti furų. Bandykite dar kartą." };
+  }
+
+  const ids = trucks.map((truck) => String(truck.id));
+  const values: SaveMonthCostsState["values"] = {};
+  for (const id of ids) {
+    values[id] = Object.fromEntries(MONTH_COST_FIELDS.map(({ key }) => [key, String(formData.get(monthCostFieldName(id, key)) ?? "")]));
+  }
+  const { rows, cleared, errors } = parseMonthCosts(values, ids, month);
+  if (Object.keys(errors).length > 0) {
+    return { status: "error", message: "Patikrinkite pažymėtus laukus. Niekas neišsaugota.", errors, values };
+  }
+
+  const saved = rows.length > 0
+    ? await supabase.from("truck_month_costs").upsert(rows.map((row) => ({ ...row, updated_at: new Date().toISOString() })), { onConflict: "truck_id,month" })
+    : { error: null };
+  const removed = cleared.length > 0
+    ? await supabase.from("truck_month_costs").delete().eq("month", month).in("truck_id", cleared)
+    : { error: null };
+  const error = saved.error ?? removed.error;
+  if (isMissingTable(error)) {
+    return { status: "error", message: "Duomenų bazėje dar nėra faktinių kaštų lentelės – Supabase paleiskite migraciją 0029.", values };
+  }
+  if (error) {
+    console.error("Nepavyko įrašyti faktinių kaštų", error);
+    return { status: "error", message: "Nepavyko įrašyti. Bandykite dar kartą.", values };
+  }
+
+  refresh();
+  return { status: "success", message: `Išsaugota: ${rows.length} fur. ${month.slice(0, 7)} mėn.` };
 }

@@ -10,6 +10,7 @@ export const TRUCK_TABS = [
   { key: "sarasas", label: "Sąrašas" },
   { key: "kastai", label: "Paros kaštai" },
   { key: "svoriai", label: "Svoriai" },
+  { key: "faktiniai", label: "Faktiniai kaštai" },
 ] as const;
 
 export type TruckTab = (typeof TRUCK_TABS)[number]["key"];

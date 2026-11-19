@@ -80,6 +80,21 @@ export function addStop(stops: Stop[], id: number, type: StopType = "extra_unloa
   return [...stops.slice(0, -1), extra, stops[stops.length - 1]];
 }
 
+/**
+ * „+ Pakrovimas“ / „+ Iškrovimas“ po pagrindiniais laukais. Papildomas pakrovimas
+ * eina iškart po pakrovimų (pirma krauname), papildomas iškrovimas – prieš galutinį
+ * iškrovimą. `addStop` visada deda prieš iškrovimą, tad pakrovimas atsidurtų po
+ * jau esamo iškrovimo, ir PTV maršrutas eitų atbuline tvarka.
+ */
+export function addExtraStop(stops: Stop[], id: number, type: "extra_loading" | "extra_unloading"): Stop[] {
+  if (stops.length >= MAX_STOPS || stops.length < 2) return stops;
+  const extra: Stop = { id, type, address: "", point: "" };
+  if (type === "extra_unloading") return [...stops.slice(0, -1), extra, stops[stops.length - 1]];
+  let at = 1;
+  while (at < stops.length - 1 && stops[at].type === "extra_loading") at++;
+  return [...stops.slice(0, at), extra, ...stops.slice(at)];
+}
+
 /** Pirmo ir paskutinio sustojimo trinti negalima: be jų nėra reiso. */
 export function removeStop(stops: Stop[], index: number): Stop[] {
   if (index <= 0 || index >= stops.length - 1) return stops;

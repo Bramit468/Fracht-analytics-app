@@ -74,7 +74,9 @@ const RouteMap = dynamic(() => import("./route-map").then((module) => module.Rou
 import type { LineCoordinate } from "../../../lib/route-line";
 import type { RouteViolation } from "../../../lib/ptv-route";
 import {
+  MAX_STOPS,
   STOP_TYPE_LABELS,
+  addExtraStop,
   addStop,
   buildWaypoints,
   moveStop,
@@ -548,7 +550,8 @@ export function TripForm({
     // spaudžiant mygtuką. Reikalaujant datos, be jos rezultato nebūdavo visai.
     const truck = form.elements.namedItem("truck_id");
     return truck instanceof HTMLSelectElement && truck.value !== ""
-      && stopList.length >= 2 && stopList.every((stop) => stop.point);
+      // Tušti papildomi laukai („+ Pakrovimas“ be adreso) skaičiavimo neblokuoja.
+      && stopList.length >= 2 && routedStops(stopList).every((stop) => stop.point);
   }
 
   /**
@@ -720,6 +723,39 @@ export function TripForm({
 
   function addStopOfType(type: StopType) {
     changeStops(addStop(stops, nextStopId.current++, type), { resetVia: true, recalc: false });
+  }
+
+  /**
+   * Papildomi pakrovimai ar iškrovimai po pagrindiniu lauku ir mygtukas „+“.
+   * Indeksai – visame sustojimų sąraše, todėl naudojami tie patys veiksmai.
+   */
+  function extraStopsUi(type: "extra_loading" | "extra_unloading") {
+    const title = type === "extra_loading" ? "Pakrovimas" : "Iškrovimas";
+    const extras = stops.flatMap((stop, index) => (stop.type === type && index > 0 && index < stops.length - 1 ? [{ stop, index }] : []));
+    return <div className="mt-2 space-y-2">
+      {extras.map(({ stop, index }, position) => <div key={stop.id} className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <AddressField
+            label={`${title} ${position + 2}`}
+            value={stop.address}
+            point={stop.point}
+            onChange={(address, point) => updateStopAt(index, { address, point })}
+            enabled={routeLookup}
+            inputClass={`${inputClass} ${raudona(`stop-${stop.id}`)}`}
+          />
+        </div>
+        <button type="button" onClick={() => removeStopAt(index)} aria-label={`Pašalinti: ${title.toLowerCase()} ${position + 2}`} className="mb-3 text-sm underline">
+          Pašalinti
+        </button>
+      </div>)}
+      {stops.length < MAX_STOPS && <button
+        type="button"
+        onClick={() => changeStops(addExtraStop(stops, nextStopId.current++, type), { resetVia: true, recalc: false })}
+        className="text-sm font-medium underline"
+      >
+        + {title}
+      </button>}
+    </div>;
   }
 
   function removeStopAt(index: number) {
@@ -1613,13 +1649,17 @@ export function TripForm({
     ...(furaPasirinkta ? [] : [{ name: "truck_id", label: "Fura" }]),
     ...(stops[0].point ? [] : [{ name: "origin", label: "Pakrovimas (pasirinkite adresą iš sąrašo)" }]),
     ...(stops[stops.length - 1].point ? [] : [{ name: "destination", label: "Iškrovimas (pasirinkite adresą iš sąrašo)" }]),
+    // Papildomas sustojimas su įrašytu, bet nepasirinktu adresu – kitaip skaičiavimas tyliai nepasileistų.
+    ...stops.slice(1, -1).flatMap((stop) => stop.address.trim() && !stop.point
+      ? [{ name: `stop-${stop.id}`, label: `${STOP_TYPE_LABELS[stop.type]} (pasirinkite adresą iš sąrašo)` }]
+      : []),
   ] : [];
   // Raudonai – tik kai viskas baigta: pasiūlymas perskaitytas, kaina suskaičiuota.
   const skaiciuojama = pasiulymasSkaitomas || kainaSkaiciuojama;
   const visiTruksta = result || !bandyta || skaiciuojama ? [] : trukstaPagrindiniai.length > 0 ? trukstaPagrindiniai : truksta;
   const raudona = (name: string) => visiTruksta.some((field) => field.name === name) ? "border-bad! ring-2 ring-bad/30" : "";
   // Trūksta lauko apačioje – žymimi visi neteisingi laukai ten (jų daug, sąrašu).
-  const trukstaApacioje = visiTruksta.some((field) => !["truck_id", "origin", "destination"].includes(field.name));
+  const trukstaApacioje = visiTruksta.some((field) => !["truck_id", "origin", "destination"].includes(field.name) && !field.name.startsWith("stop-"));
   const sveikiEurai = (cents: number) => `${(cents / 100).toLocaleString("lt-LT", { maximumFractionDigits: 0 })} €`;
 
   return <form
@@ -1695,8 +1735,12 @@ export function TripForm({
           {/* 1 eilė – Fura, Data, Užsakovas; žemiau blokais – Iš, Į, Kaina (vartotojo prašymas). */}
           <div className="sm:col-start-1">
             <AddressField name="origin" label="Pakrovimas" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("origin")}`} />
+            {extraStopsUi("extra_loading")}
           </div>
-          <AddressField name="destination" label="Iškrovimas" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
+          <div>
+            <AddressField name="destination" label="Iškrovimas" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
+            {extraStopsUi("extra_unloading")}
+          </div>
           {/* Kaina – viršuje: be jos nėra ir verdikto. Keičiant ją PTV nekviečiamas,
               perskaičiuojama tik formulė (`stopPropagation` – nenuvalyti rezultato). */}
           <label>{mode === "freight" ? "Kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} placeholder={mode === "freight" ? "Tuščia – parodys tinkamą kainą" : undefined} onChange={(event) => { event.stopPropagation(); requote(); }} className={inputClass} /></label>

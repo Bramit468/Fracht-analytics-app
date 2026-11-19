@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_STOPS,
+  addExtraStop,
   addStop,
   buildWaypoints,
   countStopsByType,
@@ -18,6 +19,24 @@ import {
 
 const A: Stop = { id: 0, type: "loading", address: "Panevėžys", point: "55.7,24.3" };
 const B: Stop = { id: 1, type: "unloading", address: "Oslas", point: "" };
+
+describe("„+ Pakrovimas“ / „+ Iškrovimas“", () => {
+  it("pakrovimai – po pakrovimų, iškrovimai – prieš galutinį iškrovimą, net pridedant pakaitomis", () => {
+    let stops = addExtraStop([A, B], 2, "extra_unloading");
+    stops = addExtraStop(stops, 3, "extra_loading");
+    stops = addExtraStop(stops, 4, "extra_loading");
+    stops = addExtraStop(stops, 5, "extra_unloading");
+    expect(stops.map((stop) => `${stop.type}:${stop.id}`)).toEqual([
+      "loading:0", "extra_loading:3", "extra_loading:4", "extra_unloading:2", "extra_unloading:5", "unloading:1",
+    ]);
+  });
+
+  it("riba – sąrašas nekinta", () => {
+    let stops: Stop[] = [A, B];
+    for (let id = 2; id < 20; id++) stops = addExtraStop(stops, id, "extra_loading");
+    expect(stops).toHaveLength(MAX_STOPS);
+  });
+});
 
 describe("sustojimų sąrašas", () => {
   it("papildomas sustojimas įterpiamas prieš iškrovimą", () => {

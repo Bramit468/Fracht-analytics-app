@@ -155,6 +155,27 @@ function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** Mažiau – fura tą darbo dieną stovėjo (laukė krovinio), ne važiavo į pakrovimą. */
+const STANDING_DAY_KM = 50;
+
+/**
+ * Dienos tarp ankstesnio iškrovimo ir šio pakrovimo, kurios kroviniui laiko
+ * nebeneša (vartotojo sprendimas, 2026-11-19): krovinio nesuplanavimas – ne
+ * krovinio kaštas. Šeštadienis ir sekmadienis – visada (vairuotojo poilsis;
+ * tų dienų km ir kuras lieka kroviniui), darbo diena – jei fura stovėjo
+ * (< 50 km). Be paros ridos darbo diena paliekama: nežinia, ar stovėjo.
+ * Pakrovimo diena niekada neišmetama.
+ */
+export function idleDaysBeforeLoading(fromDate: string, loadingDate: string, kmOf: (date: string) => number | undefined): string[] {
+  const idle: string[] = [];
+  for (let date = fromDate; date < loadingDate; date = addDays(date, 1)) {
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const km = kmOf(date);
+    if (weekday === 0 || weekday === 6 || (km !== undefined && km < STANDING_DAY_KM)) idle.push(date);
+  }
+  return idle;
+}
+
 export interface OrderTime {
   hours: number;
   /** Valandos pagal dieną – kelių mokesčiams paskirstyti. */
@@ -534,6 +555,9 @@ export function buildOrderTrips(input: {
   const fleetFuel = fleetPrice(input.supplies, "diesel");
   const fleetAdblue = fleetPrice(input.supplies, "adblue");
 
+  const kmByDay = new Map<string, number>();
+  for (const day of input.daily) kmByDay.set(`${plateKey(day.plate)}|${day.date}`, (kmByDay.get(`${plateKey(day.plate)}|${day.date}`) ?? 0) + day.km);
+
   const trips = ready.map(({ orderId, order, legs, truck }): ImportedTrip => {
     const notes: string[] = [];
     const carried = carriedTollCents.get(orderId);
@@ -577,8 +601,18 @@ export function buildOrderTrips(input: {
     let adbluePrice = Number(fill.adblue_price) || 0;
     if (adbluePrice === 0 && fleetAdblue !== null) adbluePrice = fleetAdblue;
 
-    const hours = allocated.get(orderId)?.hours ?? 0;
+    // Stovėjimas laukiant krovinio (savaitgalis, stovėjimo dienos) – ne šio krovinio laikas.
+    const loadingDate = (loadedLegs[0] ?? legs[0]).start.slice(0, 10);
+    const idleDates = idleDaysBeforeLoading(start.slice(0, 10), loadingDate, (date) => kmByDay.get(`${plateKey(truck.plate)}|${date}`));
+    const orderTime = allocated.get(orderId);
+    const idleHours = idleDates.reduce((sum, date) => sum + (orderTime?.byDay.get(date) ?? 0), 0);
+    if (idleHours > 0) notes.push(`Neskaičiuota prastova prieš pakrovimą: ${idleDates.join(", ")} (${String(round(idleHours / 24, 2)).replace(".", ",")} d.).`);
+    const hours = Math.max(0, (orderTime?.hours ?? 0) - idleHours);
     const days = Math.max(0.01, round(hours / 24, 3));
+    // Reiso data – pirma neišmesta diena. ponytail: tarpas viduryje (pn – pr) neišsaugomas,
+    // reisas laikomas ištisiniu nuo šios datos; prastovų skaičius laikotarpyje lieka toks pat.
+    let tripDate = start.slice(0, 10);
+    while (idleDates.includes(tripDate) && tripDate < loadingDate) tripDate = addDays(tripDate, 1);
     const route = loadedLegs.length > 0 ? loadedLegs : legs;
 
     // Dienpinigiai pagal pakrovimo ir iškrovimo šalis (#187). Tranzito šalių
@@ -610,7 +644,7 @@ export function buildOrderTrips(input: {
         trip_number: (order.orderNo || `TLM ${orderId}`).slice(0, 120),
         origin: placeCity(route[0].startPlace),
         destination: placeCity(route[route.length - 1].endPlace),
-        trip_date: start.slice(0, 10),
+        trip_date: tripDate,
         truck_id: truck.id,
         days,
         paid_km: paidKm,

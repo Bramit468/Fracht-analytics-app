@@ -6,13 +6,8 @@ const gps = { latitude: 54.9, longitude: 23.9, gpsTime: "2026-10-31 09:12:00" };
 const order = { source: "order" as const, address: "Rue Léon CALON 3, 62200 Boulogne-sur-Mer, FRA", point: "", city: "Boulogne-sur-Mer, FRA", end: "2026-11-04 04:00:00" };
 
 describe("emptyRunStart", () => {
-  it("įrašyta vieta – ji, net jei yra iškrovimas ir GPS", () => {
-    expect(emptyRunStart({ address: " Kaunas ", point: "54.9,23.9" }, gps, order)).toEqual({ source: "manual", address: "Kaunas", point: "54.9,23.9" });
-  });
-
-  it("neįrašyta – suplanuotas iškrovimas, ne GPS", () => {
-    expect(emptyRunStart(null, gps, order)).toEqual(order);
-    expect(emptyRunStart({ address: "  ", point: "" }, gps, order)).toEqual(order);
+  it("suplanuotas iškrovimas – jis, net jei GPS yra", () => {
+    expect(emptyRunStart(order, gps)).toEqual(order);
   });
 
   it("be iškrovimo – GPS; nėra nei vieno – null", () => {
@@ -55,7 +50,6 @@ describe("plannedUnloading", () => {
 describe("emptyRunShort", () => {
   it("visada pasako, nuo ko skaičiuota", () => {
     expect(emptyRunShort({ source: "gps", ...gps }, 1234.4)).toBe("Tušti km iki pakrovimo: 1 234 km nuo furos vietos dabar (GPS, 2026-10-31 09:12).");
-    expect(emptyRunShort({ source: "manual", address: "Kaunas", point: "" }, 86.4)).toBe("Tušti km iki pakrovimo: 86 km nuo įrašytos vietos Kaunas.");
     expect(emptyRunShort(order, 1200)).toBe("Tušti km iki pakrovimo: 1 200 km nuo suplanuoto iškrovimo Boulogne-sur-Mer, FRA (11-04 04:00, Telematika).");
   });
 });

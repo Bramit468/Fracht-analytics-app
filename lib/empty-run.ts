@@ -1,10 +1,9 @@
 /**
  * Tušti km iki pakrovimo – nuo ten, kur fura iš tikrųjų yra ar bus.
  *
- * Pirmumo tvarka (vartotojo sprendimas, 2026-11-19):
- * - dispečeris įrašė, kur fura tuo metu bus – nuo ten;
- * - Telematikoje yra jos suplanuotas, dar neįvykęs iškrovimas – nuo jo;
- * - kitaip – nuo jos GPS vietos dabar.
+ * Vartotojo sprendimas, 2026-11-19: nuo Telematikoje suplanuoto, dar
+ * neįvykusio iškrovimo, o jo nesant – nuo GPS vietos dabar. Ranka vieta
+ * nebeįrašoma.
  *
  * Šaltinis visada parodomas formoje, kad nebūtų neaišku, nuo ko skaičiuota
  * (2026-11-05 tas pats krovinys tyliai gaudavo 1 465 arba ~1 600 tuščių km).
@@ -19,7 +18,6 @@ export interface TruckGps {
 
 export type EmptyRunStart =
   | { source: "gps"; latitude: number; longitude: number; gpsTime: string }
-  | { source: "manual"; address: string; /** „55.7,24.3“ arba tuščia. */ point: string }
   /** Telematikos užsakymo iškrovimas; `end` – „2026-11-04 04:00:00“, Lietuvos laikas. */
   | { source: "order"; address: string; point: string; city: string; end: string };
 
@@ -55,13 +53,8 @@ export function plannedUnloading(
   return best;
 }
 
-/** Pradžia: įrašyta vieta, tada suplanuotas iškrovimas, tada GPS. `null` – nėra nei vieno. */
-export function emptyRunStart(
-  manual: { address: string; point: string } | null,
-  gps: TruckGps | null,
-  order: Extract<EmptyRunStart, { source: "order" }> | null = null,
-): EmptyRunStart | null {
-  if (manual && (manual.address.trim() || manual.point)) return { source: "manual", address: manual.address.trim(), point: manual.point };
+/** Pradžia: suplanuotas iškrovimas, kitaip GPS. `null` – nėra nei vieno. */
+export function emptyRunStart(order: Extract<EmptyRunStart, { source: "order" }> | null, gps: TruckGps | null): EmptyRunStart | null {
   if (order) return order;
   return gps ? { source: "gps", ...gps } : null;
 }
@@ -69,10 +62,8 @@ export function emptyRunStart(
 /** Viena eilutė: kiek ir nuo kur – kad visada matytųsi šaltinis. */
 export function emptyRunShort(start: EmptyRunStart, km: number): string {
   const kmText = Math.round(km).toLocaleString("lt-LT").replace(/\s/g, " ");
-  const from = start.source === "manual"
-    ? `nuo įrašytos vietos ${start.address}`
-    : start.source === "order"
-      ? `nuo suplanuoto iškrovimo ${start.city} (${start.end.slice(5, 16)}, Telematika)`
-      : `nuo furos vietos dabar (GPS, ${start.gpsTime.slice(0, 16)})`;
+  const from = start.source === "order"
+    ? `nuo suplanuoto iškrovimo ${start.city} (${start.end.slice(5, 16)}, Telematika)`
+    : `nuo furos vietos dabar (GPS, ${start.gpsTime.slice(0, 16)})`;
   return `Tušti km iki pakrovimo: ${kmText} km ${from}.`;
 }

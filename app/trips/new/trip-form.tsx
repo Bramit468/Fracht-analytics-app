@@ -163,9 +163,7 @@ function emptyRoadOnMap(run: Extract<EmptyRunResult, { ok: true }>): { line: Lin
   const start = run.start;
   const title = start.source === "gps"
     ? `Fura dabar (GPS, ${start.gpsTime.slice(0, 16)})`
-    : start.source === "order"
-      ? `Fura išsikraus: ${start.city} (${start.end.slice(5, 16)}, Telematika)`
-      : `Fura bus: ${start.address}`;
+    : `Fura išsikraus: ${start.city} (${start.end.slice(5, 16)}, Telematika)`;
   return { line: run.line, truck: { latitude, longitude, letter: "A", title } };
 }
 
@@ -272,7 +270,6 @@ export function TripForm({
   /** Ar jau spausta „Skaičiuoti“ – iki tol nieko raudonai nežymime. */
   const [bandyta, setBandyta] = useState(false);
   /** Kur fura bus prieš krovinį – įrašo dispečeris, kai GPS vieta pasikeis. */
-  const [furaBus, setFuraBus] = useState({ address: "", point: "" });
   /** Tuščių km eilutė pagrindinėje skiltyje; `gps` – vieta gali keistis. */
   const [tusciInfo, setTusciInfo] = useState<{
     text: string;
@@ -667,7 +664,6 @@ export function TripForm({
       truckValue,
       dateField instanceof HTMLInputElement ? dateField.value : "",
       { address: stops[0].address, point: stops[0].point },
-      furaBus.address.trim() || furaBus.point ? furaBus : null,
       ordered,
       vengtiKeltu,
     ).catch(() => null);
@@ -675,7 +671,7 @@ export function TripForm({
     // Linija ir taškas A – visada iš to paties atsakymo: tarp užklausų pradžia
     // gali pasikeisti (GPS ↔ užsakymo iškrovimas), o senas A liktų kitur (2026-11-05).
     setTuscioKelias(emptyRoadOnMap(run));
-    setTusciInfo({ text: emptyRunShort(run.start, run.km), gps: run.start.source !== "manual", unknown: false });
+    setTusciInfo({ text: emptyRunShort(run.start, run.km), gps: run.start.source === "gps", unknown: false });
   }
 
   function addEmptyVia(point: ViaPoint): boolean {
@@ -1328,7 +1324,6 @@ export function TripForm({
             truckValue,
             quoteDate,
             { address: stops[0].address, point: stops[0].point },
-            furaBus.address.trim() || furaBus.point ? furaBus : null,
             tusciVia,
             vengtiKeltu,
           ).catch((cause: unknown) => {
@@ -1355,7 +1350,7 @@ export function TripForm({
         setTusciInfo(rankaTusti !== null
           ? { text: `Tušti km iki pakrovimo: ${String(rankaTusti).replace(".", ",")} km – įrašyta ranka.`, gps: false, unknown: false }
           : emptyRun
-            ? { text: emptyRunShort(emptyRun.start, emptyRun.km), gps: emptyRun.start.source !== "manual", unknown: false }
+            ? { text: emptyRunShort(emptyRun.start, emptyRun.km), gps: emptyRun.start.source === "gps", unknown: false }
             : route
               ? { text: "Tušti km iki pakrovimo: 0 – furos vieta nežinoma.", gps: false, unknown: true, failed: tusciuKlaida }
               : null);
@@ -1715,34 +1710,14 @@ export function TripForm({
           {!tripId && tusciInfo?.ferry && <p role={tusciInfo.ferry.unknown ? "alert" : "status"} className={`mb-2 text-sm ${tusciInfo.ferry.unknown ? "text-bad" : "text-muted"}`}>
             {tusciInfo.ferry.text}
           </p>}
-          {/* Tušti km nuo GPS ar suplanuoto iškrovimo – vietai keičiantis, kur fura bus. */}
-          {/* Laukas „Kur tuo metu bus fura“ – visada, ir prieš skaičiavimą: vietą
-              žmogus dažnai žino iš anksto (anksčiau jis atsirasdavo tik po „Skaičiuoti“). */}
-          {!tripId && <div className="text-sm">
-            {/* Visada matosi, nuo ko skaičiuota: įrašyta vieta ar GPS. */}
-            {tusciInfo && !tusciInfo.unknown && <p className="mb-1 text-ink">{tusciInfo.text}</p>}
-            {(tusciInfo?.gps || tusciInfo?.unknown || tusciInfo?.failed) && <p className={tusciInfo.failed ? "text-bad" : "text-warn"}>{tusciInfo.failed
+          {/* Tušti km – nuo suplanuoto iškrovimo, kitaip nuo GPS; visada matosi, nuo ko skaičiuota. */}
+          {!tripId && tusciInfo && <div className="text-sm">
+            {!tusciInfo.unknown && <p className="mb-1 text-ink">{tusciInfo.text}</p>}
+            {(tusciInfo.gps || tusciInfo.unknown || tusciInfo.failed) && <p className={tusciInfo.failed ? "text-bad" : "text-warn"}>{tusciInfo.failed
               ? "Tuščių km gauti nepavyko – perkraukite puslapį (F5) ir spauskite „Skaičiuoti“."
               : tusciInfo.unknown
-              ? "Furos vieta nežinoma – tušti km neįskaičiuoti. Įveskite, kur tuo metu bus fura."
-              : "Jei furos vieta keisis, įveskite, kur tuo metu bus fura, arba skaičiuokite prieš pat reisą."}</p>}
-            {!tusciInfo && <p className="text-muted">Neįrašius – tušti km skaičiuojami nuo suplanuoto iškrovimo (Telematika), o jo nesant – nuo dabartinės furos vietos (GPS).</p>}
-            <div className="mt-2 max-w-md">
-              <AddressField
-                label="Kur tuo metu bus fura"
-                value={furaBus.address}
-                point={furaBus.point}
-                onChange={(address, point) => {
-                  setFuraBus({ address, point });
-                  // Kita pradžia – senas raudonos linijos taškai nebetinka.
-                  if (point || address.trim() === "") setTusciVia([]);
-                  // Pasirinkta vieta ar išvalyta (grįžtama prie GPS) – senas rezultatas nebetinka.
-                  if (point || address.trim() === "") requote();
-                }}
-                enabled={routeLookup}
-                inputClass={inputClass}
-              />
-            </div>
+              ? "Furos vieta nežinoma – tušti km neįskaičiuoti."
+              : "Suplanuoto iškrovimo nėra – skaičiuota nuo dabartinės GPS vietos."}</p>}
           </div>}
           {tvarkarascioKlaida && <p role="alert" className="mt-2 text-sm text-bad">{tvarkarascioKlaida}</p>}
         </div>}

@@ -67,8 +67,8 @@ async function truckPlannedUnloading(plate: string, quoteDate: string): Promise<
 }
 
 /**
- * Tušti km iki pakrovimo (Phase 0, 3 punktas): nuo įrašytos vietos, tada nuo
- * Telematikoje suplanuoto iškrovimo, o jo nesant – nuo GPS vietos (2026-11-19).
+ * Tušti km iki pakrovimo (Phase 0, 3 punktas): nuo Telematikoje suplanuoto
+ * iškrovimo, o jo nesant – nuo GPS vietos (2026-11-19).
  *
  * Serveryje, nes reikia ir PTV rakto, ir Telematikos nuorodos. Telematika
  * tikrinama kaip kitur – tik savai įmonei. Nepavykus klaida tik paaiškinama,
@@ -78,8 +78,6 @@ export async function emptyRunToLoading(
   truckId: string,
   quoteDateInput: string,
   loading: { address: string; point: string },
-  /** Dispečerio įrašyta vieta, kur fura tuo metu bus. */
-  manualStart: { address: string; point: string } | null = null,
   /** Tarpiniai taškai, nutempti ant raudonos linijos žemėlapyje. */
   viaInput: ViaPoint[] = [],
   /** „Vengti keltų“ – galioja ir tuščiam keliui. */
@@ -110,11 +108,10 @@ export async function emptyRunToLoading(
   ]);
   if (!truckResult.data) return { ok: false, reason: "Fura nerasta." };
 
-  // Telematikos klausiama tik tada, kai vieta neįrašyta; GPS – tik be suplanuoto iškrovimo.
-  const manual = manualStart && (manualStart.address.trim() || manualStart.point) ? manualStart : null;
-  const order = !manual && allowed ? await truckPlannedUnloading(truckResult.data.plate, quoteDate) : null;
-  const gps = !manual && !order && allowed ? await truckGps(truckResult.data.plate, today) : null;
-  const start = emptyRunStart(manual, gps, order);
+  // GPS prašoma tik tada, kai suplanuoto iškrovimo nėra.
+  const order = allowed ? await truckPlannedUnloading(truckResult.data.plate, quoteDate) : null;
+  const gps = !order && allowed ? await truckGps(truckResult.data.plate, today) : null;
+  const start = emptyRunStart(order, gps);
   if (!start) return { ok: false, reason: "Furos vieta nežinoma." };
 
   try {

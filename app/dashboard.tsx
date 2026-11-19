@@ -35,6 +35,8 @@ import { isCovered, kmGap, planVsActual, spanDayKeys, tripSpan, type CostPair } 
 import { idleCosts, idleDailyCents } from "../lib/idle-costs";
 import { truckRowToCalc } from "../lib/truck";
 import type { Truck } from "../types/truck";
+import type { MonthCostRow } from "../lib/truck-month-costs";
+import { truckReport, type TruckReportRow } from "../lib/truck-report";
 import { loadFuelReport, loadPlanActuals, loadTollsByCountry, type FuelReport, type PlanActualReport, type TollReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
@@ -168,7 +170,7 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }, { key: "weekly", label: "Savaitės" }] as const;
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }, { key: "weekly", label: "Savaitės" }, { key: "trucks", label: "Furos" }] as const;
 type Tab = (typeof TABS)[number]["key"];
 
 function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
@@ -677,6 +679,90 @@ interface ProfitRow extends Omit<ProfitGroup, "key"> {
   mono?: boolean;
 }
 
+/**
+ * Furos ataskaita (2 lygis): reisai vertinami savo paromis, o čia – kas iš
+ * tikrųjų liko furai per laikotarpį su faktiniais kaštais ir prastovomis.
+ */
+function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFiltered, today }: {
+  trips: TripSummary[];
+  trucks: Truck[];
+  monthCosts: MonthCostRow[];
+  range: PeriodRange;
+  plate: string;
+  customerFiltered: boolean;
+  today: string;
+}) {
+  if (customerFiltered) return <p className="rounded-lg border border-line bg-surface px-6 py-8 text-center text-sm text-muted">Furų ataskaita rodoma be užsakovo filtro: faktiniai furos kaštai užsakovui nepriklauso.</p>;
+  // Ateities dienos dar neįvyko – jų nei kaštų, nei prastovų.
+  const to = range.to < today ? range.to : today;
+  if (range.from > to) return null;
+  const plateById = new Map(trucks.map((truck) => [truck.id, truck.plate]));
+  const rows = truckReport({
+    plates: trucks.map((truck) => truck.plate).filter((item) => !plate || plateKey(item) === plateKey(plate)).sort(),
+    trips: trips.filter((trip) => trip.tripDate <= to),
+    monthCosts: monthCosts.filter((row) => plateById.has(row.truck_id)).map((row) => ({ ...row, plate: plateById.get(row.truck_id)! })),
+    from: range.from,
+    to,
+  });
+  if (rows.length === 0) return null;
+  const complete = rows.filter((row) => row.realProfitCents !== null);
+  const sum = (pick: (row: TruckReportRow) => number) => complete.reduce((total, row) => total + pick(row), 0);
+  const missing = [...new Set(rows.flatMap((row) => row.missingMonths))].sort();
+  const calendarDays = rows[0].calendarDays;
+  const real = sum((row) => row.realProfitCents ?? 0);
+  const tripProfit = sum((row) => row.tripProfitCents);
+  const fleetDays = complete.length * calendarDays;
+  const signed = (cents: number | null) => <span className={cents === null ? "text-muted" : cents >= 0 ? "text-good" : "text-bad"}>{cents === null ? "—" : formatCents(cents)}</span>;
+
+  return <div className="space-y-5">
+    {missing.length > 0 && <p className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+      Neįvesti faktiniai kaštai: {missing.join(", ")} ({rows.length - complete.length} fur.). Be jų realus pelnas neskaičiuojamas.{" "}
+      <Link href={`/trucks?skiltis=faktiniai&menuo=${missing[0]}`} className="font-medium underline">Įvesti</Link>
+    </p>}
+    {complete.length > 0 && <dl className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 xl:grid-cols-4">
+      <StatCard label="Realus pelnas" value={formatCents(real)} detail={`${formatPerDay(Math.round(real / Math.max(1, fleetDays)))} per furos kalendorinę dieną · ${complete.length} fur.`} tone={real >= 0 ? "positive" : "negative"} />
+      <StatCard label="Reisų pelnas" value={formatCents(tripProfit)} detail={`Skirtumas su realiu ${formatCents(real - tripProfit)}`} tone={tripProfit >= 0 ? "positive" : "negative"} />
+      <StatCard label="Prastovos" value={`${sum((row) => row.idleDays).toLocaleString("lt-LT", { maximumFractionDigits: 1 })} d.`} detail={`Kaina ${formatCents(sum((row) => row.idleCostCents ?? 0))}`} tone="negative" />
+      <StatCard label="Užimtumas" value={formatPercent(fleetDays > 0 ? (sum((row) => row.loadDays) / fleetDays) * 100 : null)} detail={`${calendarDays} kalendorinės d. · ${range.from} – ${to}`} />
+    </dl>}
+    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className="w-full text-sm">
+        <thead><tr className="border-b border-line text-right text-xs font-medium text-muted">
+          <th className="px-5 py-3 text-left font-medium">Fura</th>
+          <th className="px-3 py-3 font-medium">Pajamos</th>
+          <th className="px-3 py-3 font-medium">Kuras, AdBlue, keliai</th>
+          <th className="px-3 py-3 font-medium">Bendroji marža</th>
+          <th className="px-3 py-3 font-medium">Faktiniai kaštai</th>
+          <th className="px-3 py-3 font-medium">Realus pelnas</th>
+          <th className="px-3 py-3 font-medium">Per kal. dieną</th>
+          <th className="px-3 py-3 font-medium">Užimtumas</th>
+          <th className="px-3 py-3 font-medium">Prastovos</th>
+          <th className="px-5 py-3 font-medium">Reisų pelnas</th>
+        </tr></thead>
+        <tbody className="divide-y divide-line text-right tabular-nums">{rows.map((row) => <tr key={row.plate}>
+          <td className="px-5 py-3 text-left font-mono">{row.plate}<span className="block font-sans text-xs text-muted">{row.tripCount} reis.</span></td>
+          <td className="px-3 py-3">{formatCents(row.revenueCents)}</td>
+          <td className="px-3 py-3 text-muted">{formatCents(row.directCents)}</td>
+          <td className="px-3 py-3">{formatCents(row.grossCents)}</td>
+          <td className="px-3 py-3">{row.actualCents === null ? <span className="text-warn">neįvesta</span> : formatCents(row.actualCents)}</td>
+          <td className="px-3 py-3 font-medium">{signed(row.realProfitCents)}</td>
+          <td className="px-3 py-3">{signed(row.realProfitPerDayCents)}</td>
+          <td className="px-3 py-3">{formatPercent(row.utilizationPercent)}</td>
+          <td className="px-3 py-3">{row.idleDays.toLocaleString("lt-LT", { maximumFractionDigits: 1 })} d.{row.idleCostCents !== null && <span className="block text-xs text-muted">{formatCents(row.idleCostCents)}</span>}</td>
+          <td className="px-5 py-3">{signed(row.tripProfitCents)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <div className="space-y-1 rounded-lg border border-line bg-surface px-5 py-3 text-xs text-muted">
+      <p><strong>Bendroji marža</strong> – pajamos minus reisų kuras, AdBlue ir keliai (kaštai, kurių be krovinio nebūtų).</p>
+      <p><strong>Faktiniai kaštai</strong> – kas iš tikrųjų sumokėta (Furos → Faktiniai kaštai), padalinta laikotarpio dienoms: vairuotojas, lizingas, draudimas, mokesčiai, remontas, padangos, administracija.</p>
+      <p><strong>Realus pelnas</strong> – bendroji marža minus faktiniai kaštai: kiek fura iš tikrųjų uždirbo su savaitgaliais ir prastovomis.</p>
+      <p><strong>Užimtumas</strong> – krovinių paros / kalendorinės dienos. <strong>Prastovos</strong> – dienos be krovinio; kaina – jų dalis faktinių kaštų.</p>
+      <p><strong>Reisų pelnas</strong> – reisų „Pelno“ suma (pagal furų normas, tik krovinių paromis). Skirtumas su realiu – prastovos ir tai, kiek faktiniai kaštai skiriasi nuo normų.</p>
+    </div>
+  </div>;
+}
+
 const DETAIL_GROUPS = [
   { key: "trucks", label: "Furos", column: "Fura" },
   { key: "customers", label: "Užsakovai", column: "Užsakovas" },
@@ -765,6 +851,7 @@ export function Dashboard() {
   const [skipped, setSkipped] = useState<SkippedTrip[]>([]);
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [monthCosts, setMonthCosts] = useState<MonthCostRow[]>([]);
   const [filters, setFilters] = useState<Filters>({ period: "all", from: "", to: "", customerId: "", plate: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -776,17 +863,20 @@ export function Dashboard() {
     async function loadDashboard() {
       try {
         const skippedTrips: SkippedTrip[] = [];
-        const [loadedTrips, loadedCustomers, loadedTrucks] = await Promise.all([
+        const [loadedTrips, loadedCustomers, loadedTrucks, loadedMonthCosts] = await Promise.all([
           listTrips(skippedTrips),
           // Užsakovų filtras – patogumas: be lentelės (0014) suvestinė veikia ir be jo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [] as Customer[], available: false })),
           // Furų kaštai – tik prastovoms: be jų suvestinė veikia, kortelė tiesiog nerodoma.
           Promise.resolve(getSupabaseClient().from("trucks").select("*")).then(({ data }) => (data ?? []) as Truck[], () => [] as Truck[]),
+          // Faktiniai kaštai – tik furų ataskaitai; be 0029 lentelės – tuščia.
+          Promise.resolve(getSupabaseClient().from("truck_month_costs").select("*")).then(({ data }) => (data ?? []) as MonthCostRow[], () => [] as MonthCostRow[]),
         ]);
         if (cancelled) return;
         setAllTrips(loadedTrips);
         setSkipped(skippedTrips);
         setTrucks(loadedTrucks);
+        setMonthCosts(loadedMonthCosts);
         setCustomers(loadedCustomers.customers);
       } catch { if (!cancelled) setError("Nepavyko užkrauti suvestinės. Patikrinkite ryšį ir bandykite dar kartą."); }
       finally { if (!cancelled) setLoading(false); }
@@ -916,6 +1006,9 @@ export function Dashboard() {
     </div>}
     {tab === "weekly" && <div role="tabpanel" aria-label="Savaitės">
       <WeeklyTab trips={realistic} today={today} />
+    </div>}
+    {tab === "trucks" && <div role="tabpanel" aria-label="Furos">
+      <TruckReportTab trips={trips} trucks={trucks} monthCosts={monthCosts} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />
     </div>}
     <DetailsTable trips={trips} customers={usedCustomers} fleetPerDayCents={stats.profitPerDayCents} periodLabel={periodLabel} />
   </div>;

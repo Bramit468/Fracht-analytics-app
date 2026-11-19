@@ -155,7 +155,7 @@ export async function runRouteLookup(
   const first = input.waypoints[0];
   const last = input.waypoints[input.waypoints.length - 1];
   if (first.kind !== "stop" || last.kind !== "stop" || !first.address.trim() || !last.address.trim()) {
-    return { ok: false, message: "Užpildykite laukus „Iš“ ir „Į“." };
+    return { ok: false, message: "Užpildykite laukus „Pakrovimas“ ir „Iškrovimas“." };
   }
 
   const timing = routeTiming(input.departureAt);

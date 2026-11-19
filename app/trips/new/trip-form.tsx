@@ -1611,8 +1611,8 @@ export function TripForm({
   const furaPasirinkta = (furosId ?? defaults.truck_id ?? "") !== "";
   const trukstaPagrindiniai = routeLookup && !tripId && !result && !kainaSkaiciuojama ? [
     ...(furaPasirinkta ? [] : [{ name: "truck_id", label: "Fura" }]),
-    ...(stops[0].point ? [] : [{ name: "origin", label: "Iš (pasirinkite adresą iš sąrašo)" }]),
-    ...(stops[stops.length - 1].point ? [] : [{ name: "destination", label: "Į (pasirinkite adresą iš sąrašo)" }]),
+    ...(stops[0].point ? [] : [{ name: "origin", label: "Pakrovimas (pasirinkite adresą iš sąrašo)" }]),
+    ...(stops[stops.length - 1].point ? [] : [{ name: "destination", label: "Iškrovimas (pasirinkite adresą iš sąrašo)" }]),
   ] : [];
   // Raudonai – tik kai viskas baigta: pasiūlymas perskaitytas, kaina suskaičiuota.
   const skaiciuojama = pasiulymasSkaitomas || kainaSkaiciuojama;
@@ -1694,9 +1694,9 @@ export function TripForm({
           </label>}
           {/* 1 eilė – Fura, Data, Užsakovas; žemiau blokais – Iš, Į, Kaina (vartotojo prašymas). */}
           <div className="sm:col-start-1">
-            <AddressField name="origin" label="Iš" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("origin")}`} />
+            <AddressField name="origin" label="Pakrovimas" value={stops[0].address} point={stops[0].point} onChange={(address, point) => updateStopAt(0, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("origin")}`} />
           </div>
-          <AddressField name="destination" label="Į" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
+          <AddressField name="destination" label="Iškrovimas" value={stops[stops.length - 1].address} point={stops[stops.length - 1].point} onChange={(address, point) => updateStopAt(stops.length - 1, { address, point })} enabled={routeLookup} inputClass={`${inputClass} ${raudona("destination")}`} />
           {/* Kaina – viršuje: be jos nėra ir verdikto. Keičiant ją PTV nekviečiamas,
               perskaičiuojama tik formulė (`stopPropagation` – nenuvalyti rezultato). */}
           <label>{mode === "freight" ? "Kaina (€)" : "Įkainis (€/km)"}<input key={mode} name="revenue" type={mode === "freight" ? "text" : "number"} inputMode="decimal" min="0" step="0.0001" defaultValue={defaults.revenue ?? ""} placeholder={mode === "freight" ? "Tuščia – parodys tinkamą kainą" : undefined} onChange={(event) => { event.stopPropagation(); requote(); }} className={inputClass} /></label>

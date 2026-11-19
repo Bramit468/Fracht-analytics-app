@@ -27,10 +27,11 @@ function trip(overrides: Partial<TripSummary>): TripSummary {
 }
 
 const TRIPS = [
-  trip({ id: "1", tripNumber: "R-001" }),
+  trip({ id: "1", tripNumber: "R-001", customerId: "c1" }),
   trip({
     id: "2",
     tripNumber: "R-002",
+    customerId: "c2",
     origin: "Kaunas",
     destination: "Hamburgas",
     truckPlate: "LSE 728",
@@ -83,8 +84,19 @@ describe("filterTrips", () => {
   });
 
   it("derina laikotarpį su paieška", () => {
-    const found = filterTrips(TRIPS, { query: "", plate: "", period: "month" }, TODAY);
+    const found = filterTrips(TRIPS, { ...EMPTY_FILTER, period: "month" }, TODAY);
     expect(found.map((t) => t.id)).toEqual(["1", "3"]);
+  });
+
+  it("atrenka pagal užsakovą", () => {
+    expect(filterTrips(TRIPS, { ...EMPTY_FILTER, customerId: "c2" }, TODAY).map((t) => t.id)).toEqual(["2"]);
+  });
+
+  it("savos datos – imtinai, tuščia riba neriboja", () => {
+    const custom = { ...EMPTY_FILTER, period: "custom" as const };
+    expect(filterTrips(TRIPS, { ...custom, from: "2026-08-20", to: "2026-09-10" }, TODAY).map((t) => t.id)).toEqual(["1", "2"]);
+    expect(filterTrips(TRIPS, { ...custom, from: "2026-09-11" }, TODAY).map((t) => t.id)).toEqual(["3"]);
+    expect(filterTrips(TRIPS, custom, TODAY)).toHaveLength(3);
   });
 
   it("nieko neradus grąžina tuščią sąrašą", () => {

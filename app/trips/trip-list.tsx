@@ -14,7 +14,7 @@ import {
   type SortKey,
   type TripFilter,
 } from "../../lib/trip-filter";
-import { PERIODS, type PeriodKey } from "../../lib/trip-period";
+import { PERIODS } from "../../lib/trip-period";
 import { csvFileName, tripsToCsv } from "../../lib/trip-export";
 import { downloadCsv, todayForFileName } from "../download-csv";
 import { deleteTrip, listTrips, updateTripPayment, type SkippedTrip, type TripSummary } from "../../lib/trips";
@@ -37,6 +37,7 @@ function Controls({
   sort,
   onSort,
   plates,
+  customers,
   shown,
   total,
   onExport,
@@ -46,6 +47,7 @@ function Controls({
   sort: SortKey;
   onSort: (next: SortKey) => void;
   plates: string[];
+  customers: Customer[];
   shown: number;
   total: number;
   onExport: () => void;
@@ -67,10 +69,22 @@ function Controls({
       </label>
       <label className="text-sm">
         <span className="sr-only">Laikotarpis</span>
-        <select value={filter.period} onChange={(event) => onFilter({ ...filter, period: event.target.value as PeriodKey })} className={select}>
+        <select value={filter.period} onChange={(event) => onFilter({ ...filter, period: event.target.value as TripFilter["period"] })} className={select}>
           {PERIODS.map((period) => <option key={period.key} value={period.key}>{period.label}</option>)}
+          <option value="custom">Pasirinkti datas</option>
         </select>
       </label>
+      {filter.period === "custom" && <>
+        <label className="text-sm text-muted">Nuo <input type="date" value={filter.from} onChange={(event) => onFilter({ ...filter, from: event.target.value })} className={input} /></label>
+        <label className="text-sm text-muted">iki <input type="date" value={filter.to} onChange={(event) => onFilter({ ...filter, to: event.target.value })} className={input} /></label>
+      </>}
+      {customers.length > 0 && <label className="text-sm">
+        <span className="sr-only">Užsakovas</span>
+        <select value={filter.customerId} onChange={(event) => onFilter({ ...filter, customerId: event.target.value })} className={select}>
+          <option value="">Visi užsakovai</option>
+          {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+        </select>
+      </label>}
       <label className="text-sm">
         <span className="sr-only">Rikiavimas</span>
         <select value={sort} onChange={(event) => onSort(event.target.value as SortKey)} className={select}>
@@ -195,7 +209,7 @@ export function TripList() {
 
   return <div className="space-y-4">
     <SkippedTripsNotice skipped={skipped} />
-    <Controls filter={filter} onFilter={changeFilter} sort={sort} onSort={changeSort} plates={tripPlates(trips)} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
+    <Controls filter={filter} onFilter={changeFilter} sort={sort} onSort={changeSort} plates={tripPlates(trips)} customers={customers} shown={shown.length} total={trips.length} onExport={() => downloadTrips(shown, todayForFileName())} />
 
     {shown.length === 0 ? <p className="rounded-lg border border-line bg-surface px-6 py-10 text-center text-sm text-muted">
       Pagal šią paiešką reisų nėra.

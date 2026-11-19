@@ -22,10 +22,15 @@ export interface TripFilter {
   query: string;
   /** Furos numeris arba "" — visos. */
   plate: string;
-  period: PeriodKey;
+  /** Užsakovo id arba "" — visi. */
+  customerId: string;
+  /** "custom" — savos datos `from`–`to` (imtinai, tuščia – be ribos). */
+  period: PeriodKey | "custom";
+  from: string;
+  to: string;
 }
 
-export const EMPTY_FILTER: TripFilter = { query: "", plate: "", period: "all" };
+export const EMPTY_FILTER: TripFilter = { query: "", plate: "", customerId: "", period: "all", from: "", to: "" };
 
 /**
  * Be diakritikos ir mažosiomis.
@@ -58,9 +63,14 @@ export function filterTrips(
   filter: TripFilter,
   today: string,
 ): TripSummary[] {
-  return filterByPeriod(trips, filter.period, today).filter(
+  const inPeriod = filter.period === "custom"
+    ? trips.filter((trip) => (!filter.from || trip.tripDate >= filter.from) && (!filter.to || trip.tripDate <= filter.to))
+    : filterByPeriod(trips, filter.period, today);
+  return inPeriod.filter(
     (trip) =>
-      (filter.plate === "" || trip.truckPlate === filter.plate) && matches(trip, filter.query),
+      (filter.plate === "" || trip.truckPlate === filter.plate)
+      && (filter.customerId === "" || trip.customerId === filter.customerId)
+      && matches(trip, filter.query),
   );
 }
 

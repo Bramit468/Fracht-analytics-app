@@ -79,6 +79,36 @@ describe("truckReport", () => {
     expect(row.realProfitCents).toBe(80000 - Math.round((200 * 36500) / 836));
   });
 
+  it("km be krovinio: reisas per laikotarpio ribą – tik jame esančių parų dalis; prieš laikotarpį prasidėjęs – irgi", () => {
+    // 10-30, 4 paros, 1000 km: spaliui 2/4 = 500. 09-30, 2 paros, 400 km: spaliui 200.
+    const late = trip({ id: "2", tripDate: "2026-10-30", days: 4, paidKm: 1000, emptyKm: 0 });
+    const early = trip({ id: "3", tripDate: "2026-09-30", days: 2, paidKm: 400, emptyKm: 0 });
+    const [row] = truckReport({
+      plates: ["MHE 763"],
+      trips: [late],
+      kmTrips: [early, late],
+      monthCosts: [],
+      dailyKm: [{ plate: "MHE 763", date: "2026-10-01", km: 300 }, { plate: "MHE 763", date: "2026-10-31", km: 500 }, { plate: "MHE 763", date: "2026-11-01", km: 500 }],
+      from: "2026-10-01",
+      to: "2026-10-31",
+    });
+    expect(row.kmWithoutLoad).toBe(800 - 500 - 200);
+  });
+
+  it("km be krovinio: reisų km daugiau nei odometre – neigiami, kuras neatimamas; dienos be Telematikos nelyginamos", () => {
+    const [row] = truckReport({
+      plates: ["MHE 763"],
+      trips: [trip({})],
+      monthCosts: [{ ...month("t", "2026-10-01", 0), plate: "MHE 763" }],
+      // Telematika tik nuo 10-05: rugsėjo pradžios reisai su ja nelyginami.
+      kmTrips: [trip({}), trip({ id: "2", tripDate: "2026-10-01", days: 1, paidKm: 900, emptyKm: 0 })],
+      dailyKm: [{ plate: "MHE 763", date: "2026-10-05", km: 400 }, { plate: "MHE 763", date: "2026-10-06", km: 336 }],
+      from: "2026-10-01",
+      to: "2026-10-31",
+    });
+    expect(row).toMatchObject({ kmWithoutLoad: -100, kmWithoutLoadCents: 0, realProfitCents: 80000 });
+  });
+
   it("be paros ridos – km be krovinio nežinomi, realus pelnas be jų", () => {
     const [row] = truckReport({ plates: ["MHE 763"], trips: [trip({})], monthCosts: [{ ...month("t", "2026-10-01", 0), plate: "MHE 763" }], from: "2026-10-01", to: "2026-10-31" });
     expect(row).toMatchObject({ kmWithoutLoad: null, kmWithoutLoadCents: null, realProfitCents: 80000 });

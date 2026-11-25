@@ -8,6 +8,7 @@
  * kalendorines dienas, ir su prastovomis.
  */
 
+import { tripSpan } from "./plan-actual";
 import { addDays } from "./trip-progress";
 import { daysInMonth, monthCostTotal, type MonthCostRow } from "./truck-month-costs";
 import { plateKey } from "./telematics-costs";
@@ -35,7 +36,8 @@ export interface TruckReportRow {
   idleCostCents: number | null;
   /**
    * Odometro rida, kurios nepaaiškina joks krovinys (savaitgalis, bazė, servisas):
-   * paros rida − reisų km (apmokami + tušti). `null` – paros ridos nėra.
+   * paros rida − reisų km (apmokami + tušti). Neigiama – reisų km daugiau nei
+   * odometre (klaida duomenyse, rodoma, ne nukerpama). `null` – paros ridos nėra.
    */
   kmWithoutLoad: number | null;
   /** Jų kuras ir AdBlue pagal tos furos reisų vidutinę kainą už km; atimama iš realaus pelno. */
@@ -78,6 +80,11 @@ export function truckReport(input: {
   monthCosts: (MonthCostRow & { plate: string })[];
   /** Telematikos paros rida (archyvas). */
   dailyKm?: { plate: string; date: string; km: number }[];
+  /**
+   * Visi reisai, ir prasidėję prieš laikotarpį – km balansui: reiso km dalinami
+   * jo paroms, į laikotarpį patenka tik jame esančių parų dalis. Nenurodyta – `trips`.
+   */
+  kmTrips?: TripSummary[];
   from: string;
   to: string;
 }): TruckReportRow[] {
@@ -98,12 +105,28 @@ export function truckReport(input: {
     const actual = proratedActualCents(costs, input.from, input.to);
     const known = actual.missing.length === 0;
 
-    // Važiavimas be krovinio: jo kuro reisai nemoka, bet jis sumokėtas.
-    const days = (input.dailyKm ?? []).filter((day) => plateKey(day.plate) === key && day.date >= input.from && day.date <= input.to);
+    // Važiavimas be krovinio: jo kuro reisai nemoka, bet jis sumokėtas. Lyginama
+    // tik tomis dienomis, kurias Telematika turi, ir reisų km – tik už jų paras
+    // tose dienose (reisas 10-30, 5 paros: spaliui – 2/5 km).
+    const truckDays = (input.dailyKm ?? []).filter((day) => plateKey(day.plate) === key);
+    let kmWithoutLoad: number | null = null;
+    if (truckDays.length > 0) {
+      const dates = truckDays.map((day) => day.date).sort();
+      const from = dates[0] > input.from ? dates[0] : input.from;
+      const to = dates[dates.length - 1] < input.to ? dates[dates.length - 1] : input.to;
+      const odometerKm = truckDays.filter((day) => day.date >= from && day.date <= to).reduce((sum, day) => sum + day.km, 0);
+      const loadKm = (input.kmTrips ?? input.trips).filter((trip) => plateKey(trip.truckPlate) === key).reduce((sum, trip) => {
+        const span = tripSpan(trip);
+        const start = span.from > from ? span.from : from;
+        const end = span.to < to ? span.to : to;
+        return start > end ? sum : sum + ((trip.paidKm + trip.emptyKm) * daysBetween(start, end)) / daysBetween(span.from, span.to);
+      }, 0);
+      if (from <= to) kmWithoutLoad = Math.round(odometerKm - loadKm);
+    }
     const tripKm = trips.reduce((sum, trip) => sum + trip.paidKm + trip.emptyKm, 0);
     const fuelCents = trips.reduce((sum, trip) => sum + (trip.costs ? trip.costs.fuel + trip.costs.adblue : 0), 0);
-    const kmWithoutLoad = days.length > 0 ? Math.max(0, Math.round(days.reduce((sum, day) => sum + day.km, 0) - tripKm)) : null;
-    const kmWithoutLoadCents = kmWithoutLoad === null ? null : tripKm > 0 ? Math.round((kmWithoutLoad * fuelCents) / tripKm) : 0;
+    // Neigiamas skirtumas – duomenų klaida, ne sutaupytas kuras.
+    const kmWithoutLoadCents = kmWithoutLoad === null ? null : kmWithoutLoad > 0 && tripKm > 0 ? Math.round((kmWithoutLoad * fuelCents) / tripKm) : 0;
     const realProfitCents = known ? grossCents - actual.cents - (kmWithoutLoadCents ?? 0) : null;
 
     rows.push({

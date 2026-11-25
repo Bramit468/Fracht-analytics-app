@@ -684,8 +684,9 @@ interface ProfitRow extends Omit<ProfitGroup, "key"> {
  * Furos ataskaita (2 lygis): reisai vertinami savo paromis, o čia – kas iš
  * tikrųjų liko furai per laikotarpį su faktiniais kaštais ir prastovomis.
  */
-function TruckReportTab({ trips, trucks, monthCosts, dailyKm, range, plate, customerFiltered, today }: {
+function TruckReportTab({ trips, kmTrips, trucks, monthCosts, dailyKm, range, plate, customerFiltered, today }: {
   trips: TripSummary[];
+  kmTrips: TripSummary[];
   trucks: Truck[];
   monthCosts: MonthCostRow[];
   dailyKm: { plate: string; date: string; km: number }[];
@@ -704,6 +705,7 @@ function TruckReportTab({ trips, trucks, monthCosts, dailyKm, range, plate, cust
     trips: trips.filter((trip) => trip.tripDate <= to),
     monthCosts: monthCosts.filter((row) => plateById.has(row.truck_id)).map((row) => ({ ...row, plate: plateById.get(row.truck_id)! })),
     dailyKm,
+    kmTrips,
     from: range.from,
     to,
   });
@@ -753,7 +755,7 @@ function TruckReportTab({ trips, trucks, monthCosts, dailyKm, range, plate, cust
           <td className="px-3 py-3">{signed(row.realProfitPerDayCents)}</td>
           <td className="px-3 py-3">{formatPercent(row.utilizationPercent)}</td>
           <td className="px-3 py-3">{row.idleDays.toLocaleString("lt-LT", { maximumFractionDigits: 1 })} d.{row.idleCostCents !== null && <span className="block text-xs text-muted">{formatCents(row.idleCostCents)}</span>}</td>
-          <td className="px-3 py-3">{row.kmWithoutLoad === null ? <span className="text-muted">—</span> : <>{row.kmWithoutLoad.toLocaleString("lt-LT")} km<span className="block text-xs text-muted">{formatCents(row.kmWithoutLoadCents ?? 0)}</span></>}</td>
+          <td className="px-3 py-3">{row.kmWithoutLoad === null ? <span className="text-muted">—</span> : row.kmWithoutLoad < 0 ? <span className="text-bad" title="Reisų km daugiau nei odometre – patikrinkite reisų km">{row.kmWithoutLoad.toLocaleString("lt-LT")} km<span className="block text-xs">reisuose daugiau</span></span> : <>{row.kmWithoutLoad.toLocaleString("lt-LT")} km<span className="block text-xs text-muted">{formatCents(row.kmWithoutLoadCents ?? 0)}</span></>}</td>
           <td className="px-5 py-3">{signed(row.tripProfitCents)}</td>
         </tr>)}</tbody>
       </table>
@@ -762,7 +764,7 @@ function TruckReportTab({ trips, trucks, monthCosts, dailyKm, range, plate, cust
       <p><strong>Bendroji marža</strong> – pajamos minus reisų kuras, AdBlue ir keliai (kaštai, kurių be krovinio nebūtų).</p>
       <p><strong>Faktiniai kaštai</strong> – kas iš tikrųjų sumokėta (Furos → Faktiniai kaštai), padalinta laikotarpio dienoms: vairuotojas, lizingas, draudimas, mokesčiai, remontas, padangos, administracija.</p>
       <p><strong>Realus pelnas</strong> – bendroji marža minus faktiniai kaštai ir km be krovinio kuras: kiek fura iš tikrųjų uždirbo su savaitgaliais ir prastovomis.</p>
-      <p><strong>Km be krovinio</strong> – odometro rida (Telematika), kurios nepaaiškina joks krovinys: važinėjimas savaitgalį, į bazę, į servisą. Kroviniams jie nepriskiriami (tušti km – tik privažiavimas prie pakrovimo); jų kuras ir AdBlue – pagal tos furos reisų vidutinę kainą už km.</p>
+      <p><strong>Km be krovinio</strong> – odometro rida (Telematika), kurios nepaaiškina joks krovinys: važinėjimas savaitgalį, į bazę, į servisą. Kroviniams jie nepriskiriami (tušti km – tik privažiavimas prie pakrovimo); jų kuras ir AdBlue – pagal tos furos reisų vidutinę kainą už km. Reisas, kertantis laikotarpio ribą, įskaitomas tik jame esančių parų dalimi. Raudonas minusas – reisuose km daugiau nei odometre (dažniausiai apmokami km iš užsakymo didesni už nuvažiuotus); kuras tada neatimamas.</p>
       <p><strong>Užimtumas</strong> – krovinių paros / kalendorinės dienos. <strong>Prastovos</strong> – dienos be krovinio; kaina – jų dalis faktinių kaštų.</p>
       <p><strong>Reisų pelnas</strong> – reisų „Pelno“ suma (pagal furų normas, tik krovinių paromis). Skirtumas su realiu – prastovos ir tai, kiek faktiniai kaštai skiriasi nuo normų.</p>
     </div>
@@ -1076,7 +1078,7 @@ export function Dashboard() {
       <RoundTripsTab trips={trips} customerFiltered={Boolean(filters.customerId)} />
     </div>}
     {tab === "trucks" && <div role="tabpanel" aria-label="Furos">
-      <TruckReportTab trips={trips} trucks={trucks} monthCosts={monthCosts} dailyKm={dailyKm} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />
+      <TruckReportTab trips={trips} kmTrips={scoped} trucks={trucks} monthCosts={monthCosts} dailyKm={dailyKm} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />
     </div>}
     <DetailsTable trips={trips} customers={usedCustomers} fleetPerDayCents={stats.profitPerDayCents} periodLabel={periodLabel} />
   </div>;

@@ -38,7 +38,7 @@ export interface OrderPreview extends ImportedTrip {
 
 export type OrderImportResult =
   | {
-    ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number; suspectEmptyKm: number;
+    ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; suspectEmptyKm: number;
     /** Ankstyviausia kelionė, iš kurios skaičiuota (archyvas + srautas). */
     dataFrom: string | null;
     /** Archyvo įspėjimas; `null` – viskas gerai. */
@@ -133,7 +133,6 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
       supplies: parseSupplies(mergeSupplyPayloads(archived.supplies, suppliesRaw), (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
       now: vilniusNow(),
       perDiemPercent: settings.perDiemPercent,
-      paidKmByOrder: new Map((existingResult.data ?? []).map((row) => [String(row.telematika_order_id), Number(row.paid_km)])),
     });
   } catch (cause) {
     console.error("Telematikos užsakymų importas: apdorojimas", cause);
@@ -176,7 +175,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

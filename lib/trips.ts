@@ -27,6 +27,11 @@ export interface TripSummary {
   invoicedOn?: string | null;
   paidOn?: string | null;
   paidKm: number;
+  /**
+   * Kada fura tikrai važiavo (importas, pirmos atkarpos ir iškrovimo dienos).
+   * Nėra – ranka įvestas ar dar neatnaujintas: ataskaita ima datą + paras.
+   */
+  driven?: [string, string];
   /** Kiek parų fura užimta – pelnui per parą (#179). */
   days: number;
   /** Tuščia rida: kaštas be pajamų (#123). */
@@ -124,6 +129,7 @@ export function buildTripSummaries(
       telematikaOrderId: trip.telematika_order_id ?? null,
       ...("invoiced_on" in trip ? { invoicedOn: trip.invoiced_on ?? null, paidOn: trip.paid_on ?? null } : {}),
       paidKm: trip.paid_km,
+      ...(trip.import_snapshot?.driven ? { driven: trip.import_snapshot.driven } : {}),
       days: trip.days,
       emptyKm: trip.empty_km,
       emptyFuelCents: emptyFuelCents(trip.empty_km, trip.fuel_l_per_100km, trip.fuel_price),

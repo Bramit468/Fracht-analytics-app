@@ -306,6 +306,12 @@ export interface ImportedTrip {
    */
   paidMaxKm: number | null;
   /**
+   * Kada fura tikrai važiavo šį užsakymą: pirmos atkarpos ir iškrovimo dienos.
+   * Paros be savaitgalio prastovų būna trumpesnės – ataskaita pagal jas km
+   * priskirtų ne toms dienoms (MLV 023 10-29: 1,75 paros, važiavo iki 11-02).
+   */
+  driven: [string, string];
+  /**
    * Privažiavimas: PTV kelias nuo ankstesnio iškrovimo iki šio pakrovimo, ne
    * daugiau nei `maxKm` (paros rida tomis dienomis). Importuojant tušti km =
    * didesnis iš jo ir Telematikos tuščių km (2026-11-25). `null` – ta pati vieta.
@@ -726,6 +732,7 @@ export function buildOrderTrips(input: {
       feedEdge: edgeOrder.get(truck.id)?.orderId === orderId,
       kmAddresses,
       paidMaxKm,
+      driven: [start.slice(0, 10), end.slice(0, 10)],
       positioning,
       customer: order.client,
       plate: truck.plate,
@@ -797,7 +804,7 @@ export function importChanges(stored: StoredOrderTrip, built: ImportedTrip): str
 }
 
 /** Importo kopija su žyme, kad tušti km – PTV privažiavimas (kitą kartą PTV nebeklausiama). */
-export type ImportSnapshot = StoredOrderTrip & { positioned?: boolean; old_idle_dates?: string[] };
+export type ImportSnapshot = StoredOrderTrip & { positioned?: boolean; old_idle_dates?: string[]; driven?: [string, string] };
 
 /** Ką importas įrašė – saugoma `trips.import_snapshot` (0021). */
 export function importSnapshot(trip: StoredOrderTrip): StoredOrderTrip {

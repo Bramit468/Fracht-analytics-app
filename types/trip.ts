@@ -94,7 +94,7 @@ export interface Trip {
   /** Su kuo lygintas krovinys (0023): paros ir įnašas centais. Iki migracijos lauko nėra. */
   alternative_days?: number;
   alternative_cents?: number;
-  import_snapshot?: (Pick<Trip, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents" | "per_diem_cents"> & { positioned?: boolean; old_idle_dates?: string[] }) | null;
+  import_snapshot?: (Pick<Trip, "trip_date" | "truck_id" | "days" | "paid_km" | "empty_km" | "freight_price_cents" | "bridges_cents" | "per_diem_cents"> & { positioned?: boolean; old_idle_dates?: string[]; driven?: [string, string] }) | null;
 
   created_at: string;
 }

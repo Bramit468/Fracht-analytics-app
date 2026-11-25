@@ -194,7 +194,23 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
+  // Tikros važiavimo dienos – tik į importo kopiją, ne per reiso įrašymą:
+  // šis perrašytų furos kaštų kopiją ir senų reisų pelną. Įrašomi reisai jas
+  // gauna kartu su kopija.
+  const stamps = trips.flatMap((item) => {
+    const stored = item.existingId ? existing.get(item.orderId) : undefined;
+    const snapshot = stored?.import_snapshot;
+    if (!stored || !snapshot || (snapshot.driven?.[0] === item.driven[0] && snapshot.driven?.[1] === item.driven[1])) return [];
+    return [{ id: stored.id, import_snapshot: { ...snapshot, driven: item.driven } }];
+  });
+  let stampFailures = 0;
+  for (let index = 0; index < stamps.length; index += 20) {
+    const results = await Promise.all(stamps.slice(index, index + 20).map(({ id, import_snapshot }) => supabase.from("trips").update({ import_snapshot }).eq("id", id)));
+    stampFailures += results.filter((result) => result.error).length;
+  }
+  const stampNote = stampFailures > 0 ? `${stampFailures} reisams neįrašytos važiavimo dienos – Suvestinė → Furos jų km dalins pagal paras. Atnaujinkite dar kartą.` : null;
+
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote: [archiveNote, stampNote].filter(Boolean).join(" ") || null };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

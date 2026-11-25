@@ -106,8 +106,9 @@ export function truckReport(input: {
     const known = actual.missing.length === 0;
 
     // Važiavimas be krovinio: jo kuro reisai nemoka, bet jis sumokėtas. Lyginama
-    // tik tomis dienomis, kurias Telematika turi, ir reisų km – tik už jų paras
-    // tose dienose (reisas 10-30, 5 paros: spaliui – 2/5 km).
+    // tik tomis dienomis, kurias Telematika turi. Reiso km dalinami dienoms, kai
+    // fura jį tikrai važiavo (importas), pagal tų dienų odometrą: savaitgalio
+    // prastova km negauna, o reisas per mėnesio ribą skyla kaip važiuota.
     const truckDays = (input.dailyKm ?? []).filter((day) => plateKey(day.plate) === key);
     let kmWithoutLoad: number | null = null;
     if (truckDays.length > 0) {
@@ -115,11 +116,23 @@ export function truckReport(input: {
       const from = dates[0] > input.from ? dates[0] : input.from;
       const to = dates[dates.length - 1] < input.to ? dates[dates.length - 1] : input.to;
       const odometerKm = truckDays.filter((day) => day.date >= from && day.date <= to).reduce((sum, day) => sum + day.km, 0);
+      const odometer = new Map(truckDays.map((day) => [day.date, day.km]));
       const loadKm = (input.kmTrips ?? input.trips).filter((trip) => plateKey(trip.truckPlate) === key).reduce((sum, trip) => {
-        const span = tripSpan(trip);
+        const span = trip.driven ? { from: trip.driven[0], to: trip.driven[1] } : tripSpan(trip);
+        let all = 0;
+        let inside = 0;
+        let complete = true;
+        for (let date = span.from; date <= span.to; date = addDays(date, 1)) {
+          const km = odometer.get(date);
+          if (km === undefined) { complete = false; continue; }
+          all += km;
+          if (date >= from && date <= to) inside += km;
+        }
         const start = span.from > from ? span.from : from;
         const end = span.to < to ? span.to : to;
-        return start > end ? sum : sum + ((trip.paidKm + trip.emptyKm) * daysBetween(start, end)) / daysBetween(span.from, span.to);
+        // Kurios nors dienos odometro nėra (ne 0 km – nežinoma) – dalinama pagal dienas.
+        const share = complete && all > 0 ? inside / all : start > end ? 0 : daysBetween(start, end) / daysBetween(span.from, span.to);
+        return sum + (trip.paidKm + trip.emptyKm) * share;
       }, 0);
       if (from <= to) kmWithoutLoad = Math.round(odometerKm - loadKm);
     }

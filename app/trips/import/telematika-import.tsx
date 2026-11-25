@@ -123,7 +123,7 @@ export function TelematikaImport({ version }: { version: string | null }) {
           }
         }
         // Kopija – kad kitas atnaujinimas atskirtų rankinį pataisymą nuo Telematikos pakeitimo.
-        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: { ...importSnapshot(trip), ...(positioned ? { positioned: true } : {}) }, ...(available ? { customer_id: customerId } : {}) }, legs);
+        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: { ...importSnapshot(trip), ...(positioned ? { positioned: true } : {}), driven: item.driven }, ...(available ? { customer_id: customerId } : {}) }, legs);
         saved.add(item.orderId);
       } catch {
         failures.push(`${item.trip.trip_number} (${item.trip.trip_date})`);

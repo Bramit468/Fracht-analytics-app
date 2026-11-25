@@ -95,6 +95,25 @@ describe("truckReport", () => {
     expect(row.kmWithoutLoad).toBe(800 - 500 - 200);
   });
 
+  it("km be krovinio: importuotas reisas – tikros važiavimo dienos ir jų odometras (savaitgalio prastova km negauna)", () => {
+    // MLV 023: 1,75 paros nuo 10-29, bet važiavo iki 11-02; 10-31 ir 11-01 stovėjo.
+    const trip1 = trip({ id: "2", tripDate: "2026-10-29", days: 1.75, paidKm: 1149, emptyKm: 0, driven: ["2026-10-29", "2026-11-02"] });
+    const [row] = truckReport({
+      plates: ["MHE 763"],
+      trips: [trip1],
+      monthCosts: [],
+      dailyKm: [
+        { plate: "MHE 763", date: "2026-10-29", km: 400 }, { plate: "MHE 763", date: "2026-10-30", km: 403 },
+        { plate: "MHE 763", date: "2026-10-31", km: 0 }, { plate: "MHE 763", date: "2026-11-01", km: 0 },
+        { plate: "MHE 763", date: "2026-11-02", km: 346 },
+      ],
+      from: "2026-10-01",
+      to: "2026-10-31",
+    });
+    // Spaliui – 803 / 1 149 reiso km, t. y. tiek, kiek tą mėnesį nuvažiuota.
+    expect(row.kmWithoutLoad).toBe(0);
+  });
+
   it("km be krovinio: reisų km daugiau nei odometre – neigiami, kuras neatimamas; dienos be Telematikos nelyginamos", () => {
     const [row] = truckReport({
       plates: ["MHE 763"],

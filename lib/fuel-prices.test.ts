@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fuelPricesByCountry, fuelPricesByMonth, routeFuelPrice, savingsAtCheapestCents } from "./fuel-prices";
+import { fuelPricesByCountry, fuelPricesByMonth, latestFuelPricesByCountry, routeFuelPrice, savingsAtCheapestCents } from "./fuel-prices";
 import type { Supply } from "./telematics-costs";
 
 function supply(overrides: Partial<Supply>): Supply {
@@ -14,6 +14,25 @@ function supply(overrides: Partial<Supply>): Supply {
     ...overrides,
   };
 }
+
+describe("latestFuelPricesByCountry", () => {
+  it("kiekvienai šaliai – paskutinio pylimo kaina, ne vidurkis", () => {
+    const rows = latestFuelPricesByCountry([
+      supply({ date: "2026-10-01", quantity: 400, costCents: 60000, country: "SWE" }), // 1,50
+      supply({ date: "2026-10-20", quantity: 300, costCents: 46800, country: "SWE" }), // 1,56
+      supply({ date: "2026-10-05", quantity: 300, costCents: 42000, country: "LTU" }), // 1,40
+      supply({ date: "2026-10-25", kind: "adblue", quantity: 100, costCents: 10000, country: "LTU" }),
+      supply({ date: "2026-10-26", quantity: null, costCents: 5000, country: "LTU" }),
+    ]);
+    expect(Object.fromEntries(rows.map((row) => [row.key, row.pricePerL]))).toEqual({ LTU: 1.4, SWE: 1.56 });
+  });
+
+  it("su paskutinio pylimo kainomis maršrutas ima ir vieno pylimo šalį", () => {
+    const prices = latestFuelPricesByCountry([supply({ quantity: 300, costCents: 46800, country: "SWE" })]);
+    const route = routeFuelPrice([{ countryCode: "SE", km: 100 }], prices, 0)!;
+    expect(route.rows[0]).toMatchObject({ pricePerL: 1.56, fleetAverage: false });
+  });
+});
 
 describe("fuelPricesByCountry", () => {
   it("skaičiuoja svertinę kainą, o ne kainų vidurkį", () => {

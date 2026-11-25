@@ -179,6 +179,13 @@ function durationText(minutes: number): string {
  * Paskutinės 30 pilnų dienų, baigiant vakar: tiekėjo teigimu, einamosios paros
  * eilutė netiksli. Už komponento ribų, nes render metu laiko imti negalima.
  */
+/** Kuro kainoms: paskutinis pylimas šalyje per 90 d. iki šiandien imtinai. */
+function kuroKainuLaikotarpis(): { from: string; to: string } {
+  const isoDate = (at: number) => new Date(at).toISOString().slice(0, 10);
+  const dabar = Date.now();
+  return { from: isoDate(dabar - 90 * 86_400_000), to: isoDate(dabar) };
+}
+
 function paskutinesTrisdesimtDienu(): { from: string; to: string } {
   const isoDate = (at: number) => new Date(at).toISOString().slice(0, 10);
   const dabar = Date.now();
@@ -1341,7 +1348,6 @@ export function TripForm({
 
       // Išsaugoto reiso laukai nekeičiami (#151 taisyklė): ten yra tai, kas buvo tada.
       const write = !tripId;
-      const kuroLaikotarpis = paskutinesTrisdesimtDienu();
       const truckField = form.elements.namedItem("truck_id");
       const truckValue = truckField instanceof HTMLSelectElement ? truckField.value : "";
       const dateField = form.elements.namedItem("trip_date");
@@ -1353,7 +1359,8 @@ export function TripForm({
         fillFromRoute(tarpiniai, write, stops),
         planDriverHours(),
         // Kuro kaina – pagal šalis, per kurias eina maršrutas, ne pagal tai, kur fura pylėsi praėjusį mėnesį.
-        fetchFuelPrices(kuroLaikotarpis.from, kuroLaikotarpis.to).catch(() => null),
+        // Paskutinis pylimas šalyje per ~3 mėn. (srauto ilgis), įskaitant šiandien.
+        (() => { const period = kuroKainuLaikotarpis(); return fetchFuelPrices(period.from, period.to).catch(() => null); })(),
         // Tušti km nuo ten, kur fura bus – tik naujam reisui: išsaugoto laukai nekeičiami.
         write && rankaTusti === null && truckValue && (stops[0].address.trim() || stops[0].point)
           ? emptyRunToLoading(
@@ -1372,7 +1379,7 @@ export function TripForm({
           : Promise.resolve(null),
       ]);
       const emptyRun = tuscias?.ok ? tuscias : null;
-      const routeFuel: RouteFuelPrice | null = route && kuroKainos ? routeFuelPrice(route.kmByCountry, kuroKainos) : null;
+      const routeFuel: RouteFuelPrice | null = route && kuroKainos ? routeFuelPrice(route.kmByCountry, kuroKainos, 0) : null;
 
       const picked = pickDays(scheduleDays, route?.routeDays ?? null);
       const sustojimuVal = serviceHours(stops.map((stop) => stop.type), Number(krovimoVal.replace(",", ".")));

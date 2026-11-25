@@ -59,6 +59,25 @@ export function fuelPricesByCountry(supplies: Supply[]): FuelPriceRow[] {
   });
 }
 
+/**
+ * Kiekvienos šalies **paskutinio** pylimo kaina – kainai skaičiuoklėje.
+ *
+ * Patikrinta 2026-11-25 su 708 Mitrenos pylimais (07-30…10-29): kitą pylimą
+ * paskutinis atspėja vid. 5,8 ct/l, 30 d. svertinis vidurkis – 6,9 ct/l
+ * (Švedijoje, kur pylimų daugiausia, 4,2 ir 5,5). Kortelių (DKV, E100) kainos
+ * keičiasi kas savaitę, o vidurkis jas vėlina.
+ */
+export function latestFuelPricesByCountry(supplies: Supply[]): FuelPriceRow[] {
+  const latest = new Map<string, Supply>();
+  for (const supply of supplies) {
+    if (supply.kind !== "diesel" || supply.quantity === null || !(supply.quantity > 0) || !supply.country) continue;
+    const previous = latest.get(supply.country);
+    // Tą pačią dieną – vėlesnis sąraše (Telematika juos rikiuoja laiku).
+    if (!previous || supply.date >= previous.date) latest.set(supply.country, supply);
+  }
+  return fuelPricesByCountry([...latest.values()]);
+}
+
 /** Mėnesiai chronologiškai — kad matytųsi, ar kaina kyla. */
 export function fuelPricesByMonth(supplies: Supply[]): FuelPriceRow[] {
   return group(supplies, (supply) => supply.date.slice(0, 7)).sort((a, b) =>
@@ -122,6 +141,8 @@ export interface RouteFuelPrice {
 export function routeFuelPrice(
   kmByCountry: { countryCode: string; km: number }[],
   prices: FuelPriceRow[],
+  /** Paskutinio pylimo kainoms – 0: vienas pylimas ir yra kaina. */
+  minCountryLitres = MIN_COUNTRY_LITRES,
 ): RouteFuelPrice | null {
   const priced = prices.filter((row) => row.pricePerL !== null && row.litres > 0);
   const litres = priced.reduce((total, row) => total + row.litres, 0);
@@ -131,7 +152,7 @@ export function routeFuelPrice(
 
   const byCountry = new Map<string, number>();
   for (const row of priced) {
-    if (row.key === "" || row.litres < MIN_COUNTRY_LITRES) continue;
+    if (row.key === "" || row.litres < minCountryLitres) continue;
     byCountry.set(iso2FromIso3(row.key) ?? row.key.toUpperCase(), row.pricePerL as number);
   }
 

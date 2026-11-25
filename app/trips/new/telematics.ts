@@ -10,7 +10,7 @@ import {
   type TripFill,
 } from "@/lib/telematics-costs";
 import { fetchEcbRates, toEuroCents } from "@/lib/ecb-rates";
-import { fuelPricesByCountry, type FuelPriceRow } from "@/lib/fuel-prices";
+import { latestFuelPricesByCountry, type FuelPriceRow } from "@/lib/fuel-prices";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { fetchTelematics } from "@/lib/telematics-feed";
@@ -116,8 +116,8 @@ export async function fetchFuelPrices(from: string, to: string): Promise<FuelPri
   try {
     const [suppliesRaw, rates] = await Promise.all([fetchTelematics("supplies"), fetchEcbRates()]);
     const { supplies } = parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date));
-    // Tik naujausi pylimai: srautas siekia ~3 mėn., o kuro kaina per tiek pasikeičia.
-    return fuelPricesByCountry(supplies.filter((supply) => supply.date >= from && supply.date <= to));
+    // Kiekvienai šaliai – paskutinio pylimo kaina laikotarpyje (tiksliau už vidurkį, 2026-11-25).
+    return latestFuelPricesByCountry(supplies.filter((supply) => supply.date >= from && supply.date <= to));
   } catch (cause) {
     console.error("Kuro kainos pagal šalį", cause);
     return null;

@@ -64,7 +64,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     supabase.from("country_tariffs").select("country,rate,rate_type"),
     // Daugiau nei 1000 importuotų reisų be puslapiavimo virstų dublikatais.
     fetchAllRows((from, to) => supabase.from("trips")
-      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents,per_diem_cents,import_snapshot")
+      .select("id,telematika_order_id,trip_date,truck_id,days,paid_km,empty_km,freight_price_cents,bridges_cents,ferries_cents,per_diem_cents,import_snapshot")
       .not("telematika_order_id", "is", null).order("id").range(from, to))
       .then((data) => ({ data, error: null }), (error: { code?: string }) => ({ data: null, error })),
     fetchCompanySettings(supabase),
@@ -118,18 +118,30 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     rate: Number(row.rate),
     rateType: row.rate_type as RateType,
   }));
-  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string; import_snapshot: StoredOrderTrip | null }]));
+  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string; ferries_cents: number | null; import_snapshot: StoredOrderTrip | null }]));
 
-  const trips = built.trips.map((item): OrderPreview => {
+  const trips = built.trips.map((fresh): OrderPreview => {
+    const stored = existing.get(fresh.orderId);
+    // Seniausias furos užsakymas duomenyse: kas buvo prieš jį, nežinoma, todėl
+    // tušti km ir keliai iš dienų be užsakymo – įrašyti. Paros ir data priklauso
+    // tik nuo jo paties atkarpų, tad jos perskaičiuojamos.
+    let item = fresh;
+    if (stored && fresh.feedEdge) {
+      const trip = { ...fresh.trip, empty_km: Number(stored.empty_km), bridges_cents: Number(stored.bridges_cents), ferries_cents: Number(stored.ferries_cents ?? fresh.trip.ferries_cents) };
+      item = {
+        ...fresh,
+        trip,
+        legs: [{ country: "Nemokami", km: Math.round((Number(trip.paid_km) + trip.empty_km) * 100) / 100 }],
+        notes: [...fresh.notes.filter((note) => !note.startsWith("Tušti km +") && !note.startsWith("Keliai ")), "Seniausias furos užsakymas Telematikos duomenyse – tušti km ir keliai palikti įrašyti."],
+      };
+    }
     // Peržiūrai – dabartiniai furos kaštai; įrašant kopiją padarys duomenų bazė.
     const result = calculateSavedTrip(item.trip, item.legs, truckRowToCalc(trucks.get(item.trip.truck_id)!), tariffs);
-    const stored = existing.get(item.orderId);
     return {
       ...item,
       existingId: stored?.id ?? null,
       storedPaidKm: stored ? Number(stored.paid_km) : null,
-      // Seniausias furos užsakymas duomenyse: kas buvo prieš jį, nežinoma – įrašytas reisas nekeičiamas.
-      changes: stored ? (item.feedEdge ? [] : importChanges(stored, item)) : null,
+      changes: stored ? importChanges(stored, item) : null,
       handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,

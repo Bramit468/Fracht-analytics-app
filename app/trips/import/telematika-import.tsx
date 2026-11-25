@@ -28,7 +28,6 @@ interface ImportSummary {
   /** Ką teko spėti įrašytuose reisuose. */
   guesses: string[];
   unassignedTollCents: number;
-  unassignedEmptyKm: number;
   suspectEmptyKm: number;
   dataFrom: string | null;
   archiveNote: string | null;
@@ -105,8 +104,25 @@ export function TelematikaImport() {
             if (route.quota) ptvStopped = true;
           }
         }
+        // Privažiavimas Telematikoje neįvestas – PTV kelias nuo ankstesnio iškrovimo
+        // iki pakrovimo, ne daugiau nei fura tuo metu nuvažiavo.
+        let positioned = false;
+        if (item.positioning && item.storedPositionedKm !== null) {
+          positioned = true;
+        } else if (item.positioning && !ptvStopped) {
+          const route = await ptvRouteKm([item.positioning.from, item.positioning.to]);
+          if (route.ok) {
+            const emptyKm = Math.round(Math.min(route.km, item.positioning.maxKm ?? route.km) * 100) / 100;
+            trip = { ...trip, empty_km: emptyKm };
+            legs = [{ country: "Nemokami", km: Math.round((trip.paid_km + emptyKm) * 100) / 100 }];
+            positioned = true;
+          } else {
+            ptvMisses.push(`${item.trip.trip_number} (privažiavimas): ${route.message}`);
+            if (route.quota) ptvStopped = true;
+          }
+        }
         // Kopija – kad kitas atnaujinimas atskirtų rankinį pataisymą nuo Telematikos pakeitimo.
-        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: importSnapshot(trip), ...(available ? { customer_id: customerId } : {}) }, legs);
+        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: { ...importSnapshot(trip), ...(positioned ? { positioned: true } : {}) }, ...(available ? { customer_id: customerId } : {}) }, legs);
         saved.add(item.orderId);
       } catch {
         failures.push(`${item.trip.trip_number} (${item.trip.trip_date})`);
@@ -140,7 +156,6 @@ export function TelematikaImport() {
         failures,
         guesses: done.filter((item) => item.notes.length > 0).map((item) => `${item.trip.trip_number}: ${item.notes.join(" ")}`),
         unassignedTollCents: result.unassignedTollCents,
-        unassignedEmptyKm: result.unassignedEmptyKm,
         suspectEmptyKm: result.suspectEmptyKm,
         dataFrom: result.dataFrom,
         archiveNote: result.archiveNote,
@@ -170,7 +185,6 @@ export function TelematikaImport() {
         <span className="font-medium">Nauji: {summary.created}</span> · atnaujinti: {summary.updated.length} · nepakito: {summary.unchanged}
         {summary.skipped.length > 0 && <> · praleista: {summary.skipped.length} ({reasonCounts(summary.skipped)})</>}.
         {summary.unassignedTollCents > 0 && <> Kelių mokesčių dienomis be užsakymų: {formatCents(summary.unassignedTollCents)} – jie reisams nepriskirti.</>}
-        {summary.unassignedEmptyKm > 0 && <> Km be užsakymo, po kurių kito užsakymo nebuvo (grįžimas į bazę, stovėjimas): {summary.unassignedEmptyKm.toLocaleString("lt-LT")} km – nepriskirti.</>}
         {summary.suspectEmptyKm > 0 && <> Dar {summary.suspectEmptyKm.toLocaleString("lt-LT")} km be užsakymo – per daug vienam pervažiavimui, greičiausiai Telematikoje neįvesti užsakymai; reisams nepriskirti (žr. pastabas prie reisų).</>}
       </p>
       {summary.archiveNote && <p role="alert" className="text-warn">{summary.archiveNote}</p>}

@@ -38,65 +38,32 @@ describe("allocateTime", () => {
 });
 
 describe("carriedEmptyKm", () => {
-  const order = (orderId: string, start: string, legKm: number | null, byDay: Record<string, number>, odometer: [number | null, number | null] = [null, null], end = start) =>
-    ({ orderId, plate: "MHE 763", start, end, legKm, byDay: new Map(Object.entries(byDay)), odometerStart: odometer[0], odometerEnd: odometer[1] });
+  const order = (orderId: string, start: string, end: string, odometer: [number | null, number | null]) =>
+    ({ orderId, plate: "MHE 763", start, end, odometerStart: odometer[0], odometerEnd: odometer[1] });
   const day = (date: string, km: number): DailyDistance => ({ plate: "MHE763", date, km, fuelL: null });
-  const run = (orders: ReturnType<typeof order>[], daily: DailyDistance[], next: Record<string, string> = {}) =>
-    carriedEmptyKm({ orders, daily, firstDay: "2026-10-01", lastDay: "2026-10-31", nextOrder: (_plate, date) => next[date] ?? null });
 
-  it("tą pačią dieną: paros ridos ir užsakymų skirtumas – antram užsakymui", () => {
-    // Iškrovė 10:00, nuvažiavo 280 km tuščia, pakrovė 15:00.
-    const result = run([order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 4 }), order("b", "2026-10-05 15:00:00", 290, { "2026-10-05": 9 })], [day("2026-10-05", 870)]);
-    expect(Object.fromEntries(result.carried)).toEqual({ b: 280 });
-  });
-
-  it("vienas užsakymas per kelias dienas – skirtumas jam pačiam; mažas skirtumas – triukšmas", () => {
-    const one = run([order("a", "2026-10-05 20:00:00", 800, { "2026-10-05": 4, "2026-10-06": 6 })], [day("2026-10-05", 100), day("2026-10-06", 850)]);
-    expect(Object.fromEntries(one.carried)).toEqual({ a: 150 });
-    const noise = run([order("a", "2026-10-05 08:00:00", 800, { "2026-10-05": 10 })], [day("2026-10-05", 815)]);
-    expect(noise.carried.size).toBe(0);
-  });
-
-  it("užsakymas be atkarpų km – blokas praleidžiamas, kad nebūtų įskaičiuota dukart", () => {
-    const result = run([order("a", "2026-10-05 08:00:00", null, { "2026-10-05": 10 })], [day("2026-10-05", 900)]);
-    expect(result.carried.size).toBe(0);
-  });
-
-  it("odometras – tikslu: kito pradžia − ankstesnio pabaiga; paros skaičiavimas jam netaikomas", () => {
-    const result = run(
-      [
-        order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 6 }, [100_000, 100_300], "2026-10-05 12:00:00"),
-        // Tarp jų – diena be užsakymo (10-06, 400 km), bet odometras sako 412.
-        order("b", "2026-10-07 08:00:00", 290, { "2026-10-07": 10 }, [100_712, 101_002], "2026-10-07 18:00:00"),
+  it("odometras – tikslu: kito pradžia − ankstesnio pabaiga", () => {
+    const result = carriedEmptyKm({
+      orders: [
+        order("a", "2026-10-05 06:00:00", "2026-10-05 12:00:00", [100_000, 100_300]),
+        order("b", "2026-10-07 08:00:00", "2026-10-07 18:00:00", [100_712, 101_002]),
       ],
-      [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 302)],
-      { "2026-10-06": "b" },
-    );
+      daily: [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 302)],
+    });
     expect(Object.fromEntries(result.carried)).toEqual({ b: 412 });
-    expect(result.byOdometer.has("b")).toBe(true);
   });
 
-  it("odometras netikėtinas (daugiau nei nuvažiuota tomis dienomis) – lieka paros rida", () => {
-    const result = run(
-      [
-        order("a", "2026-10-05 06:00:00", 300, { "2026-10-05": 6 }, [100_000, 100_300], "2026-10-05 12:00:00"),
-        order("b", "2026-10-07 08:00:00", 290, { "2026-10-07": 10 }, [105_000, 105_290], "2026-10-07 18:00:00"),
-      ],
-      [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 290)],
-      { "2026-10-06": "b" },
-    );
-    expect(Object.fromEntries(result.carried)).toEqual({ b: 400 });
-    expect(result.byOdometer.size).toBe(0);
-  });
-
-  it("diena be užsakymų – kitam; be kito užsakymo – nepriskirta; už laikotarpio ribų – nieko", () => {
-    const result = run(
-      [order("b", "2026-10-07 08:00:00", 300, { "2026-10-07": 10 })],
-      [day("2026-10-06", 400), day("2026-10-08", 120), day("2026-09-30", 999), day("2026-10-07", 300)],
-      { "2026-10-06": "b" },
-    );
-    expect(Object.fromEntries(result.carried)).toEqual({ b: 400 });
-    expect(result.unassignedKm).toBe(120);
+  it("odometras netikėtinas (daugiau nei nuvažiuota) ar nežinomas – nieko; paros ridos likutis kroviniams neskirstomas", () => {
+    const daily = [day("2026-10-05", 300), day("2026-10-06", 400), day("2026-10-07", 290)];
+    expect(carriedEmptyKm({
+      orders: [order("a", "2026-10-05 06:00:00", "2026-10-05 12:00:00", [100_000, 100_300]), order("b", "2026-10-07 08:00:00", "2026-10-07 18:00:00", [105_000, 105_290])],
+      daily,
+    }).carried.size).toBe(0);
+    // Diena be užsakymo (10-06, 400 km) – „važinėjo šiaip“, ne kroviniui.
+    expect(carriedEmptyKm({
+      orders: [order("a", "2026-10-05 06:00:00", "2026-10-05 12:00:00", [null, null]), order("b", "2026-10-07 08:00:00", "2026-10-07 18:00:00", [null, null])],
+      daily,
+    }).carried.size).toBe(0);
   });
 });
 
@@ -130,6 +97,8 @@ const ORDERS = [
   { OrderId: "1", OrderNo: " SENO 1 ", TripClient: "UAB  Klientas", OrderPrice: 1200, AdditionalPaymentsEur: 50 },
   { OrderId: "2", OrderNo: "", TripClient: "Kitas", OrderPrice: 800, AdditionalPaymentsEur: 0 },
   { OrderId: "3", OrderNo: "N3", TripClient: "X", OrderPrice: 0, AdditionalPaymentsEur: 0 },
+  // Telematikos atstumas – tik tuščios atkarpos km (pakrautų km nėra), kaip MHE 763 10-07.
+  { OrderId: "4", OrderNo: "1015210017255", TripClient: "X", OrderPrice: 538.75, AdditionalPaymentsEur: 0, TotalTripDistance: "12.000" },
 ];
 
 function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number; now?: string } = {}) {
@@ -167,6 +136,48 @@ describe("idleWeekendDaysInLoad", () => {
     expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 90 }))).toEqual(["2026-10-31"]);
     expect(idleWeekendDaysInLoad("2026-10-31", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 0 }))).toEqual(["2026-11-01"]);
     expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({}))).toEqual([]);
+  });
+});
+
+describe("buildOrderTrips: paros ridos likutis neskaičiuojamas dukart", () => {
+  const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+  const legs = [
+    leg("4", "2026-10-07 19:00:00", "2026-10-08 12:59:00", 12, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+    leg("4", "2026-10-08 13:00:00", "2026-10-09 10:00:00", 0),
+  ];
+  const daily = [day("2026-10-07", 350), day("2026-10-08", 359), day("2026-10-09", 208)];
+
+  it("pakrautų km nėra, o TotalTripDistance – tik tuščia atkarpa: atstumas nežinomas, likučio nėra", () => {
+    // Anksčiau: 917 km ridos − 12 km „užsakymo“ = +905 tuščių km, o apmokami km dar kartą iš tos pačios ridos.
+    const [trip] = build(legs, { now: "2026-11-01 00:00:00", daily }).trips;
+    expect(trip.trip.empty_km).toBe(12);
+    expect(trip.kmAddresses).not.toBeNull();
+  });
+
+});
+
+describe("buildOrderTrips: privažiavimas be Telematikos atkarpos", () => {
+  const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+
+  it("kita vieta – PTV privažiavimas nuo ankstesnio iškrovimo, ne daugiau nei paros rida", () => {
+    const { trips } = build([
+      // 1: Lörenskog → Jönköping; 2: pakrovimas vėl Lörenskog, tuščios atkarpos nėra.
+      leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
+      leg("2", "2026-10-22 08:00:00", "2026-10-22 18:00:00", 290),
+    ], { now: "2026-11-01 00:00:00", daily: [day("2026-10-20", 300), day("2026-10-21", 420), day("2026-10-22", 290)] });
+    const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
+    expect(byOrder[1].positioning).toBeNull();
+    expect(byOrder[2].positioning).toEqual({ from: "Y, 553 Jönköping, SWE", to: "X, 1470 Lörenskog, NOR", maxKm: 1010 });
+    expect(byOrder[2].trip.empty_km).toBe(0);
+  });
+
+  it("tuščia atkarpa yra ar ta pati vieta – PTV nereikia", () => {
+    const { trips } = build([
+      leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
+      leg("2", "2026-10-21 08:00:00", "2026-10-21 12:00:00", 420, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+      leg("2", "2026-10-21 12:00:00", "2026-10-21 20:00:00", 290),
+    ], { now: "2026-11-01 00:00:00" });
+    expect(trips.find((trip) => trip.orderId === "2")!.positioning).toBeNull();
   });
 });
 
@@ -279,9 +290,9 @@ describe("buildOrderTrips", () => {
     expect(byOrder[2].notes).toContain("Keliai 5,00 € – pervažiavimas prieš užsakymą (dienos be užsakymo).");
   });
 
-  it("pervažiavimas be užsakymo – tušti km kitam užsakymui; norma iš paties užsakymo km", () => {
+  it("diena be užsakymo – ne kroviniui (rida rodoma furos ataskaitoje); norma iš paties užsakymo km", () => {
     const day = (date: string, km: number): DailyDistance => ({ plate: "MHE 763", date, km, fuelL: null });
-    const { trips, unassignedEmptyKm } = build(
+    const { trips } = build(
       [
         leg("1", "2026-10-15 08:00:00", "2026-10-15 18:00:00", 300, { FuelConsumption: "90.000" }),
         // 10-16 fura važiavo be užsakymo (280 km), 10-17 – užsakymas 2.
@@ -290,13 +301,11 @@ describe("buildOrderTrips", () => {
       { daily: [day("2026-10-15", 300), day("2026-10-16", 280), day("2026-10-17", 290)] },
     );
     const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
-    expect(byOrder[2].trip.empty_km).toBe(280);
-    expect(byOrder[2].legs).toEqual([{ country: "Nemokami", km: 570 }]);
-    expect(byOrder[2].notes).toContain("Tušti km +280 – pervažiavimas be užsakymo prieš šį užsakymą (paros rida).");
+    expect(byOrder[2].trip.empty_km).toBe(0);
+    expect(byOrder[2].legs).toEqual([{ country: "Nemokami", km: 290 }]);
     expect(byOrder[1].trip.empty_km).toBe(0);
     // 90 l / 300 km – norma nesumažėja dėl pridėtų km.
     expect(byOrder[1].trip.fuel_l_per_100km).toBe(30);
-    expect(unassignedEmptyKm).toBe(0);
   });
 
   it("be atkarpų km – PTV adresai ir įvertis iš paros ridos, ne daugiau nei užsakymo valandų dalis", () => {

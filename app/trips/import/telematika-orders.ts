@@ -12,7 +12,7 @@ import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
 import { mergeDaily, mergeRawPayloads, mergeSupplyPayloads } from "@/lib/telematics-archive";
 import { readArchive, writeArchive, type ArchivedSources } from "@/lib/telematics-archive-store";
-import { buildOrderTrips, editedByHand, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
+import { buildOrderTrips, editedByHand, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type ImportSnapshot, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { fetchAllRows } from "@/lib/trips";
 import { truckRowToCalc } from "@/lib/truck";
@@ -28,6 +28,8 @@ export interface OrderPreview extends ImportedTrip {
    * jau skaičiavo, o kartojant ~150 užklausų baigtųsi PTV dienos limitas.
    */
   storedPaidKm: number | null;
+  /** Jau įrašytas PTV privažiavimas – importuojant PTV nebeklausiama. */
+  storedPositionedKm: number | null;
   /** Kas pasikeitė nuo paskutinio importo; tuščias – nieko. `null` – naujas. */
   changes: string[] | null;
   /** Ką ranka pataisė vartotojas; netuščias – reisas neperrašomas. */
@@ -38,13 +40,17 @@ export interface OrderPreview extends ImportedTrip {
 
 export type OrderImportResult =
   | {
-    ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number; suspectEmptyKm: number;
+    ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; suspectEmptyKm: number;
     /** Ankstyviausia kelionė, iš kurios skaičiuota (archyvas + srautas). */
     dataFrom: string | null;
     /** Archyvo įspėjimas; `null` – viskas gerai. */
     archiveNote: string | null;
   }
   | { ok: false; message: string };
+
+function withPositioning(changes: string[], pending: boolean): string[] {
+  return pending && !changes.includes("tušti km") ? [...changes, "tušti km"] : changes;
+}
 
 /** Dabartinis laikas taip, kaip jį rašo Telematika: vietinis, be zonos. */
 function vilniusNow(): string {
@@ -145,7 +151,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     rate: Number(row.rate),
     rateType: row.rate_type as RateType,
   }));
-  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string; ferries_cents: number | null; import_snapshot: StoredOrderTrip | null }]));
+  const existing = new Map((existingResult.data ?? []).map((row) => [row.telematika_order_id as string, row as StoredOrderTrip & { id: string; ferries_cents: number | null; import_snapshot: ImportSnapshot | null }]));
 
   const trips = built.trips.map((fresh): OrderPreview => {
     const stored = existing.get(fresh.orderId);
@@ -162,20 +168,28 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
         notes: [...fresh.notes.filter((note) => !note.startsWith("Tušti km +") && !note.startsWith("Keliai ")), "Seniausias furos užsakymas Telematikos duomenyse – tušti km ir keliai palikti įrašyti."],
       };
     }
+    // Privažiavimą PTV jau skaičiavo – lyginama ir įrašoma ta pati reikšmė.
+    const storedPositionedKm = stored && item.positioning && stored.import_snapshot?.positioned ? Number(stored.empty_km) : null;
+    if (storedPositionedKm !== null) {
+      const trip = { ...item.trip, empty_km: storedPositionedKm };
+      item = { ...item, trip, legs: [{ country: "Nemokami", km: Math.round((Number(trip.paid_km) + storedPositionedKm) * 100) / 100 }] };
+    }
     // Peržiūrai – dabartiniai furos kaštai; įrašant kopiją padarys duomenų bazė.
     const result = calculateSavedTrip(item.trip, item.legs, truckRowToCalc(trucks.get(item.trip.truck_id)!), tariffs);
     return {
       ...item,
       existingId: stored?.id ?? null,
       storedPaidKm: stored ? Number(stored.paid_km) : null,
-      changes: stored ? importChanges(stored, item) : null,
+      storedPositionedKm,
+      // Privažiavimo PTV dar neskaičiavo (ar nepavyko) – įrašyti, kad suskaičiuotų.
+      changes: stored ? withPositioning(importChanges(stored, item), item.positioning !== null && storedPositionedKm === null) : null,
       handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

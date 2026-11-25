@@ -287,9 +287,9 @@ export interface ImportedTrip {
    */
   kmAddresses: string[] | null;
   /**
-   * Privažiavimas be Telematikos tuščios atkarpos ir odometro: PTV kelias nuo
-   * ankstesnio iškrovimo iki šio pakrovimo, ne daugiau nei `maxKm` (paros rida
-   * tomis dienomis). Skaičiuojamas importuojant (2026-11-25). `null` – nereikia.
+   * Privažiavimas: PTV kelias nuo ankstesnio iškrovimo iki šio pakrovimo, ne
+   * daugiau nei `maxKm` (paros rida tomis dienomis). Importuojant tušti km =
+   * didesnis iš jo ir Telematikos tuščių km (2026-11-25). `null` – ta pati vieta.
    */
   positioning: { from: string; to: string; maxKm: number | null } | null;
 }
@@ -567,14 +567,16 @@ export function buildOrderTrips(input: {
     if (carriedKm >= MAX_CARRIED_KM) notes.push(`Prieš šį užsakymą fura nuvažiavo daugiau nei ${MAX_CARRIED_KM} km be užsakymo – patikrinkite, ar Telematikoje neįvestas kitas užsakymas.`);
     const emptyKm = round(legEmptyKm + carriedKm, 2);
 
-    // Privažiavimas Telematikoje neįvestas – PTV kelias nuo ankstesnio iškrovimo
-    // iki šio pakrovimo (vartotojo sprendimas, 2026-11-25), bet ne daugiau, nei
-    // fura tomis dienomis nuvažiavo. Ta pati vieta – privažiavimo nėra.
+    // Privažiavimas – PTV kelias nuo ankstesnio iškrovimo iki šio pakrovimo
+    // (vartotojo sprendimas, 2026-11-25), bet ne daugiau, nei fura tomis dienomis
+    // nuvažiavo; įrašant imamas didesnis iš jo ir Telematikos tuščių km. Tuščia
+    // atkarpa būna ir vietinė (MCF 354: 1–10 km Göteborge), o tikras grįžimas
+    // Langhus → Göteborg (280 km) neįvestas. Ta pati vieta – privažiavimo nėra.
     let positioning: ImportedTrip["positioning"] = null;
     const previous = previousOf.get(orderId);
     const loadPlace = (loadedLegs[0] ?? legs[0]).startPlace;
     const fromPlace = previous?.legs[previous.legs.length - 1].endPlace ?? "";
-    if (emptyKm === 0 && previous && fromPlace.trim() && loadPlace.trim() && placeCity(fromPlace).toLowerCase() !== placeCity(loadPlace).toLowerCase()) {
+    if (previous && fromPlace.trim() && loadPlace.trim() && placeCity(fromPlace).toLowerCase() !== placeCity(loadPlace).toLowerCase()) {
       let ridden = 0;
       let known = false;
       for (let date = previous.legs[previous.legs.length - 1].end.slice(0, 10); date <= (loadedLegs[0] ?? legs[0]).start.slice(0, 10); date = addDays(date, 1)) {
@@ -582,7 +584,7 @@ export function buildOrderTrips(input: {
         if (km !== undefined) { ridden += km; known = true; }
       }
       positioning = { from: placeQuery(fromPlace), to: placeQuery(loadPlace), maxKm: known ? round(ridden, 2) : null };
-      notes.push(`Tušti km – PTV kelias ${placeCity(fromPlace)} → ${placeCity(loadPlace)} (Telematikoje privažiavimo nėra).`);
+      notes.push(`Tušti km – ne mažiau nei PTV kelias ${placeCity(fromPlace)} → ${placeCity(loadPlace)}.`);
     }
     // Norma – iš paties užsakymo atkarpų: jų kuras matuotas tik jų km.
     const orderKm = paidKm + legEmptyKm;

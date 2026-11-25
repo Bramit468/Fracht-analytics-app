@@ -1,4 +1,5 @@
 import { Page, PageHeader } from "../../ui";
+import { buildVersionLabel } from "../../../lib/build-version";
 import { ExcelImport } from "./excel-import";
 import { OldTripsFix } from "./old-trips-fix";
 import { TelematikaImport } from "./telematika-import";
@@ -12,7 +13,7 @@ export default function ImportTripsPage() {
         Užsakymai su atkarpomis, kainomis ir faktiniais keliais bei kuru. Telematika duoda paskutinį mėnesį –
         atnaujinkite bent kas kelias savaites. Įrašomi tik nauji ir pakitę užsakymai, nepakitę neliečiami.
       </p>
-      <TelematikaImport />
+      <TelematikaImport version={buildVersionLabel(process.env.VERCEL_GIT_COMMIT_MESSAGE, process.env.VERCEL_GIT_COMMIT_SHA)} />
     </section>
     <section className="mt-5 rounded-lg border border-line bg-surface p-5 sm:p-6">
       <h2 className="mb-2 font-semibold">Seni reisai: savaitgalio prastova</h2>

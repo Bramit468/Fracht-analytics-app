@@ -51,7 +51,7 @@ function reasonCounts(skipped: ImportSummary["skipped"]): string {
  * nepakitę neperrašomi, kad jų furos kaštų kopija liktų ta pati. Tiekėjas
  * duoda tik paskutinį mėnesį, todėl atnaujinti verta bent kas kelias savaites.
  */
-export function TelematikaImport() {
+export function TelematikaImport({ version }: { version: string | null }) {
   const [imported, setImported] = useState<TripSummary[] | null>(null);
   const [listError, setListError] = useState("");
   const [reload, setReload] = useState(0);
@@ -181,6 +181,7 @@ export function TelematikaImport() {
 
     {summary && <div role="status" className="space-y-2 rounded-lg border border-line bg-page px-4 py-3 text-sm">
       <p>
+        {version && <span className="block text-muted">Kodas: {version}</span>}
         {summary.dataFrom && <span className="block text-muted">Skaičiuota iš kelionių nuo {summary.dataFrom} (archyvas ir Telematika); šie duomenys išsaugoti archyve.</span>}
         <span className="font-medium">Nauji: {summary.created}</span> · atnaujinti: {summary.updated.length} · nepakito: {summary.unchanged}
         {summary.skipped.length > 0 && <> · praleista: {summary.skipped.length} ({reasonCounts(summary.skipped)})</>}.

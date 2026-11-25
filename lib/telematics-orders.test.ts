@@ -99,6 +99,8 @@ const ORDERS = [
   { OrderId: "3", OrderNo: "N3", TripClient: "X", OrderPrice: 0, AdditionalPaymentsEur: 0 },
   // Telematikos atstumas – tik tuščios atkarpos km (pakrautų km nėra), kaip MHE 763 10-07.
   { OrderId: "4", OrderNo: "1015210017255", TripClient: "X", OrderPrice: 538.75, AdditionalPaymentsEur: 0, TotalTripDistance: "12.000" },
+  // Telematikos atstumas – atkarpų suma su dvigubais km (LSE 729, 141394).
+  { OrderId: "5", OrderNo: "N5", TripClient: "X", OrderPrice: 2269.89, AdditionalPaymentsEur: 0, TotalTripDistance: "2469.025" },
 ];
 
 function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number; now?: string } = {}) {
@@ -327,6 +329,33 @@ describe("buildOrderTrips", () => {
     expect(trips[0].trip.paid_km).toBe(400);
     expect(trips[0].kmAddresses).toEqual(["X, 1470 Lörenskog, NOR", "Y, 553 Jönköping, SWE"]);
     expect(trips[0].notes[0]).toMatch(/PTV/);
+    // PTV riba – tų dienų ±1 d. rida: PTV kelias aplinkui nebus didesnis už ją.
+    expect(trips[0].paidMaxKm).toBe(800);
+  });
+
+  it("neigiamos atkarpos km nepanaikina tikros atkarpos", () => {
+    const { trips } = build([
+      leg("2", "2026-10-14 16:36:03", "2026-10-15 15:27:06", 448.705),
+      leg("2", "2026-10-15 15:27:06", "2026-10-14 16:36:02", -448.705),
+    ]);
+    expect(trips[0].trip.paid_km).toBe(448.71);
+    expect(trips[0].kmAddresses).toBeNull();
+  });
+
+  it("atkarpa, apimanti kitą (ta pati pabaiga), netenka jos km – nedvigubinama", () => {
+    const { trips } = build([
+      leg("2", "2026-10-13 17:00:00", "2026-10-16 07:59:59", 1507.31),
+      leg("2", "2026-10-14 13:00:00", "2026-10-16 07:59:59", 961.715),
+    ]);
+    expect(trips[0].trip.paid_km).toBe(1507.31);
+  });
+
+  it("dvigubi atkarpų km atimami ir iš užsakymo atstumo", () => {
+    const { trips } = build([
+      leg("5", "2026-10-13 17:00:00", "2026-10-16 07:59:59", 1507.31),
+      leg("5", "2026-10-14 13:00:00", "2026-10-16 07:59:59", 961.715),
+    ]);
+    expect(trips[0].trip.paid_km).toBe(1507.31);
   });
 
   it("kai km yra, PTV nereikia", () => {

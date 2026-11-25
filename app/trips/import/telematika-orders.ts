@@ -48,6 +48,10 @@ export type OrderImportResult =
   }
   | { ok: false; message: string };
 
+function withPaidCap(changes: string[], capped: boolean): string[] {
+  return capped && !changes.includes("km") ? [...changes, "km"] : changes;
+}
+
 function withPositioning(changes: string[], pending: boolean): string[] {
   return pending && !changes.includes("tušti km") ? [...changes, "tušti km"] : changes;
 }
@@ -179,10 +183,11 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     return {
       ...item,
       existingId: stored?.id ?? null,
-      storedPaidKm: stored ? Number(stored.paid_km) : null,
+      // PTV km virš odometro ribos (kelias aplinkui) – mažinami ir jau įrašytiems.
+      storedPaidKm: stored ? Math.min(Number(stored.paid_km), item.paidMaxKm ?? Infinity) : null,
       storedPositionedKm,
       // Privažiavimo PTV dar neskaičiavo (ar nepavyko) – įrašyti, kad suskaičiuotų.
-      changes: stored ? withPositioning(importChanges(stored, item), item.positioning !== null && storedPositionedKm === null) : null,
+      changes: stored ? withPaidCap(withPositioning(importChanges(stored, item), item.positioning !== null && storedPositionedKm === null), item.kmAddresses !== null && item.paidMaxKm !== null && Number(stored.paid_km) > item.paidMaxKm + 0.5) : null,
       handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,

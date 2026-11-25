@@ -96,7 +96,7 @@ export function TelematikaImport({ version }: { version: string | null }) {
         } else if (item.kmAddresses && !ptvStopped) {
           const route = await ptvRouteKm(item.kmAddresses);
           if (route.ok) {
-            const paidKm = Math.round(route.km * 100) / 100;
+            const paidKm = Math.round(Math.min(route.km, item.paidMaxKm ?? route.km) * 100) / 100;
             trip = { ...trip, paid_km: paidKm };
             legs = [{ country: "Nemokami", km: Math.round((paidKm + trip.empty_km) * 100) / 100 }];
           } else {

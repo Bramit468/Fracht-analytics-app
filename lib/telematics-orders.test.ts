@@ -358,6 +358,26 @@ describe("buildOrderTrips", () => {
     expect(trips[0].trip.paid_km).toBe(1507.31);
   });
 
+  it("per Baltiją be km – odometro likutis (tik sausuma), ne PTV; be kelto – PTV", () => {
+    const baltic = { StartPlace: "Terminal 1, NOR, Gardemoen, 2060, Brages veg 6", EndPlace: "ICECO, LTU, Liepynai, 68126, Vasaros g." };
+    const { trips } = build([
+      // Išmatuota tuščia atkarpa ryte (29 km), neišmatuotas krovinys 10-22 12:00 – 10-24 12:00.
+      leg("2", "2026-10-22 00:00:00", "2026-10-22 11:59:59", 29, { ...baltic, IsEmptyKm: "1" }),
+      leg("2", "2026-10-22 12:00:00", "2026-10-24 12:00:00", 0, baltic),
+    ], {
+      daily: [
+        { plate: "MHE 763", date: "2026-10-22", km: 161, fuelL: 0 },
+        { plate: "MHE 763", date: "2026-10-23", km: 0, fuelL: 0 },
+        { plate: "MHE 763", date: "2026-10-24", km: 900, fuelL: 0 },
+      ],
+      now: "2026-10-26 12:00:00",
+    });
+    // 161 − 29 + 0 + 900 (kitų atkarpų tą dieną nėra).
+    expect(trips[0].trip.paid_km).toBe(1032);
+    expect(trips[0].kmAddresses).toBeNull();
+    expect(trips[0].notes.join(" ")).toMatch(/Baltiją/);
+  });
+
   it("kai km yra, PTV nereikia", () => {
     expect(build([leg("2", "2026-10-20 06:00:00", "2026-10-20 18:00:00", 120)]).trips[0].kmAddresses).toBeNull();
   });

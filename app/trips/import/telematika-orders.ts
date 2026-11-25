@@ -128,7 +128,8 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
       ...item,
       existingId: stored?.id ?? null,
       storedPaidKm: stored ? Number(stored.paid_km) : null,
-      changes: stored ? importChanges(stored, item) : null,
+      // Seniausias furos užsakymas duomenyse: kas buvo prieš jį, nežinoma – įrašytas reisas nekeičiamas.
+      changes: stored ? (item.feedEdge ? [] : importChanges(stored, item)) : null,
       handEdited: stored ? editedByHand(stored, stored.import_snapshot) : [],
       profitCents: result.profitCents,
       marginPercent: result.marginPercent,

@@ -176,6 +176,22 @@ export function idleDaysBeforeLoading(fromDate: string, loadingDate: string, kmO
   return idle;
 }
 
+/**
+ * Savaitgalis krovinio viduje (vartotojo sprendimas, 2026-11-25): šeštadienis ar
+ * sekmadienis, kai pakrauta fura stovėjo (< 50 km), – vairuotojo poilsis, ne
+ * krovinio darbas. Pvz. pakrauta penktadienį, iškrauta pirmadienį. Pakrovimo
+ * diena ir dienos be paros ridos neišmetamos.
+ */
+export function idleWeekendDaysInLoad(loadingDate: string, endDate: string, kmOf: (date: string) => number | undefined): string[] {
+  const idle: string[] = [];
+  for (let date = addDays(loadingDate, 1); date <= endDate; date = addDays(date, 1)) {
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const km = kmOf(date);
+    if ((weekday === 0 || weekday === 6) && km !== undefined && km < STANDING_DAY_KM) idle.push(date);
+  }
+  return idle;
+}
+
 export interface OrderTime {
   hours: number;
   /** Valandos pagal dieną – kelių mokesčiams paskirstyti. */
@@ -260,6 +276,12 @@ export interface ImportedTrip {
   /** Ką teko spėti – rodoma peržiūroje. */
   notes: string[];
   /**
+   * Seniausias tos furos užsakymas Telematikos mėnesio duomenyse: kas buvo prieš
+   * jį, nebežinoma (srautas siekia tik mėnesį), todėl jo tušti km ir keliai iš
+   * dienų be užsakymo nepatikimi. Jau importuotas toks reisas nekeičiamas.
+   */
+  feedEdge: boolean;
+  /**
    * Pakrautų atkarpų adresai PTV maršrutui, kai Telematikoje jų km nėra.
    * `null` – km yra. Importuojant PTV km pakeičia `paid_km` įvertį.
    */
@@ -323,6 +345,8 @@ export function carriedEmptyKm(input: {
   firstDay: string;
   lastDay: string;
   nextOrder: (plate: string, date: string) => string | null;
+  /** Diena prieš pirmą tos furos užsakymą duomenyse – jos rida niekam nepriskiriama. */
+  beforeTruckData?: (plate: string, date: string) => boolean;
 }): { carried: Map<string, number>; byOdometer: Set<string>; unassignedKm: number; suspectKm: number } {
   const carried = new Map<string, number>();
   const add = (id: string, km: number) => carried.set(id, (carried.get(id) ?? 0) + km);
@@ -397,6 +421,7 @@ export function carriedEmptyKm(input: {
     for (const day of input.daily) {
       if (plateKey(day.plate) !== key || day.km <= 0 || onDay.has(day.date)) continue;
       if (day.date < input.firstDay || day.date > input.lastDay) continue;
+      if (input.beforeTruckData?.(day.plate, day.date)) continue;
       const next = input.nextOrder(day.plate, day.date);
       if (next && byOdometer.has(next)) continue;
       if (next) add(next, day.km);
@@ -489,6 +514,28 @@ export function buildOrderTrips(input: {
    * Diena be užsakymo dažniausiai yra pervažiavimas į pakrovimą – jį apmoka
    * kitas užsakymas, ne niekas.
    */
+  /**
+   * Kiekvienos furos pirmo užsakymo diena duomenyse. Iki jos rida ir keliai
+   * niekam nepriskiriami: ankstesnis užsakymas iškrito iš mėnesio srauto, ir
+   * visa jo laikotarpio rida būtų užkrauta seniausiam likusiam (MHE 763 10-23
+   * gaudavo 2 189 tuščių km vietoj 689).
+   */
+  const truckFirstDay = new Map<string, string>();
+  for (const item of ready) {
+    const day = item.legs[0].start.slice(0, 10);
+    const known = truckFirstDay.get(item.truck.id);
+    if (!known || day < known) truckFirstDay.set(item.truck.id, day);
+  }
+  const edgeOrder = new Map<string, (typeof ready)[number]>();
+  for (const item of ready) {
+    const known = edgeOrder.get(item.truck.id);
+    if (!known || item.legs[0].start < known.legs[0].start) edgeOrder.set(item.truck.id, item);
+  }
+  const beforeTruckData = (plate: string, date: string): boolean => {
+    const first = truckFirstDay.get(trucks.get(plateKey(plate))?.id ?? "");
+    return first === undefined || date < first;
+  };
+
   const nextOrder = (plate: string, date: string): string | null => {
     const truck = trucks.get(plateKey(plate));
     const limit = addDays(date, NEXT_ORDER_DAYS);
@@ -515,6 +562,7 @@ export function buildOrderTrips(input: {
   let unassignedTollCents = 0;
   for (const supply of input.supplies) {
     if ((supply.kind !== "toll" && supply.kind !== "ferry") || supply.date < firstDay || supply.date > lastDay) continue;
+    if (beforeTruckData(supply.plate, supply.date)) continue;
     const target = supply.kind === "ferry" ? ferryCents : tollCents;
     const shares = dayShares(supply.plate, supply.date);
     if (shares.length === 0) {
@@ -549,7 +597,8 @@ export function buildOrderTrips(input: {
     daily: input.daily,
     firstDay,
     lastDay,
-    nextOrder,
+    nextOrder: (plate, date) => (beforeTruckData(plate, date) ? null : nextOrder(plate, date)),
+    beforeTruckData,
   });
 
   const fleetFuel = fleetPrice(input.supplies, "diesel");
@@ -603,10 +652,11 @@ export function buildOrderTrips(input: {
 
     // Stovėjimas laukiant krovinio (savaitgalis, stovėjimo dienos) – ne šio krovinio laikas.
     const loadingDate = (loadedLegs[0] ?? legs[0]).start.slice(0, 10);
-    const idleDates = idleDaysBeforeLoading(start.slice(0, 10), loadingDate, (date) => kmByDay.get(`${plateKey(truck.plate)}|${date}`));
+    const kmOf = (date: string) => kmByDay.get(`${plateKey(truck.plate)}|${date}`);
+    const idleDates = [...idleDaysBeforeLoading(start.slice(0, 10), loadingDate, kmOf), ...idleWeekendDaysInLoad(loadingDate, end.slice(0, 10), kmOf)];
     const orderTime = allocated.get(orderId);
     const idleHours = idleDates.reduce((sum, date) => sum + (orderTime?.byDay.get(date) ?? 0), 0);
-    if (idleHours > 0) notes.push(`Neskaičiuota prastova prieš pakrovimą: ${idleDates.join(", ")} (${String(round(idleHours / 24, 2)).replace(".", ",")} d.).`);
+    if (idleHours > 0) notes.push(`Neskaičiuota prastova: ${idleDates.join(", ")} (${String(round(idleHours / 24, 2)).replace(".", ",")} d.).`);
     const hours = Math.max(0, (orderTime?.hours ?? 0) - idleHours);
     const days = Math.max(0.01, round(hours / 24, 3));
     // Reiso data – pirma neišmesta diena. ponytail: tarpas viduryje (pn – pr) neišsaugomas,
@@ -633,6 +683,7 @@ export function buildOrderTrips(input: {
 
     return {
       orderId,
+      feedEdge: edgeOrder.get(truck.id)?.orderId === orderId,
       kmAddresses,
       customer: order.client,
       plate: truck.plate,

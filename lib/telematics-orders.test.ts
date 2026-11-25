@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { perDiemNormCents } from "./per-diem-norms";
 import type { DailyDistance, Supply } from "./telematics-costs";
-import { allocateTime, buildOrderTrips, carriedEmptyKm, editedByHand, idleDaysBeforeLoading, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
+import { allocateTime, buildOrderTrips, carriedEmptyKm, editedByHand, idleDaysBeforeLoading, idleWeekendDaysInLoad, importChanges, importSnapshot, parseOrderLegs, parseOrders, placeCity, placeQuery, type ImportTruck } from "./telematics-orders";
 
 const H = 3_600_000;
 const at = (value: string) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -159,6 +159,35 @@ describe("idleDaysBeforeLoading", () => {
   });
 });
 
+describe("idleWeekendDaysInLoad", () => {
+  const km = (days: Record<string, number>) => (date: string) => days[date];
+
+  it("savaitgalis, kai pakrauta fura stovėjo; važiavusi ar be ridos – lieka; pakrovimo diena – niekada", () => {
+    // MHE 763 10-29: pakrauta pn 10-30, š 0 km, s 90 km, iškrauta pr.
+    expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 90 }))).toEqual(["2026-10-31"]);
+    expect(idleWeekendDaysInLoad("2026-10-31", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 0 }))).toEqual(["2026-11-01"]);
+    expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({}))).toEqual([]);
+  });
+});
+
+describe("buildOrderTrips: Telematikos mėnesio riba", () => {
+  const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+
+  it("rida ir keliai iki pirmo furos užsakymo duomenyse niekam nepriskiriami; tas užsakymas pažymimas", () => {
+    const toll: Supply = { plate: "MHE 763", date: "2026-10-21", kind: "toll", quantity: null, costCents: 700, country: "SWE" };
+    const { trips } = build([
+      leg("1", "2026-10-22 08:00:00", "2026-10-22 18:00:00", 300),
+      leg("2", "2026-10-23 08:00:00", "2026-10-23 18:00:00", 300),
+    ], { now: "2026-11-01 00:00:00", daily: [day("2026-10-20", 500), day("2026-10-21", 500), day("2026-10-22", 300), day("2026-10-23", 300)], supplies: [toll] });
+    const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
+    // 10-20 ir 10-21 – prieš pirmą furos užsakymą: ankstesnis iškrito iš srauto.
+    expect(byOrder[1].trip.empty_km).toBe(0);
+    expect(byOrder[1].trip.bridges_cents).toBe(0);
+    expect(byOrder[1].feedEdge).toBe(true);
+    expect(byOrder[2].feedEdge).toBe(false);
+  });
+});
+
 describe("buildOrderTrips", () => {
   it("prastova prieš pakrovimą kroviniui laiko neneša (MHE 763, 10-23)", () => {
     const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
@@ -168,7 +197,7 @@ describe("buildOrderTrips", () => {
     ], { now: "2026-11-01 00:00:00", daily: [day("2026-10-23", 511), day("2026-10-24", 0), day("2026-10-25", 182), day("2026-10-26", 487), day("2026-10-27", 323)] });
     // 96 h − 48 h (šeštadienis, sekmadienis) = 2 paros; km ir kuras lieka.
     expect(trips[0].trip).toMatchObject({ days: 2, trip_date: "2026-10-23", paid_km: 436 });
-    expect(trips[0].notes).toContain("Neskaičiuota prastova prieš pakrovimą: 2026-10-24, 2026-10-25 (2 d.).");
+    expect(trips[0].notes).toContain("Neskaičiuota prastova: 2026-10-24, 2026-10-25 (2 d.).");
   });
 
   it("stovėjimas nuo pat iškrovimo – reiso data pasislenka", () => {

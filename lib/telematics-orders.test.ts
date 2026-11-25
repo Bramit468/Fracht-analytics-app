@@ -156,6 +156,31 @@ describe("buildOrderTrips: paros ridos likutis neskaičiuojamas dukart", () => {
 
 });
 
+describe("buildOrderTrips: privažiavimas be Telematikos atkarpos", () => {
+  const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+
+  it("kita vieta – PTV privažiavimas nuo ankstesnio iškrovimo, ne daugiau nei paros rida", () => {
+    const { trips } = build([
+      // 1: Lörenskog → Jönköping; 2: pakrovimas vėl Lörenskog, tuščios atkarpos nėra.
+      leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
+      leg("2", "2026-10-22 08:00:00", "2026-10-22 18:00:00", 290),
+    ], { now: "2026-11-01 00:00:00", daily: [day("2026-10-20", 300), day("2026-10-21", 420), day("2026-10-22", 290)] });
+    const byOrder = Object.fromEntries(trips.map((trip) => [trip.orderId, trip]));
+    expect(byOrder[1].positioning).toBeNull();
+    expect(byOrder[2].positioning).toEqual({ from: "Y, 553 Jönköping, SWE", to: "X, 1470 Lörenskog, NOR", maxKm: 1010 });
+    expect(byOrder[2].trip.empty_km).toBe(0);
+  });
+
+  it("tuščia atkarpa yra ar ta pati vieta – PTV nereikia", () => {
+    const { trips } = build([
+      leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
+      leg("2", "2026-10-21 08:00:00", "2026-10-21 12:00:00", 420, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+      leg("2", "2026-10-21 12:00:00", "2026-10-21 20:00:00", 290),
+    ], { now: "2026-11-01 00:00:00" });
+    expect(trips.find((trip) => trip.orderId === "2")!.positioning).toBeNull();
+  });
+});
+
 describe("buildOrderTrips: Telematikos mėnesio riba", () => {
   const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
 

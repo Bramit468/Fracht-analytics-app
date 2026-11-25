@@ -104,8 +104,25 @@ export function TelematikaImport() {
             if (route.quota) ptvStopped = true;
           }
         }
+        // Privažiavimas Telematikoje neįvestas – PTV kelias nuo ankstesnio iškrovimo
+        // iki pakrovimo, ne daugiau nei fura tuo metu nuvažiavo.
+        let positioned = false;
+        if (item.positioning && item.storedPositionedKm !== null) {
+          positioned = true;
+        } else if (item.positioning && !ptvStopped) {
+          const route = await ptvRouteKm([item.positioning.from, item.positioning.to]);
+          if (route.ok) {
+            const emptyKm = Math.round(Math.min(route.km, item.positioning.maxKm ?? route.km) * 100) / 100;
+            trip = { ...trip, empty_km: emptyKm };
+            legs = [{ country: "Nemokami", km: Math.round((trip.paid_km + emptyKm) * 100) / 100 }];
+            positioned = true;
+          } else {
+            ptvMisses.push(`${item.trip.trip_number} (privažiavimas): ${route.message}`);
+            if (route.quota) ptvStopped = true;
+          }
+        }
         // Kopija – kad kitas atnaujinimas atskirtų rankinį pataisymą nuo Telematikos pakeitimo.
-        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: importSnapshot(trip), ...(available ? { customer_id: customerId } : {}) }, legs);
+        await saveTrip({ ...trip, id: item.existingId ?? undefined, import_snapshot: { ...importSnapshot(trip), ...(positioned ? { positioned: true } : {}) }, ...(available ? { customer_id: customerId } : {}) }, legs);
         saved.add(item.orderId);
       } catch {
         failures.push(`${item.trip.trip_number} (${item.trip.trip_date})`);

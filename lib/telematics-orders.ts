@@ -286,6 +286,12 @@ export interface ImportedTrip {
    * `null` – km yra. Importuojant PTV km pakeičia `paid_km` įvertį.
    */
   kmAddresses: string[] | null;
+  /**
+   * Privažiavimas be Telematikos tuščios atkarpos ir odometro: PTV kelias nuo
+   * ankstesnio iškrovimo iki šio pakrovimo, ne daugiau nei `maxKm` (paros rida
+   * tomis dienomis). Skaičiuojamas importuojant (2026-11-25). `null` – nereikia.
+   */
+  positioning: { from: string; to: string; maxKm: number | null } | null;
 }
 
 export interface SkippedOrder {
@@ -524,6 +530,16 @@ export function buildOrderTrips(input: {
   const kmByDay = new Map<string, number>();
   for (const day of input.daily) kmByDay.set(`${plateKey(day.plate)}|${day.date}`, (kmByDay.get(`${plateKey(day.plate)}|${day.date}`) ?? 0) + day.km);
 
+  // Ankstesnis tos furos užsakymas – iš kur fura važiavo į pakrovimą.
+  const previousOf = new Map<string, (typeof ready)[number]>();
+  const sortedReady = [...ready].sort((a, b) => a.legs[0].start.localeCompare(b.legs[0].start));
+  const lastOfTruck = new Map<string, (typeof ready)[number]>();
+  for (const item of sortedReady) {
+    const last = lastOfTruck.get(item.truck.id);
+    if (last) previousOf.set(item.orderId, last);
+    lastOfTruck.set(item.truck.id, item);
+  }
+
   const trips = ready.map(({ orderId, order, legs, truck }): ImportedTrip => {
     const notes: string[] = [];
     const carried = carriedTollCents.get(orderId);
@@ -550,6 +566,24 @@ export function buildOrderTrips(input: {
     if (carriedKm > 0) notes.push(`Tušti km +${Math.round(carriedKm)} – pervažiavimas be užsakymo prieš šį užsakymą (odometras).`);
     if (carriedKm >= MAX_CARRIED_KM) notes.push(`Prieš šį užsakymą fura nuvažiavo daugiau nei ${MAX_CARRIED_KM} km be užsakymo – patikrinkite, ar Telematikoje neįvestas kitas užsakymas.`);
     const emptyKm = round(legEmptyKm + carriedKm, 2);
+
+    // Privažiavimas Telematikoje neįvestas – PTV kelias nuo ankstesnio iškrovimo
+    // iki šio pakrovimo (vartotojo sprendimas, 2026-11-25), bet ne daugiau, nei
+    // fura tomis dienomis nuvažiavo. Ta pati vieta – privažiavimo nėra.
+    let positioning: ImportedTrip["positioning"] = null;
+    const previous = previousOf.get(orderId);
+    const loadPlace = (loadedLegs[0] ?? legs[0]).startPlace;
+    const fromPlace = previous?.legs[previous.legs.length - 1].endPlace ?? "";
+    if (emptyKm === 0 && previous && fromPlace.trim() && loadPlace.trim() && placeCity(fromPlace).toLowerCase() !== placeCity(loadPlace).toLowerCase()) {
+      let ridden = 0;
+      let known = false;
+      for (let date = previous.legs[previous.legs.length - 1].end.slice(0, 10); date <= (loadedLegs[0] ?? legs[0]).start.slice(0, 10); date = addDays(date, 1)) {
+        const km = kmByDay.get(`${plateKey(truck.plate)}|${date}`);
+        if (km !== undefined) { ridden += km; known = true; }
+      }
+      positioning = { from: placeQuery(fromPlace), to: placeQuery(loadPlace), maxKm: known ? round(ridden, 2) : null };
+      notes.push(`Tušti km – PTV kelias ${placeCity(fromPlace)} → ${placeCity(loadPlace)} (Telematikoje privažiavimo nėra).`);
+    }
     // Norma – iš paties užsakymo atkarpų: jų kuras matuotas tik jų km.
     const orderKm = paidKm + legEmptyKm;
     const totalKm = paidKm + emptyKm;
@@ -602,6 +636,7 @@ export function buildOrderTrips(input: {
       orderId,
       feedEdge: edgeOrder.get(truck.id)?.orderId === orderId,
       kmAddresses,
+      positioning,
       customer: order.client,
       plate: truck.plate,
       start,
@@ -670,6 +705,9 @@ function fieldChanges(a: StoredOrderTrip, b: StoredOrderTrip, paidKm: boolean): 
 export function importChanges(stored: StoredOrderTrip, built: ImportedTrip): string[] {
   return fieldChanges(stored, built.trip, !built.kmAddresses);
 }
+
+/** Importo kopija su žyme, kad tušti km – PTV privažiavimas (kitą kartą PTV nebeklausiama). */
+export type ImportSnapshot = StoredOrderTrip & { positioned?: boolean; old_idle_dates?: string[] };
 
 /** Ką importas įrašė – saugoma `trips.import_snapshot` (0021). */
 export function importSnapshot(trip: StoredOrderTrip): StoredOrderTrip {

@@ -112,7 +112,8 @@ export function TelematikaImport() {
         } else if (item.positioning && !ptvStopped) {
           const route = await ptvRouteKm([item.positioning.from, item.positioning.to]);
           if (route.ok) {
-            const emptyKm = Math.round(Math.min(route.km, item.positioning.maxKm ?? route.km) * 100) / 100;
+            // Telematikos tuščia atkarpa būna ir vietinė (keli km) – imamas didesnis.
+            const emptyKm = Math.round(Math.max(trip.empty_km, Math.min(route.km, item.positioning.maxKm ?? route.km)) * 100) / 100;
             trip = { ...trip, empty_km: emptyKm };
             legs = [{ country: "Nemokami", km: Math.round((trip.paid_km + emptyKm) * 100) / 100 }];
             positioned = true;

@@ -171,11 +171,22 @@ describe("buildOrderTrips: privažiavimas be Telematikos atkarpos", () => {
     expect(byOrder[2].trip.empty_km).toBe(0);
   });
 
-  it("tuščia atkarpa yra ar ta pati vieta – PTV nereikia", () => {
+  it("ir su trumpa Telematikos tuščia atkarpa (vietinis važiavimas) – PTV privažiavimas vis tiek skaičiuojamas", () => {
     const { trips } = build([
       leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
-      leg("2", "2026-10-21 08:00:00", "2026-10-21 12:00:00", 420, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
-      leg("2", "2026-10-21 12:00:00", "2026-10-21 20:00:00", 290),
+      leg("2", "2026-10-21 08:00:00", "2026-10-21 09:00:00", 3, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+      leg("2", "2026-10-21 09:00:00", "2026-10-21 20:00:00", 290),
+    ], { now: "2026-11-01 00:00:00" });
+    const trip = trips.find((item) => item.orderId === "2")!;
+    expect(trip.positioning).not.toBeNull();
+    expect(trip.trip.empty_km).toBe(3);
+  });
+
+  it("ta pati vieta – PTV nereikia", () => {
+    const same = { StartPlace: "C, SWE, Jönköping, 553, Z" };
+    const { trips } = build([
+      leg("1", "2026-10-20 08:00:00", "2026-10-20 18:00:00", 300),
+      leg("2", "2026-10-21 08:00:00", "2026-10-21 20:00:00", 290, same),
     ], { now: "2026-11-01 00:00:00" });
     expect(trips.find((trip) => trip.orderId === "2")!.positioning).toBeNull();
   });

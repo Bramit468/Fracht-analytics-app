@@ -37,6 +37,7 @@ import { truckRowToCalc } from "../lib/truck";
 import type { Truck } from "../types/truck";
 import type { MonthCostRow } from "../lib/truck-month-costs";
 import { truckReport, type TruckReportRow } from "../lib/truck-report";
+import { roundTrips } from "../lib/round-trips";
 import { loadFuelReport, loadPlanActuals, loadTollsByCountry, type FuelReport, type PlanActualReport, type TollReport } from "./dashboard-fuel";
 
 function formatPercent(value: number | null): string {
@@ -170,7 +171,7 @@ function LossAlerts({ trips }: { trips: TripSummary[] }) {
   </div>;
 }
 
-const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }, { key: "weekly", label: "Savaitės" }, { key: "trucks", label: "Furos" }] as const;
+const TABS = [{ key: "profit", label: "Pelningumas" }, { key: "costs", label: "Kaštai" }, { key: "fuel", label: "Kuras" }, { key: "variance", label: "Planas ir faktas" }, { key: "weekly", label: "Savaitės" }, { key: "trucks", label: "Furos" }, { key: "rounds", label: "Kelionės" }] as const;
 type Tab = (typeof TABS)[number]["key"];
 
 function Tabs({ value, onChange }: { value: Tab; onChange: (tab: Tab) => void }) {
@@ -763,6 +764,60 @@ function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFilte
   </div>;
 }
 
+/**
+ * Kelionės pirmyn–atgal: nuolatinė furos kryptis vertinama visa, ne pavieniais
+ * reisais (tuščias grįžimas ar atgalinis krovinys perkelia pelną tarp reisų).
+ */
+function RoundTripsTab({ trips, customerFiltered }: { trips: TripSummary[]; customerFiltered: boolean }) {
+  if (customerFiltered) return <p className="rounded-lg border border-line bg-surface px-6 py-8 text-center text-sm text-muted">Kelionės rodomos be užsakovo filtro: atgalinis krovinys dažnai būna kito užsakovo.</p>;
+  const trucks = roundTrips(trips);
+  if (trucks.length === 0) return <p className="rounded-lg border border-line bg-surface px-6 py-8 text-center text-sm text-muted">Šiame laikotarpyje nė viena fura neturi nuolatinės krypties (bent 3 reisų iš tos pačios vietos).</p>;
+  const signed = (cents: number | null) => <span className={cents === null ? "text-muted" : cents >= 0 ? "text-good" : "text-bad"}>{cents === null ? "—" : formatCents(cents)}</span>;
+
+  return <div className="space-y-3">
+    <p className="text-sm text-muted">
+      Kelionė = atgaliniai kroviniai (jei buvo) + kitas krovinys iš bazės. Tuščias grįžimas į bazę įskaičiuojamas į bazės krovinį, todėl tik visa kelionė parodo, kiek kryptis uždirba; pavienis reisas gali atrodyti nuostolingas ar labai pelningas vien dėl to, kuriam teko grįžimas. Bazė – dažniausia furos pakrovimo vieta (bent 3 reisai).
+    </p>
+    {trucks.map((truck) => {
+      const done = truck.rounds.filter((item) => item.complete);
+      const profits = done.map((item) => item.profitCents);
+      return <details key={truck.plate} className="rounded-lg border border-line bg-surface">
+        <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-6 gap-y-1 px-5 py-3 text-sm">
+          <span className="font-mono font-medium">{truck.plate}</span>
+          <span className="text-muted">bazė {truck.base}</span>
+          <span>{done.length} kel.</span>
+          <span>vid. pelnas {signed(truck.averageProfitCents)}</span>
+          <span>per parą {signed(truck.averageProfitPerDayCents)}</span>
+          {profits.length > 1 && <span className="text-muted">nuo {formatCents(Math.min(...profits))} iki {formatCents(Math.max(...profits))}</span>}
+        </summary>
+        <div className="overflow-x-auto border-t border-line">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-line text-right text-xs font-medium text-muted">
+              <th className="px-5 py-2 text-left font-medium">Reisai kelionėje</th>
+              <th className="px-3 py-2 font-medium">Pajamos</th>
+              <th className="px-3 py-2 font-medium">Paros</th>
+              <th className="px-3 py-2 font-medium">Pelnas</th>
+              <th className="px-5 py-2 font-medium">Per parą</th>
+            </tr></thead>
+            <tbody className="divide-y divide-line text-right tabular-nums">{truck.rounds.map((item) => <tr key={item.trips[0].id} className={item.complete ? "" : "text-muted"}>
+              <td className="px-5 py-2 text-left">
+                {item.trips.map((trip) => <span key={trip.id} className="block">
+                  {trip.tripDate} · <Link href={`/trips/${trip.id}/edit`} className="underline">{trip.origin} → {trip.destination}</Link> · {signed(trip.profitCents)}
+                </span>)}
+                {!item.complete && <span className="block text-xs">Nebaigta: po jos bazės krovinio dar nėra.</span>}
+              </td>
+              <td className="px-3 py-2">{formatCents(item.revenueCents)}</td>
+              <td className="px-3 py-2">{item.days.toLocaleString("lt-LT", { maximumFractionDigits: 2 })}</td>
+              <td className="px-3 py-2 font-medium">{signed(item.profitCents)}</td>
+              <td className="px-5 py-2">{signed(item.profitPerDayCents)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </details>;
+    })}
+  </div>;
+}
+
 const DETAIL_GROUPS = [
   { key: "trucks", label: "Furos", column: "Fura" },
   { key: "customers", label: "Užsakovai", column: "Užsakovas" },
@@ -1006,6 +1061,9 @@ export function Dashboard() {
     </div>}
     {tab === "weekly" && <div role="tabpanel" aria-label="Savaitės">
       <WeeklyTab trips={realistic} today={today} />
+    </div>}
+    {tab === "rounds" && <div role="tabpanel" aria-label="Kelionės">
+      <RoundTripsTab trips={trips} customerFiltered={Boolean(filters.customerId)} />
     </div>}
     {tab === "trucks" && <div role="tabpanel" aria-label="Furos">
       <TruckReportTab trips={trips} trucks={trucks} monthCosts={monthCosts} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />

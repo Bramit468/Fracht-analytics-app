@@ -10,6 +10,8 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { canUseTelematics } from "@/lib/telematics-access";
 import { parseCanDaily, parseSupplies } from "@/lib/telematics-costs";
 import { fetchTelematics, TelematicsFeedError } from "@/lib/telematics-feed";
+import { mergeDaily, mergeRawPayloads, mergeSupplyPayloads } from "@/lib/telematics-archive";
+import { readArchive, writeArchive, type ArchivedSources } from "@/lib/telematics-archive-store";
 import { buildOrderTrips, editedByHand, importChanges, parseOrderLegs, parseOrders, type ImportedTrip, type SkippedOrder, type StoredOrderTrip } from "@/lib/telematics-orders";
 import { calculateSavedTrip } from "@/lib/trip-input";
 import { fetchAllRows } from "@/lib/trips";
@@ -35,7 +37,13 @@ export interface OrderPreview extends ImportedTrip {
 }
 
 export type OrderImportResult =
-  | { ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number; suspectEmptyKm: number }
+  | {
+    ok: true; trips: OrderPreview[]; skipped: SkippedOrder[]; unassignedTollCents: number; unassignedEmptyKm: number; suspectEmptyKm: number;
+    /** Ankstyviausia kelionė, iš kurios skaičiuota (archyvas + srautas). */
+    dataFrom: string | null;
+    /** Archyvo įspėjimas; `null` – viskas gerai. */
+    archiveNote: string | null;
+  }
   | { ok: false; message: string };
 
 /** Dabartinis laikas taip, kaip jį rašo Telematika: vietinis, be zonos. */
@@ -95,15 +103,34 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   }
 
-  let built;
+  const [ordersRaw, tripsRaw, canRaw, suppliesRaw, rates] = feeds;
+
+  // Srautai siekia tik mėnesį, todėl kiekvienas atnaujinimas juos nusirašo į
+  // archyvą ir skaičiuoja iš visko, kas sukaupta (2026-11-25): iš srauto
+  // iškritę užsakymai perskaičiuojami ta pačia logika, o ne lieka seni.
+  let archived: ArchivedSources = { orders: [], trips: [], daily: [], supplies: [] };
+  let archiveNote: string | null = null;
   try {
-    const [ordersRaw, tripsRaw, canRaw, suppliesRaw, rates] = feeds;
+    const saved = await writeArchive(supabase, { canDaily: canRaw, supplies: suppliesRaw, orders: ordersRaw, trips: tripsRaw });
+    if (saved.error) archiveNote = `Archyvas neatnaujintas: ${saved.error}`;
+    else if (saved.rawMissing) archiveNote = "Užsakymų archyvui reikia migracijos 0028 – skaičiuota tik iš paskutinio mėnesio.";
+    archived = await readArchive(supabase);
+  } catch (cause) {
+    console.error("Telematikos užsakymų importas: archyvas", cause);
+    archiveNote = "Archyvo nepavyko perskaityti – skaičiuota tik iš paskutinio mėnesio.";
+  }
+
+  let built;
+  let dataFrom: string | null = null;
+  try {
+    const legs = parseOrderLegs(mergeRawPayloads("trips", archived.trips, tripsRaw));
+    dataFrom = legs.reduce<string | null>((min, leg) => (min === null || leg.start < min ? leg.start : min), null)?.slice(0, 10) ?? null;
     built = buildOrderTrips({
-      orders: parseOrders(ordersRaw),
-      legs: parseOrderLegs(tripsRaw),
+      orders: parseOrders(mergeRawPayloads("orders", archived.orders, ordersRaw)),
+      legs,
       trucks: trucksResult.data as Truck[],
-      daily: parseCanDaily(canRaw),
-      supplies: parseSupplies(suppliesRaw, (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
+      daily: mergeDaily(archived.daily, parseCanDaily(canRaw)),
+      supplies: parseSupplies(mergeSupplyPayloads(archived.supplies, suppliesRaw), (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
       now: vilniusNow(),
       perDiemPercent: settings.perDiemPercent,
     });
@@ -148,7 +175,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
     };
   });
 
-  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm, suspectEmptyKm: built.suspectEmptyKm };
+  return { ok: true, trips, skipped: built.skipped, unassignedTollCents: built.unassignedTollCents, unassignedEmptyKm: built.unassignedEmptyKm, suspectEmptyKm: built.suspectEmptyKm, dataFrom, archiveNote };
 }
 
 export type PtvKmResult = { ok: true; km: number } | { ok: false; message: string; quota?: boolean };

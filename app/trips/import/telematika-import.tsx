@@ -30,6 +30,8 @@ interface ImportSummary {
   unassignedTollCents: number;
   unassignedEmptyKm: number;
   suspectEmptyKm: number;
+  dataFrom: string | null;
+  archiveNote: string | null;
 }
 
 /** Praleidimo priežastys suskaičiuotos: „furos nėra sąraše – 3“. */
@@ -140,6 +142,8 @@ export function TelematikaImport() {
         unassignedTollCents: result.unassignedTollCents,
         unassignedEmptyKm: result.unassignedEmptyKm,
         suspectEmptyKm: result.suspectEmptyKm,
+        dataFrom: result.dataFrom,
+        archiveNote: result.archiveNote,
       });
       setReload((value) => value + 1);
     } catch {
@@ -162,12 +166,14 @@ export function TelematikaImport() {
 
     {summary && <div role="status" className="space-y-2 rounded-lg border border-line bg-page px-4 py-3 text-sm">
       <p>
+        {summary.dataFrom && <span className="block text-muted">Skaičiuota iš kelionių nuo {summary.dataFrom} (archyvas ir Telematika); šie duomenys išsaugoti archyve.</span>}
         <span className="font-medium">Nauji: {summary.created}</span> · atnaujinti: {summary.updated.length} · nepakito: {summary.unchanged}
         {summary.skipped.length > 0 && <> · praleista: {summary.skipped.length} ({reasonCounts(summary.skipped)})</>}.
         {summary.unassignedTollCents > 0 && <> Kelių mokesčių dienomis be užsakymų: {formatCents(summary.unassignedTollCents)} – jie reisams nepriskirti.</>}
         {summary.unassignedEmptyKm > 0 && <> Km be užsakymo, po kurių kito užsakymo nebuvo (grįžimas į bazę, stovėjimas): {summary.unassignedEmptyKm.toLocaleString("lt-LT")} km – nepriskirti.</>}
         {summary.suspectEmptyKm > 0 && <> Dar {summary.suspectEmptyKm.toLocaleString("lt-LT")} km be užsakymo – per daug vienam pervažiavimui, greičiausiai Telematikoje neįvesti užsakymai; reisams nepriskirti (žr. pastabas prie reisų).</>}
       </p>
+      {summary.archiveNote && <p role="alert" className="text-warn">{summary.archiveNote}</p>}
       {summary.failures.length > 0 && <p role="alert" className="text-bad">
         Neįrašyti: {summary.failures.join(", ")}. Dažniausia priežastis – nepaleista migracija 0019 arba trūksta „Nemokami“ įkainio.
       </p>}

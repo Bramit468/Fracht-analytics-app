@@ -135,6 +135,19 @@ export function placeQuery(place: string): string {
   return [parts.street, town, parts.country].filter(Boolean).join(", ");
 }
 
+const BALTIC_EAST = new Set(["LTU", "LVA", "EST", "FIN"]);
+const BALTIC_WEST = new Set(["SWE", "NOR"]);
+
+/**
+ * Ar maršrutas kerta Baltiją (keltu). PTV Baltijos keltų nežino ir veda aplink
+ * sausuma (Gardermoen → Liepynai per Gedser–Rostock 1 998 km), todėl tokiems
+ * reisams km imami iš odometro – kaip fura tikrai važiavo (vartotojo sprendimas, 2026-11-25).
+ */
+export function crossesBaltic(places: string[]): boolean {
+  const countries = places.map((place) => placeParts(place)?.country ?? "");
+  return countries.some((code) => BALTIC_EAST.has(code)) && countries.some((code) => BALTIC_WEST.has(code));
+}
+
 /** „Pavadinimas, SWE, Linköping, 582 75, Gatvė 5“ → „Linköping, SWE“. */
 export function placeCity(place: string): string {
   const parts = placeParts(place);
@@ -557,6 +570,39 @@ export function buildOrderTrips(input: {
   const kmByDay = new Map<string, number>();
   for (const day of input.daily) kmByDay.set(`${plateKey(day.plate)}|${day.date}`, (kmByDay.get(`${plateKey(day.plate)}|${day.date}`) ?? 0) + day.km);
 
+  /**
+   * Odometro rida neišmatuotoms atkarpoms: kiekvienos dienos rida minus tą dieną
+   * Telematikos išmatuotų atkarpų km (pagal valandas), likutis – neišmatuotoms
+   * atkarpoms pagal jų valandas tą dieną. Keltas į odometrą nepatenka – tai tik
+   * sausumos km. ponytail: važiavimas tarp užsakymų tą dieną irgi tenka atkarpoms.
+   */
+  const hoursOn = (leg: OrderLeg, date: string): number => {
+    const from = Math.max(time(leg.start), time(`${date} 00:00:00`));
+    const to = Math.min(time(leg.end), time(`${addDays(date, 1)} 00:00:00`));
+    return Math.max(0, (to - from) / HOUR);
+  };
+  const residualKm = (truckId: string, plate: string, target: OrderLeg[]): number => {
+    const truckLegs = ready.filter((item) => item.truck.id === truckId).flatMap((item) => item.legs);
+    let km = 0;
+    for (const leg of target) {
+      for (let date = leg.start.slice(0, 10); date <= leg.end.slice(0, 10); date = addDays(date, 1)) {
+        const own = hoursOn(leg, date);
+        if (own <= 0) continue;
+        let measured = 0;
+        let unmeasuredHours = 0;
+        for (const other of truckLegs) {
+          const hours = hoursOn(other, date);
+          if (hours <= 0) continue;
+          if (other.km > 0) measured += (other.km * hours) / Math.max(hours, (time(other.end) - time(other.start)) / HOUR);
+          else unmeasuredHours += hours;
+        }
+        const dayKm = kmByDay.get(`${plateKey(plate)}|${date}`) ?? 0;
+        km += (Math.max(0, dayKm - measured) * own) / unmeasuredHours;
+      }
+    }
+    return km;
+  };
+
   // Ankstesnis tos furos užsakymas – iš kur fura važiavo į pakrovimą.
   const previousOf = new Map<string, (typeof ready)[number]>();
   const sortedReady = [...ready].sort((a, b) => a.legs[0].start.localeCompare(b.legs[0].start));
@@ -582,6 +628,9 @@ export function buildOrderTrips(input: {
       // Atkarpose km nėra arba tik dalyje – užsakymo atstumas tikras, PTV nereikia.
       paidKm = round(order.totalKm - legEmptyKm, 2);
       notes.push("Km – Telematikos užsakymo atstumas (atkarpose km nepilni).");
+    } else if (paidKm === 0 && crossesBaltic(legs.flatMap((leg) => [leg.startPlace, leg.endPlace]))) {
+      paidKm = round(residualKm(truck.id, truck.plate, loadedLegs.length > 0 ? loadedLegs : legs), 2);
+      notes.push("Per Baltiją: km – odometro rida krovinio metu (tik sausuma, keltas neįskaičiuotas), ne PTV.");
     } else if (paidKm === 0) {
       // Pakrautų atkarpų km Telematikoje nėra: peržiūrai – kas lieka iš paros
       // ridos po tuščių, importuojant – PTV maršrutas per tuos pačius adresus.
@@ -613,7 +662,8 @@ export function buildOrderTrips(input: {
     const previous = previousOf.get(orderId);
     const loadPlace = (loadedLegs[0] ?? legs[0]).startPlace;
     const fromPlace = previous?.legs[previous.legs.length - 1].endPlace ?? "";
-    if (previous && fromPlace.trim() && loadPlace.trim() && placeCity(fromPlace).toLowerCase() !== placeCity(loadPlace).toLowerCase()) {
+    // Per Baltiją PTV kelias klaidingas – lieka Telematikos tušti km ir odometro tarpas.
+    if (previous && fromPlace.trim() && loadPlace.trim() && placeCity(fromPlace).toLowerCase() !== placeCity(loadPlace).toLowerCase() && !crossesBaltic([fromPlace, loadPlace])) {
       let ridden = 0;
       let known = false;
       for (let date = previous.legs[previous.legs.length - 1].end.slice(0, 10); date <= (loadedLegs[0] ?? legs[0]).start.slice(0, 10); date = addDays(date, 1)) {

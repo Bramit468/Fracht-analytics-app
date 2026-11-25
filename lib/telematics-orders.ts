@@ -287,11 +287,35 @@ export interface ImportedTrip {
    */
   kmAddresses: string[] | null;
   /**
+   * Riba PTV apmokamiems km: odometro rida per užsakymo dienas be tuščių atkarpų.
+   * PTV kelią gali nuvesti aplinkui (Gardermoen → Liepynai sausuma 1 998 km, fura
+   * plaukė keltu, ~900 km). `null` – PTV nereikia arba paros ridos nėra.
+   */
+  paidMaxKm: number | null;
+  /**
    * Privažiavimas: PTV kelias nuo ankstesnio iškrovimo iki šio pakrovimo, ne
    * daugiau nei `maxKm` (paros rida tomis dienomis). Importuojant tušti km =
    * didesnis iš jo ir Telematikos tuščių km (2026-11-25). `null` – ta pati vieta.
    */
   positioning: { from: string; to: string; maxKm: number | null } | null;
+}
+
+/**
+ * Telematika kartais atkarpos pabaigą nustato kartu su kitos atkarpos pabaiga
+ * (LSE 729, 141394: Avesta → Ronneby 10-13…10-16, 1 507 km, nors Ronneby →
+ * Genk 10-14…10-16, 962 km, jau jos viduje). Tokios atkarpos km ir kuras apima
+ * vidinės atkarpos km – jie atimami, kad nebūtų skaičiuojami dukart.
+ * ponytail: tik visiškai apimanti atkarpa; dalinio persidengimo km nepadalinami.
+ */
+export function withoutNestedLegKm(legs: OrderLeg[]): OrderLeg[] {
+  // Atkarpa su neigiamais km (MHE 763, 141330: −448,7 km, pabaiga prieš pradžią)
+  // panaikintų tikrą atkarpą – tokios atkarpos km nelaikomi.
+  legs = legs.map((leg) => (leg.km < 0 ? { ...leg, km: 0, fuelL: Math.max(0, leg.fuelL) } : leg));
+  return legs.map((leg, index) => {
+    const next = legs[index + 1];
+    if (!next || leg.end <= next.start || leg.end < next.end) return leg;
+    return { ...leg, km: round(Math.max(0, leg.km - next.km), 3), fuelL: Math.max(0, leg.fuelL - next.fuelL) };
+  });
 }
 
 export interface SkippedOrder {
@@ -416,7 +440,10 @@ export function buildOrderTrips(input: {
     if (plates.size > 1) { skip("Užsakymą vežė kelios furos."); continue; }
     const truck = trucks.get(plateKey(plate));
     if (!truck) { skip(`Furos ${plate} nėra sąraše.`); continue; }
-    ready.push({ orderId, order, legs, truck });
+    // Užsakymo atstumas – tų pačių atkarpų suma, tad dvigubi km atimami ir iš jo.
+    const fixed = withoutNestedLegKm(legs);
+    const doubled = round(legs.reduce((sum, leg) => sum + leg.km, 0) - fixed.reduce((sum, leg) => sum + leg.km, 0), 3);
+    ready.push({ orderId, order: doubled > 0 && order.totalKm !== null ? { ...order, totalKm: round(order.totalKm - doubled, 3) } : order, legs: fixed, truck });
   }
 
   const allocated = allocateTime(ready.map(({ orderId, legs, truck }) => ({
@@ -550,6 +577,7 @@ export function buildOrderTrips(input: {
     const legEmptyKm = round(legs.filter((leg) => leg.empty).reduce((sum, leg) => sum + leg.km, 0), 2);
     const loadedLegs = legs.filter((leg) => !leg.empty);
     let kmAddresses: string[] | null = null;
+    let paidMaxKm: number | null = null;
     if (order.totalKm !== null && order.totalKm - legEmptyKm > paidKm + 0.5) {
       // Atkarpose km nėra arba tik dalyje – užsakymo atstumas tikras, PTV nereikia.
       paidKm = round(order.totalKm - legEmptyKm, 2);
@@ -561,6 +589,15 @@ export function buildOrderTrips(input: {
       const route = loadedLegs.length > 0 ? loadedLegs : legs;
       kmAddresses = [route[0].startPlace, ...route.map((leg) => leg.endPlace)].map(placeQuery);
       notes.push("Km Telematikoje nėra – importuojant skaičiuos PTV (dabar įvertis iš paros ridos).");
+      let ridden = 0;
+      let known = false;
+      // ±1 diena: užsakymo laikai Telematikoje būna planiniai (MCF 354 11-17 –
+      // 78 km, važiavo 11-18). ponytail: riba gaudo tik kelią aplinkui, ne tikslius km.
+      for (let date = addDays(start.slice(0, 10), -1); date <= addDays(end.slice(0, 10), 1); date = addDays(date, 1)) {
+        const km = kmByDay.get(`${plateKey(truck.plate)}|${date}`);
+        if (km !== undefined) { ridden += km; known = true; }
+      }
+      if (known) paidMaxKm = round(Math.max(0, ridden - legEmptyKm), 2);
     }
     const carriedKm = round(emptyRuns.carried.get(orderId) ?? 0, 2);
     if (carriedKm > 0) notes.push(`Tušti km +${Math.round(carriedKm)} – pervažiavimas be užsakymo prieš šį užsakymą (odometras).`);
@@ -638,6 +675,7 @@ export function buildOrderTrips(input: {
       orderId,
       feedEdge: edgeOrder.get(truck.id)?.orderId === orderId,
       kmAddresses,
+      paidMaxKm,
       positioning,
       customer: order.client,
       plate: truck.plate,

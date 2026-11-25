@@ -64,6 +64,26 @@ describe("truckReport", () => {
     expect(rows[0]).toMatchObject({ realProfitCents: null, idleCostCents: null, missingMonths: ["2026-10"] });
   });
 
+  it("km be krovinio: paros rida − reisų km, kuras pagal reisų kainą už km, atimamas iš realaus pelno", () => {
+    const [row] = truckReport({
+      plates: ["MHE 763"],
+      // Reisas: 436 + 400 = 836 km, kuras + AdBlue 365 € → 0,4366 €/km.
+      trips: [trip({})],
+      monthCosts: [{ ...month("t", "2026-10-01", 0), plate: "MHE 763" }],
+      dailyKm: [{ plate: "MHE 763", date: "2026-10-05", km: 836 }, { plate: "MHE 763", date: "2026-10-25", km: 200 }, { plate: "MHE 763", date: "2026-11-02", km: 999 }],
+      from: "2026-10-01",
+      to: "2026-10-31",
+    });
+    expect(row.kmWithoutLoad).toBe(200);
+    expect(row.kmWithoutLoadCents).toBe(Math.round((200 * 36500) / 836));
+    expect(row.realProfitCents).toBe(80000 - Math.round((200 * 36500) / 836));
+  });
+
+  it("be paros ridos – km be krovinio nežinomi, realus pelnas be jų", () => {
+    const [row] = truckReport({ plates: ["MHE 763"], trips: [trip({})], monthCosts: [{ ...month("t", "2026-10-01", 0), plate: "MHE 763" }], from: "2026-10-01", to: "2026-10-31" });
+    expect(row).toMatchObject({ kmWithoutLoad: null, kmWithoutLoadCents: null, realProfitCents: 80000 });
+  });
+
   it("stovėjusi fura su kaštais, bet be reisų – rodoma su visu nuostoliu", () => {
     const [row] = truckReport({ plates: ["LOV 141"], trips: [], monthCosts: [{ ...month("x", "2026-10-01", 310000), plate: "LOV 141" }], from: "2026-10-01", to: "2026-10-31" });
     expect(row).toMatchObject({ tripCount: 0, realProfitCents: -310000, idleDays: 31, utilizationPercent: 0 });

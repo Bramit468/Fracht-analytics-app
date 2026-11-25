@@ -33,6 +33,13 @@ export interface TruckReportRow {
   idleDays: number;
   /** Prastovos dienos × faktiniai kaštai per kalendorinę dieną. */
   idleCostCents: number | null;
+  /**
+   * Odometro rida, kurios nepaaiškina joks krovinys (savaitgalis, bazė, servisas):
+   * paros rida − reisų km (apmokami + tušti). `null` – paros ridos nėra.
+   */
+  kmWithoutLoad: number | null;
+  /** Jų kuras ir AdBlue pagal tos furos reisų vidutinę kainą už km; atimama iš realaus pelno. */
+  kmWithoutLoadCents: number | null;
   utilizationPercent: number | null;
   realProfitPerDayCents: number | null;
 }
@@ -69,6 +76,8 @@ export function truckReport(input: {
   plates: string[];
   trips: TripSummary[];
   monthCosts: (MonthCostRow & { plate: string })[];
+  /** Telematikos paros rida (archyvas). */
+  dailyKm?: { plate: string; date: string; km: number }[];
   from: string;
   to: string;
 }): TruckReportRow[] {
@@ -88,7 +97,14 @@ export function truckReport(input: {
     const idleDays = Math.round((calendarDays - loadDays) * 100) / 100;
     const actual = proratedActualCents(costs, input.from, input.to);
     const known = actual.missing.length === 0;
-    const realProfitCents = known ? grossCents - actual.cents : null;
+
+    // Važiavimas be krovinio: jo kuro reisai nemoka, bet jis sumokėtas.
+    const days = (input.dailyKm ?? []).filter((day) => plateKey(day.plate) === key && day.date >= input.from && day.date <= input.to);
+    const tripKm = trips.reduce((sum, trip) => sum + trip.paidKm + trip.emptyKm, 0);
+    const fuelCents = trips.reduce((sum, trip) => sum + (trip.costs ? trip.costs.fuel + trip.costs.adblue : 0), 0);
+    const kmWithoutLoad = days.length > 0 ? Math.max(0, Math.round(days.reduce((sum, day) => sum + day.km, 0) - tripKm)) : null;
+    const kmWithoutLoadCents = kmWithoutLoad === null ? null : tripKm > 0 ? Math.round((kmWithoutLoad * fuelCents) / tripKm) : 0;
+    const realProfitCents = known ? grossCents - actual.cents - (kmWithoutLoadCents ?? 0) : null;
 
     rows.push({
       plate,
@@ -104,6 +120,8 @@ export function truckReport(input: {
       loadDays,
       idleDays,
       idleCostCents: known ? Math.round((idleDays * actual.cents) / calendarDays) : null,
+      kmWithoutLoad,
+      kmWithoutLoadCents,
       utilizationPercent: (loadDays / calendarDays) * 100,
       realProfitPerDayCents: realProfitCents === null ? null : Math.round(realProfitCents / calendarDays),
     });

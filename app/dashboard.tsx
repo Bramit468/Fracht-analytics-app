@@ -27,7 +27,7 @@ import { comparePeriod, compareWithRange } from "../lib/period-compare";
 import { summarizeByRoute } from "../lib/route-profit";
 import { filterByRange, periodRange, precedingRange, PERIODS, type PeriodKey, type PeriodRange } from "../lib/trip-period";
 import { todayInVilnius } from "../lib/local-date";
-import { listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
+import { fetchAllRows, listTrips, type SkippedTrip, type TripSummary } from "../lib/trips";
 import { SkippedTripsNotice } from "./ui";
 import { summarizeByTruck } from "../lib/truck-profit";
 import { plateKey } from "../lib/telematics-costs";
@@ -684,10 +684,11 @@ interface ProfitRow extends Omit<ProfitGroup, "key"> {
  * Furos ataskaita (2 lygis): reisai vertinami savo paromis, o čia – kas iš
  * tikrųjų liko furai per laikotarpį su faktiniais kaštais ir prastovomis.
  */
-function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFiltered, today }: {
+function TruckReportTab({ trips, trucks, monthCosts, dailyKm, range, plate, customerFiltered, today }: {
   trips: TripSummary[];
   trucks: Truck[];
   monthCosts: MonthCostRow[];
+  dailyKm: { plate: string; date: string; km: number }[];
   range: PeriodRange;
   plate: string;
   customerFiltered: boolean;
@@ -702,6 +703,7 @@ function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFilte
     plates: trucks.map((truck) => truck.plate).filter((item) => !plate || plateKey(item) === plateKey(plate)).sort(),
     trips: trips.filter((trip) => trip.tripDate <= to),
     monthCosts: monthCosts.filter((row) => plateById.has(row.truck_id)).map((row) => ({ ...row, plate: plateById.get(row.truck_id)! })),
+    dailyKm,
     from: range.from,
     to,
   });
@@ -738,6 +740,7 @@ function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFilte
           <th className="px-3 py-3 font-medium">Per kal. dieną</th>
           <th className="px-3 py-3 font-medium">Užimtumas</th>
           <th className="px-3 py-3 font-medium">Prastovos</th>
+          <th className="px-3 py-3 font-medium">Km be krovinio</th>
           <th className="px-5 py-3 font-medium">Reisų pelnas</th>
         </tr></thead>
         <tbody className="divide-y divide-line text-right tabular-nums">{rows.map((row) => <tr key={row.plate}>
@@ -750,6 +753,7 @@ function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFilte
           <td className="px-3 py-3">{signed(row.realProfitPerDayCents)}</td>
           <td className="px-3 py-3">{formatPercent(row.utilizationPercent)}</td>
           <td className="px-3 py-3">{row.idleDays.toLocaleString("lt-LT", { maximumFractionDigits: 1 })} d.{row.idleCostCents !== null && <span className="block text-xs text-muted">{formatCents(row.idleCostCents)}</span>}</td>
+          <td className="px-3 py-3">{row.kmWithoutLoad === null ? <span className="text-muted">—</span> : <>{row.kmWithoutLoad.toLocaleString("lt-LT")} km<span className="block text-xs text-muted">{formatCents(row.kmWithoutLoadCents ?? 0)}</span></>}</td>
           <td className="px-5 py-3">{signed(row.tripProfitCents)}</td>
         </tr>)}</tbody>
       </table>
@@ -757,7 +761,8 @@ function TruckReportTab({ trips, trucks, monthCosts, range, plate, customerFilte
     <div className="space-y-1 rounded-lg border border-line bg-surface px-5 py-3 text-xs text-muted">
       <p><strong>Bendroji marža</strong> – pajamos minus reisų kuras, AdBlue ir keliai (kaštai, kurių be krovinio nebūtų).</p>
       <p><strong>Faktiniai kaštai</strong> – kas iš tikrųjų sumokėta (Furos → Faktiniai kaštai), padalinta laikotarpio dienoms: vairuotojas, lizingas, draudimas, mokesčiai, remontas, padangos, administracija.</p>
-      <p><strong>Realus pelnas</strong> – bendroji marža minus faktiniai kaštai: kiek fura iš tikrųjų uždirbo su savaitgaliais ir prastovomis.</p>
+      <p><strong>Realus pelnas</strong> – bendroji marža minus faktiniai kaštai ir km be krovinio kuras: kiek fura iš tikrųjų uždirbo su savaitgaliais ir prastovomis.</p>
+      <p><strong>Km be krovinio</strong> – odometro rida (Telematika), kurios nepaaiškina joks krovinys: važinėjimas savaitgalį, į bazę, į servisą. Kroviniams jie nepriskiriami (tušti km – tik privažiavimas prie pakrovimo); jų kuras ir AdBlue – pagal tos furos reisų vidutinę kainą už km.</p>
       <p><strong>Užimtumas</strong> – krovinių paros / kalendorinės dienos. <strong>Prastovos</strong> – dienos be krovinio; kaina – jų dalis faktinių kaštų.</p>
       <p><strong>Reisų pelnas</strong> – reisų „Pelno“ suma (pagal furų normas, tik krovinių paromis). Skirtumas su realiu – prastovos ir tai, kiek faktiniai kaštai skiriasi nuo normų.</p>
     </div>
@@ -907,6 +912,7 @@ export function Dashboard() {
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [monthCosts, setMonthCosts] = useState<MonthCostRow[]>([]);
+  const [dailyKm, setDailyKm] = useState<{ plate: string; date: string; km: number }[]>([]);
   const [filters, setFilters] = useState<Filters>({ period: "all", from: "", to: "", customerId: "", plate: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -918,7 +924,7 @@ export function Dashboard() {
     async function loadDashboard() {
       try {
         const skippedTrips: SkippedTrip[] = [];
-        const [loadedTrips, loadedCustomers, loadedTrucks, loadedMonthCosts] = await Promise.all([
+        const [loadedTrips, loadedCustomers, loadedTrucks, loadedMonthCosts, loadedDaily] = await Promise.all([
           listTrips(skippedTrips),
           // Užsakovų filtras – patogumas: be lentelės (0014) suvestinė veikia ir be jo.
           listCustomers(getSupabaseClient()).catch(() => ({ customers: [] as Customer[], available: false })),
@@ -926,12 +932,16 @@ export function Dashboard() {
           Promise.resolve(getSupabaseClient().from("trucks").select("*")).then(({ data }) => (data ?? []) as Truck[], () => [] as Truck[]),
           // Faktiniai kaštai – tik furų ataskaitai; be 0029 lentelės – tuščia.
           Promise.resolve(getSupabaseClient().from("truck_month_costs").select("*")).then(({ data }) => (data ?? []) as MonthCostRow[], () => [] as MonthCostRow[]),
+          // Paros rida (archyvas) – „Km be krovinio“ furų ataskaitoje; be jos stulpelis tuščias.
+          fetchAllRows<{ plate: string; date: string; km: number }>((from, to) => getSupabaseClient().from("telematics_daily").select("plate,date,km").order("date").order("plate").range(from, to))
+            .then((rows) => rows.map((row) => ({ ...row, km: Number(row.km) })), () => []),
         ]);
         if (cancelled) return;
         setAllTrips(loadedTrips);
         setSkipped(skippedTrips);
         setTrucks(loadedTrucks);
         setMonthCosts(loadedMonthCosts);
+        setDailyKm(loadedDaily);
         setCustomers(loadedCustomers.customers);
       } catch { if (!cancelled) setError("Nepavyko užkrauti suvestinės. Patikrinkite ryšį ir bandykite dar kartą."); }
       finally { if (!cancelled) setLoading(false); }
@@ -1066,7 +1076,7 @@ export function Dashboard() {
       <RoundTripsTab trips={trips} customerFiltered={Boolean(filters.customerId)} />
     </div>}
     {tab === "trucks" && <div role="tabpanel" aria-label="Furos">
-      <TruckReportTab trips={trips} trucks={trucks} monthCosts={monthCosts} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />
+      <TruckReportTab trips={trips} trucks={trucks} monthCosts={monthCosts} dailyKm={dailyKm} range={span} plate={filters.plate} customerFiltered={Boolean(filters.customerId)} today={today} />
     </div>}
     <DetailsTable trips={trips} customers={usedCustomers} fleetPerDayCents={stats.profitPerDayCents} periodLabel={periodLabel} />
   </div>;

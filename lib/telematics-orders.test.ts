@@ -130,9 +130,11 @@ const ORDERS = [
   { OrderId: "1", OrderNo: " SENO 1 ", TripClient: "UAB  Klientas", OrderPrice: 1200, AdditionalPaymentsEur: 50 },
   { OrderId: "2", OrderNo: "", TripClient: "Kitas", OrderPrice: 800, AdditionalPaymentsEur: 0 },
   { OrderId: "3", OrderNo: "N3", TripClient: "X", OrderPrice: 0, AdditionalPaymentsEur: 0 },
+  // Telematikos atstumas – tik tuščios atkarpos km (pakrautų km nėra), kaip MHE 763 10-07.
+  { OrderId: "4", OrderNo: "1015210017255", TripClient: "X", OrderPrice: 538.75, AdditionalPaymentsEur: 0, TotalTripDistance: "12.000" },
 ];
 
-function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number; now?: string } = {}) {
+function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Supply[]; perDiemPercent?: number; now?: string; paidKmByOrder?: Map<string, number> } = {}) {
   return buildOrderTrips({
     orders: parseOrders(ORDERS),
     legs: parseOrderLegs(legs),
@@ -141,6 +143,7 @@ function build(legs: unknown[], extra: { daily?: DailyDistance[]; supplies?: Sup
     supplies: extra.supplies ?? [],
     now: extra.now ?? "2026-10-23 12:00:00",
     perDiemPercent: extra.perDiemPercent ?? null,
+    paidKmByOrder: extra.paidKmByOrder,
   });
 }
 
@@ -167,6 +170,28 @@ describe("idleWeekendDaysInLoad", () => {
     expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 90 }))).toEqual(["2026-10-31"]);
     expect(idleWeekendDaysInLoad("2026-10-31", "2026-11-02", km({ "2026-10-31": 0, "2026-11-01": 0 }))).toEqual(["2026-11-01"]);
     expect(idleWeekendDaysInLoad("2026-10-30", "2026-11-02", km({}))).toEqual([]);
+  });
+});
+
+describe("buildOrderTrips: paros ridos likutis neskaičiuojamas dukart", () => {
+  const day = (date: string, value: number): DailyDistance => ({ plate: "MHE 763", date, km: value, fuelL: null });
+  const legs = [
+    leg("4", "2026-10-07 19:00:00", "2026-10-08 12:59:00", 12, { IsEmptyKm: "1", StartPointType: null, EndPointType: null }),
+    leg("4", "2026-10-08 13:00:00", "2026-10-09 10:00:00", 0),
+  ];
+  const daily = [day("2026-10-07", 350), day("2026-10-08", 359), day("2026-10-09", 208)];
+
+  it("pakrautų km nėra, o TotalTripDistance – tik tuščia atkarpa: atstumas nežinomas, likučio nėra", () => {
+    // Anksčiau: 917 km ridos − 12 km „užsakymo“ = +905 tuščių km, o apmokami km dar kartą iš tos pačios ridos.
+    const [trip] = build(legs, { now: "2026-11-01 00:00:00", daily }).trips;
+    expect(trip.trip.empty_km).toBe(12);
+    expect(trip.kmAddresses).not.toBeNull();
+  });
+
+  it("su jau įrašytais PTV km – likutis skaičiuojamas nuo jų", () => {
+    const [trip] = build(legs, { now: "2026-11-01 00:00:00", daily, paidKmByOrder: new Map([["4", 400]]) }).trips;
+    // 917 − (400 + 12) = 505.
+    expect(trip.trip.empty_km).toBe(517);
   });
 });
 

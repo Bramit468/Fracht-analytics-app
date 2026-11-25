@@ -458,6 +458,11 @@ export function buildOrderTrips(input: {
   now: string;
   /** Įmonės dienpinigių % pagal šalis; `null` – lieka fiksuota furos suma. */
   perDiemPercent?: number | null;
+  /**
+   * Jau įrašyti užsakymų apmokami km (PTV, kai Telematikoje jų nėra): su jais
+   * užsakymo atstumas žinomas, ir paros ridos likutis skaičiuojamas be dvigubinimo.
+   */
+  paidKmByOrder?: Map<string, number>;
 }): OrderImport {
   const trucks = new Map(input.trucks.map((truck) => [plateKey(truck.plate), truck]));
   const byOrder = new Map<string, OrderLeg[]>();
@@ -582,12 +587,20 @@ export function buildOrderTrips(input: {
     for (const { id, share } of dayShares(day.plate, day.date, true)) estimatedKm.set(id, (estimatedKm.get(id) ?? 0) + day.km * share);
   }
 
-  // Užsakymo km: atkarpų suma, kai pakrautos atkarpos km turi; kitaip – užsakymo
-  // `TotalTripDistance`; nėra nė vieno – `null` (įvertis, vėliau PTV).
-  // Pirmiau – užsakymo atstumas: atkarpų km dažnai būna tik dalyje atkarpų, o
-  // tada užsakymas atrodytų trumpesnis ir skirtumas virstų netikrais tuščiais km.
-  const legKm = (legs: OrderLeg[], order: TelematikaOrder) =>
-    order.totalKm ?? (legs.every((leg) => leg.km > 0) ? legs.reduce((sum, leg) => sum + leg.km, 0) : null);
+  // Užsakymo km paros ridos likučiui (tušti km be užsakymo). `null` – nežinoma, tada
+  // likutis neskaičiuojamas. `TotalTripDistance` tinka tik jei jis didesnis už
+  // žinomų atkarpų sumą: Telematika jį sudeda iš tų pačių atkarpų, tad be
+  // pakrautų atkarpų km jis būna vien tuščio privažiavimo (MHE 763 10-07: 12 km),
+  // ir visa paros rida virsdavo antrą kartą skaičiuojamais tuščiais km
+  // (2026-11-25: spalį 9 furų reisų km viršijo odometrą 25–61 %).
+  const legKm = (legs: OrderLeg[], order: TelematikaOrder) => {
+    const known = legs.reduce((sum, leg) => sum + leg.km, 0);
+    if (order.totalKm !== null && order.totalKm > known + 0.5) return order.totalKm;
+    if (!legs.some((leg) => !leg.empty && leg.km <= 0)) return known;
+    // Pakrautų km nėra – jau įrašyti PTV km + tuščių atkarpų km; nėra ir jų – nežinoma.
+    const paid = input.paidKmByOrder?.get(order.orderId);
+    return paid !== undefined && paid > 0 ? paid + legs.filter((leg) => leg.empty).reduce((sum, leg) => sum + leg.km, 0) : null;
+  };
   const emptyRuns = carriedEmptyKm({
     orders: ready.map(({ orderId, order, legs, truck }) => ({
       orderId, plate: truck.plate, start: legs[0].start, end: legs[legs.length - 1].end, legKm: legKm(legs, order),

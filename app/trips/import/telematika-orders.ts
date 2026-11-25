@@ -133,6 +133,7 @@ export async function loadTelematikaOrders(): Promise<OrderImportResult> {
       supplies: parseSupplies(mergeSupplyPayloads(archived.supplies, suppliesRaw), (amount, currency, date) => toEuroCents(rates, amount, currency, date)).supplies,
       now: vilniusNow(),
       perDiemPercent: settings.perDiemPercent,
+      paidKmByOrder: new Map((existingResult.data ?? []).map((row) => [String(row.telematika_order_id), Number(row.paid_km)])),
     });
   } catch (cause) {
     console.error("Telematikos užsakymų importas: apdorojimas", cause);
